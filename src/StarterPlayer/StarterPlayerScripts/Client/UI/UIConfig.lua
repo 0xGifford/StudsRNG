@@ -19,6 +19,7 @@ return {
 		Wheel = true,
 		Upgrades = true,
 		Zones = true,
+		Quests = true,
 		Boosts = true, -- FriendBoost / Premium / DailyRewards labels
 		Events = true, -- active timers + "Next Event In"
 	},

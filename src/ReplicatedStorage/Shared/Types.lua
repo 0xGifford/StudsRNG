@@ -56,7 +56,14 @@ export type PlayerData = {
 	Daily: { Streak: number, LastDay: number }, -- LastDay = UTC day number of the last claim
 	SeenUpdate: string, -- newest update log version the player has opened
 	PurchaseIds: { string }, -- recent receipt ids (server only, never sent to the client)
+	SeenIntro: boolean, -- watched the first-join cinematic
+	Tutorial: number, -- tutorial step reached (Systems/Tutorial)
+	Quests: { Day: number, List: { QuestState } },
+	LastOnline: number, -- unix time, for offline earnings
+	TilesClaimed: number,
 }
+
+export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }
 
 -- Everything outside PlayerData that changes a player's stats. Built by the
 -- server (Systems/Modifiers); the client receives the finished Stats.

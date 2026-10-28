@@ -22,6 +22,19 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.2",
+		Date = "Oct 28, 2026",
+		Title = "The Big Juice Update",
+		Notes = {
+			"A brand new map: five themed islands, from the Office to low-gravity Space.",
+			"Combo meter: keep pressing keys to build up to +50% Clacks.",
+			"Daily Quests: three new quests every day.",
+			"Welcome back bonus: earn Clacks while you're away.",
+			"Glowing +1 tiles appear on random keys: step on them for free rolls.",
+			"A first-join tour and tutorial, plus way more effects everywhere.",
+		},
+	},
+	{
 		Version = "1.1",
 		Date = "Oct 28, 2026",
 		Title = "Zones, Upgrades & Shop",

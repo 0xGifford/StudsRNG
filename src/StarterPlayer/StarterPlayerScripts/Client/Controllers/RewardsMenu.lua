@@ -26,6 +26,7 @@ local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local Robux = require(UI.Robux)
 local UIConfig = require(UI.UIConfig)
+local Juice = require(UI.Juice)
 
 local RewardsMenu = {}
 
@@ -118,6 +119,11 @@ local function claim(index: number)
 	pending = false
 	if response.Ok and response.Reward then
 		Interface.toast(Format.reward(response.Reward), READY)
+		local slot = slots[index]
+		if slot then
+			Juice.pop(slot, 1.2)
+			Juice.confetti(30, slot.AbsolutePosition + slot.AbsoluteSize / 2)
+		end
 	else
 		Interface.toastError(response)
 	end

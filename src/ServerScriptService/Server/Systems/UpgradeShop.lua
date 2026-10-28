@@ -18,6 +18,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 local Upgrades = require(Shared.Upgrades)
+local Signal = require(Shared.Util.Signal)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -28,6 +29,9 @@ local Economy = require(Systems.Economy)
 type Response = Types.Response
 
 local UpgradeShop = {}
+
+-- (player, upgradeId, newLevel)
+UpgradeShop.Bought = Signal.new() :: Signal.Signal<Player, string, number>
 
 function UpgradeShop.buy(player: Player, id: string): Response
 	local data = PlayerData.get(player)
@@ -45,6 +49,7 @@ function UpgradeShop.buy(player: Player, id: string): Response
 	data.Upgrades[id] = level + 1
 	StateSync.push(player, "Upgrades", data.Upgrades)
 	Modifiers.invalidate(player)
+	UpgradeShop.Bought:Fire(player, id, level + 1)
 	return { Ok = true, Level = level + 1 }
 end
 

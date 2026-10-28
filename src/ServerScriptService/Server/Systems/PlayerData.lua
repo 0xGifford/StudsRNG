@@ -52,6 +52,11 @@ local TEMPLATE: PlayerData = {
 	Daily = { Streak = 0, LastDay = -1 },
 	SeenUpdate = "",
 	PurchaseIds = {},
+	SeenIntro = false,
+	Tutorial = 0,
+	Quests = { Day = -1, List = {} },
+	LastOnline = 0,
+	TilesClaimed = 0,
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.

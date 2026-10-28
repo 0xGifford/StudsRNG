@@ -29,6 +29,7 @@ local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local Robux = require(UI.Robux)
 local UIConfig = require(UI.UIConfig)
+local Juice = require(UI.Juice)
 
 local WheelMenu = {}
 
@@ -123,6 +124,12 @@ local function spin()
 	local reward = response.Reward or {}
 	Interface.play("Click", 0.8)
 	Interface.toast(`You won: {Format.reward(reward)}`, Color3.fromRGB(255, 230, 90))
+	Juice.confetti(if reward.Kind == "MegaRoll" then 120 else 45, wheel.AbsolutePosition + wheel.AbsoluteSize / 2)
+	Juice.pop(wheel, 1.08)
+	if reward.Kind == "MegaRoll" or reward.Kind == "Luck" then
+		Juice.banner(if reward.Kind == "MegaRoll" then "JACKPOT!" else "+1 LUCK!", Format.reward(reward), Color3.fromRGB(255, 220, 90), 2)
+		Juice.shake(1, 0.6)
+	end
 	spinning = false
 
 	if typeof(reward.Results) == "table" then

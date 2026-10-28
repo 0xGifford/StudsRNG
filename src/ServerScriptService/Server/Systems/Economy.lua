@@ -12,8 +12,19 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Owns Clacks, the roll meter and banked free rolls. Earns from
 -- PressTracker (server-detected presses only, in owned zones) and exposes
 -- grant/spend functions for rolls, shops, upgrades, zones and rewards.
+--
+-- Press combo: presses in quick succession build a Clacks bonus
+-- (Config.Combo), pushed to the client as "Combo" = { Count, Bonus }.
+-- Offline earnings: Clacks for time away, granted on join (Config.Offline).
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Net = require(Shared.Net)
+local RewardDefs = require(Shared.Rewards)
+local Signal = require(Shared.Util.Signal)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -22,6 +33,12 @@ local Modifiers = require(Systems.Modifiers)
 local PressTracker = require(Systems.PressTracker)
 
 local Economy = {}
+
+-- (player, presses, clacksGained) after every counted press sample
+Economy.Earned = Signal.new() :: Signal.Signal<Player, number, number>
+
+type Combo = { count: number, last: number }
+local combos: { [Player]: Combo } = {}
 
 local rng = Random.new()
 local leaderValues: { [Player]: { Clacks: NumberValue, Rebirths: IntValue } } = {}
@@ -132,7 +149,19 @@ local function onPressed(player: Player, count: number, valueSum: number)
 		end
 	end
 
-	local gain = (valueSum + bonus) * stats.ClackMultiplier
+	-- Combo: keep the streak alive by pressing within the window.
+	local now = os.clock()
+	local combo = combos[player]
+	if not combo or now - combo.last > Config.Combo.Window then
+		combo = { count = 0, last = now }
+		combos[player] = combo
+	end
+	combo.count += count
+	combo.last = now
+	local comboBonus = math.min(combo.count * Config.Combo.Step, Config.Combo.Max)
+	StateSync.push(player, "Combo", { Count = combo.count, Bonus = comboBonus })
+
+	local gain = (valueSum + bonus) * stats.ClackMultiplier * (1 + comboBonus)
 	data.Clacks += gain
 	data.LifetimeClacks += gain
 	data.TotalPresses += count
@@ -148,6 +177,25 @@ local function onPressed(player: Player, count: number, valueSum: number)
 	end
 	data.RollMeter = math.min(data.RollMeter, perRoll)
 	pushRolls(player, data)
+	Economy.Earned:Fire(player, count, gain)
+end
+
+local function grantOffline(player: Player, data: any, lastSeen: number)
+	local now = os.time()
+	local away = now - lastSeen
+	data.LastOnline = now
+	if away < Config.Offline.MinAway then return end
+	local seconds = math.min(away, Config.Offline.MaxSeconds)
+	local amount = math.floor(seconds * Config.Offline.ClacksPerSecond * RewardDefs.scale(data))
+	if amount <= 0 then return end
+	Economy.addClacks(player, amount)
+	Net.fire(player, "Notify", {
+		Kind = "Welcome",
+		Text = "Welcome back! Clacks earned while you were away",
+		Amount = amount,
+		Seconds = seconds,
+		Color = Color3.fromRGB(255, 230, 90),
+	})
 end
 
 -- When a free roll is spent while the meter sat full, pay it out now.
@@ -180,11 +228,42 @@ function Economy.init()
 		rebirths.Parent = leaderstats
 		leaderstats.Parent = player
 		leaderValues[player] = { Clacks = clacks, Rebirths = rebirths }
+
+		-- Wait a moment so the client is listening for the welcome popup.
+		local lastSeen = data.LastOnline or 0
+		data.LastOnline = os.time()
+		if lastSeen > 0 then
+			task.delay(6, function()
+				if player.Parent == Players and PlayerData.get(player) == data then
+					grantOffline(player, data, lastSeen)
+				end
+			end)
+		end
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
+		local data = PlayerData.get(player)
+		if data then
+			data.LastOnline = os.time()
+		end
 		leaderValues[player] = nil
+		combos[player] = nil
 	end)
 end
 
+-- Keeps LastOnline fresh: PlayerRemoving can run after the profile is gone.
+function Economy.start()
+	while true do
+		task.wait(60)
+		local now = os.time()
+		for _, player in Players:GetPlayers() do
+			local data = PlayerData.get(player)
+			if data then
+				data.LastOnline = now
+			end
+		end
+	end
+end
+
 return Economy
+

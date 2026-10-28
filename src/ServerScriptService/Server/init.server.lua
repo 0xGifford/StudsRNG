@@ -25,6 +25,7 @@ Net.setup()
 local ORDER = {
 	"PlayerData",
 	"StateSync",
+	"MapBuilder",
 	"Modifiers",
 	"PressTracker",
 	"Inventory",
@@ -37,7 +38,9 @@ local ORDER = {
 	"ZoneShop",
 	"Rebirth",
 	"RewardService",
+	"QuestService",
 	"KeyRewards",
+	"Tutorial",
 	"Products",
 	"Session",
 	"DevCommands",

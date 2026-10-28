@@ -36,6 +36,8 @@ local Interface = require(UI.Interface)
 local StudCell = require(UI.StudCell)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
+local Juice = require(UI.Juice)
+local RollLogic = require(Shared.Util.RollLogic)
 
 type RollResult = Types.RollResult
 type StudDef = Types.StudDef
@@ -173,6 +175,25 @@ local function land(card: Card)
 	card.scale.Scale = 1.3
 	TweenService:Create(card.scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	Interface.play("Click", 1.2)
+
+	-- Rarer = louder: shake from Rare, confetti from Epic, the works from Legendary.
+	local rank = RollLogic.rarityRank(def.Rarity)
+	local center = card.frame.AbsolutePosition + card.frame.AbsoluteSize / 2
+	if rank >= 3 then
+		Juice.shake(0.15 * rank, 0.25 + 0.05 * rank)
+	end
+	if rank >= 4 then
+		Juice.confetti(10 * rank, center)
+		Interface.play("Click", 1.5)
+	end
+	if rank >= 5 then
+		Juice.flash(rarityColor, 0.35 + 0.08 * (rank - 5), 0.6)
+		Juice.fov(6 + 3 * (rank - 5), 0.7)
+		Juice.banner(string.upper(def.Rarity) .. "!", Format.studName(def, variant), rarityColor, 1.2)
+	end
+	if result.New then
+		Juice.pop(card.frame, 1.35)
+	end
 end
 
 local function reveal(results: { RollResult }, quick: boolean)

@@ -35,6 +35,7 @@ local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
+local Juice = require(UI.Juice)
 
 type UpgradeDef = Upgrades.UpgradeDef
 
@@ -292,6 +293,10 @@ local function buy(id: string)
 	if response.Ok then
 		pop(node)
 		Interface.play("Click", 1.25)
+		Juice.confetti(24, node.frame.AbsolutePosition + node.frame.AbsoluteSize / 2)
+		if (response.Level or 0) >= def.MaxLevel then
+			Juice.shake(0.4, 0.3)
+		end
 		Interface.toast(`{def.Name} → {Upgrades.effectText(def, response.Level or 0)}`, COLORS.Affordable)
 	else
 		Interface.toastError(response)

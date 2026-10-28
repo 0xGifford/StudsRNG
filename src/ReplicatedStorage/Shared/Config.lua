@@ -45,6 +45,46 @@ Config.Press = {
 	TeleportSlack = 6,
 }
 
+-- The generated map (Systems/MapBuilder). Zones are laid out in a line
+-- along +Z from Origin, joined by bridges with a barrier at each zone's
+-- entrance. A zone that already exists under workspace.Zones (built by
+-- hand) is left alone, so you can replace any zone with your own build.
+Config.Map = {
+	Enabled = true,
+	Origin = Vector3.new(0, 60, 0),
+	ZoneWidth = 110, -- X
+	ZoneDepth = 90, -- Z
+	Bridge = 26, -- gap between zones
+	KeyCols = 22,
+	KeyRows = 8,
+	-- Disable SpawnLocations outside the generated map so players spawn in
+	-- the Office.
+	TakeOverSpawns = true,
+}
+
+-- Press streak: presses closer together than Window keep a combo going;
+-- every press adds Step to the Clacks bonus, up to Max.
+Config.Combo = {
+	Window = 1.25,
+	Step = 0.005,
+	Max = 0.5,
+}
+
+-- Clacks earned while away: ClacksPerSecond × reward scale, for at most
+-- MaxSeconds, if the player was gone at least MinAway.
+Config.Offline = {
+	MinAway = 5 * 60,
+	MaxSeconds = 8 * 60 * 60,
+	ClacksPerSecond = 2,
+}
+
+Config.Tutorial = {
+	Reward = {
+		{ Kind = "FreeRolls", Amount = 5 },
+		{ Kind = "Spins", Amount = 1 },
+	},
+}
+
 -- Reward tiles: random keys light up with "+1" text; the first player to
 -- step on one (in a zone they own) gets the reward. KeyCapper's letter
 -- labels are hidden so only reward tiles carry text.

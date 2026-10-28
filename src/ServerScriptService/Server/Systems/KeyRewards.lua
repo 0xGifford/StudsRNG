@@ -25,8 +25,11 @@ local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 
 local Systems = script.Parent
+local PlayerData = require(Systems.PlayerData)
+local StateSync = require(Systems.StateSync)
 local PressTracker = require(Systems.PressTracker)
 local RewardService = require(Systems.RewardService)
+local QuestService = require(Systems.QuestService)
 
 type Reward = Types.Reward
 
@@ -58,15 +61,24 @@ local function count(): number
 	return n
 end
 
+-- Tiles go where people can grab them: a key in a zone that a random
+-- online player owns.
 local function spawnTile()
 	if count() >= Settings.MaxActive then return end
+	local players = Players:GetPlayers()
+	if #players == 0 then return end
+	local data = PlayerData.get(players[rng:NextInteger(1, #players)])
+	local unlocked = if data then data.UnlockedWorlds else {}
+
 	local hitboxes = PressTracker.getHitboxes()
 	if #hitboxes == 0 then return end
-	-- A few tries to land on a key that isn't already a tile.
-	for _ = 1, 6 do
+	-- A few tries to land on a claimable key that isn't already a tile.
+	for _ = 1, 12 do
 		local hitbox = hitboxes[rng:NextInteger(1, #hitboxes)]
 		local model = modelOf(hitbox)
-		if model and not active[hitbox] and hitbox:IsDescendantOf(workspace) then
+		local world = model and model:GetAttribute(Config.Press.AttrWorld)
+		local claimable = typeof(world) ~= "string" or unlocked[world] == true
+		if model and claimable and not active[hitbox] and hitbox:IsDescendantOf(workspace) then
 			active[hitbox] = os.clock() + Settings.Lifetime
 			model:SetAttribute(Settings.Attribute, Settings.Text)
 			return
@@ -78,6 +90,12 @@ local function onKeysPressed(player: Player, pressed: { BasePart })
 	for _, hitbox in pressed do
 		if active[hitbox] then
 			clear(hitbox)
+			local data = PlayerData.get(player)
+			if data then
+				data.TilesClaimed += 1
+				StateSync.push(player, "TilesClaimed", data.TilesClaimed)
+			end
+			QuestService.progress(player, "Tiles", 1)
 			local reward: Reward = Settings.Reward
 			local given = RewardService.grant(player, reward)
 			-- Clacks already fly into the counter; anything else gets a toast.

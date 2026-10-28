@@ -38,6 +38,7 @@ local RollReveal = require(Controllers.RollReveal)
 local Interface = require(UI.Interface)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
+local Juice = require(UI.Juice)
 
 local player = Players.LocalPlayer
 
@@ -73,6 +74,9 @@ local function setAlert(name: string, on: boolean, text: string?)
 	local frame = side(name)
 	local alert = frame and frame:FindFirstChild("Alert")
 	if alert and alert:IsA("GuiObject") then
+		if on and not alert.Visible then
+			Juice.pop(alert, 1.6)
+		end
 		alert.Visible = on
 		if text then
 			Interface.setText(alert, text)
@@ -87,7 +91,7 @@ end
 
 local function applyFeatures()
 	local features = UIConfig.Features :: { [string]: boolean }
-	for _, name in { "Store", "Rebirth", "Rewards", "Wheel", "Upgrades", "Zones" } do
+	for _, name in { "Store", "Rebirth", "Rewards", "Wheel", "Upgrades", "Zones", "Quests" } do
 		local frame = side(name)
 		if frame then
 			frame.Visible = features[name] == true
@@ -328,6 +332,17 @@ local function updateAlerts()
 	end
 	setAlert("Upgrades", canUpgrade)
 
+	local quests = State.get("Quests")
+	local claimable = 0
+	if typeof(quests) == "table" and typeof(quests.List) == "table" then
+		for _, quest in quests.List do
+			if not quest.Claimed and quest.Progress >= quest.Target then
+				claimable += 1
+			end
+		end
+	end
+	setAlert("Quests", claimable > 0, tostring(claimable))
+
 	local wheel = side("Wheel")
 	if wheel then
 		local spins = State.get("Spins") or 0
@@ -502,7 +517,7 @@ function Hud.start()
 			updateAuto()
 			updateAlerts()
 			updateBoostLabels()
-		elseif field == "Upgrades" or field == "UnlockedWorlds" or field == "Rebirths" or field == "Spins" then
+		elseif field == "Upgrades" or field == "UnlockedWorlds" or field == "Rebirths" or field == "Spins" or field == "Quests" then
 			updateAlerts()
 		elseif field == "Playtime" then
 			updatePlaytimeAlert()

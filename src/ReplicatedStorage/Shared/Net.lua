@@ -45,6 +45,9 @@ local FUNCTIONS = {
 	"ClaimPlaytime",
 	"SpinWheel",
 	"MarkUpdateSeen",
+	"MarkIntroSeen",
+	"AdvanceTutorial",
+	"ClaimQuest",
 }
 
 -- Server → client (RemoteEvent).
