@@ -24,6 +24,7 @@ local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 local RollLogic = require(Shared.Util.RollLogic)
+local Signal = require(Shared.Util.Signal)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -36,6 +37,9 @@ type RollResult = Types.RollResult
 type Response = Types.Response
 
 local Rolls = {}
+
+-- (player, results) after any roll grants studs
+Rolls.Rolled = Signal.new() :: Signal.Signal<Player, { RollResult }>
 
 local rng = Random.new()
 local lastRoll: { [Player]: number } = {}
@@ -88,6 +92,9 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 
 	data.TotalRolls += #results
 	StateSync.push(player, "TotalRolls", data.TotalRolls)
+	if #results > 0 then
+		Rolls.Rolled:Fire(player, results)
+	end
 	return results
 end
 

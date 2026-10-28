@@ -45,6 +45,10 @@ local CLIENT_FIELDS = {
 	"Spins",
 	"Daily",
 	"SeenUpdate",
+	"SeenIntro",
+	"Tutorial",
+	"Quests",
+	"TilesClaimed",
 }
 
 function Session.init()

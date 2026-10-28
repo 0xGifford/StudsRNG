@@ -26,6 +26,7 @@ local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
+local Juice = require(UI.Juice)
 
 local DailyMenu = {}
 
@@ -115,6 +116,11 @@ local function onDay(index: number)
 	pending = false
 	if response.Ok and response.Reward then
 		Interface.toast(`Day {response.Day}: {Format.reward(response.Reward)}`, Color3.fromRGB(120, 255, 140))
+		local frame = days[index]
+		if frame then
+			Juice.pop(frame, 1.2)
+			Juice.confetti(50, frame.AbsolutePosition + frame.AbsoluteSize / 2)
+		end
 	else
 		Interface.toastError(response)
 	end

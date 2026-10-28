@@ -14,7 +14,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 --
 -- Commands: "Clacks" n | "FreeRolls" n | "Stud" "Id:Variant" | "Roll" n | "Reset"
 --           "Rebirth" | "Zones" | "Upgrades" | "Boost" id | "Spins" n | "Luck" n
---           "ServerLuck" | "Event" id
+--           "ServerLuck" | "Event" id | "Intro" | "Tutorial" | "Quests"
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -92,6 +92,18 @@ local function run(player: Player, command: unknown, arg: unknown): any
 		RewardService.addLuck(player, amount)
 	elseif command == "ServerLuck" then
 		ServerEffects.addServerLuck(player)
+	elseif command == "Intro" or command == "Tutorial" or command == "Quests" then
+		-- Replay the first-join flow / reroll quests (takes effect on rejoin).
+		local data = PlayerData.get(player)
+		if not data then return "not loaded" end
+		if command == "Intro" then
+			data.SeenIntro = false
+		elseif command == "Tutorial" then
+			data.Tutorial = 1
+			StateSync.push(player, "Tutorial", 1)
+		else
+			data.Quests = { Day = -1, List = {} }
+		end
 	elseif command == "Event" then
 		local id = if typeof(arg) == "string" then arg else ""
 		if not ServerEffects.forceEvent(id, 120) then return "bad event id" end
