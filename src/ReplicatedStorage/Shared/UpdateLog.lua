@@ -22,6 +22,17 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.3",
+		Date = "Oct 28, 2026",
+		Title = "The Biomes Update",
+		Notes = {
+			"The map is rebuilt: seven biome valleys walled in by cliffs, joined by canyon passes.",
+			"Zones are now Grasslands, Beach, Polar, Volcano, Islands, Cave and Heaven. Your unlocks carry over.",
+			"Two new zones, Islands and Cave, each with four new zone studs.",
+			"The Teleporter: numbered zone list with one-tap teleports.",
+		},
+	},
+	{
 		Version = "1.2",
 		Date = "Oct 28, 2026",
 		Title = "The Big Juice Update",

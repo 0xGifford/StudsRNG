@@ -12,7 +12,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Knows which zone the local player stands in (workspace.Zones.<Id>: the
 -- Center/ZoneSize attributes MapBuilder sets, or the model's bounding box
 -- for hand-built zones) and makes it feel different: lighting, fog and
--- atmosphere blend to Shared/MapThemes, gravity changes locally (Space is
+-- atmosphere blend to Shared/MapThemes, gravity changes locally (Heaven is
 -- floaty) and a title card announces the zone.
 
 local Lighting = game:GetService("Lighting")

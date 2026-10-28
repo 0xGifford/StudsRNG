@@ -52,13 +52,13 @@ Config.Press = {
 Config.Map = {
 	Enabled = true,
 	Origin = Vector3.new(0, 60, 0),
-	ZoneWidth = 110, -- X
-	ZoneDepth = 90, -- Z
-	Bridge = 26, -- gap between zones
+	ZoneWidth = 170, -- X (inside the cliffs)
+	ZoneDepth = 150, -- Z
+	Bridge = 40, -- canyon pass between zones
 	KeyCols = 22,
 	KeyRows = 8,
 	-- Disable SpawnLocations outside the generated map so players spawn in
-	-- the Office.
+	-- Grasslands.
 	TakeOverSpawns = true,
 }
 

@@ -9,8 +9,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- The Zones window (buy the next zone with Clacks, teleport to owned ones)
--- and the zones in the world:
+-- The Teleporter window (numbered zone rows, Slime RNG style: teleport to
+-- owned zones, buy the next one with Clacks) and the zones in the world:
 --   workspace.Zones.<Id>.Barrier  opens (locally) once the zone is owned,
 --                                 shows a price sign, and opens this menu
 --                                 when the player bumps into it.
@@ -30,12 +30,11 @@ local State = require(Controllers.State)
 local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
-local UIConfig = require(UI.UIConfig)
 
 local ZonesMenu = {}
 
 local MENU = "Zones"
-local COLORS = { "Green", "Blue", "Purple", "Orange", "Sunset" }
+local ROW_COLOR = Color3.fromRGB(36, 38, 50)
 local TOUCH_COOLDOWN = 3
 
 local player = Players.LocalPlayer
@@ -67,20 +66,21 @@ end
 --------------------------------------------------------------------------
 
 local function updateCard(def: Zones.ZoneDef)
-	local card = cards[def.Id]
-	if not card then return end
+	local row = cards[def.Id]
+	if not row then return end
+	local button = row:FindFirstChild("Action")
+	if not (button and button:IsA("Frame")) then return end
 	local nextZone = Zones.nextFor(State.get("UnlockedWorlds") or {})
-	local price = card:FindFirstChild("Price", true)
 	if owned(def.Id) then
-		Kit.setPrice(card, "Teleport", nil)
+		Kit.paint(button, "Green")
+		Interface.setText(button, "Teleport")
 	elseif nextZone and nextZone.Id == def.Id then
-		Kit.setPrice(card, Format.number(priceOf(def)), UIConfig.Icons.Clacks)
+		local short = (State.get("Clacks") or 0) < priceOf(def)
+		Kit.paint(button, if short then "Sunset" else "Orange")
+		Interface.setText(button, Format.number(priceOf(def)))
 	else
-		Kit.setPrice(card, "Locked", nil)
-	end
-	if price and price:IsA("TextLabel") then
-		local short = not owned(def.Id) and (State.get("Clacks") or 0) < priceOf(def)
-		price.TextColor3 = if short then Color3.fromRGB(255, 120, 120) else Color3.new(1, 1, 1)
+		Kit.paint(button, "Purple")
+		Interface.setText(button, "Locked")
 	end
 end
 
@@ -121,23 +121,64 @@ local function onZone(def: Zones.ZoneDef)
 	end
 end
 
+-- One Teleporter row: "3  Polar ............ [Teleport]".
+local function makeRow(def: Zones.ZoneDef): Frame
+	local row = Instance.new("Frame")
+	row.Name = def.Id
+	row.BackgroundColor3 = ROW_COLOR
+	row.BorderSizePixel = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.18, 0)
+	corner.Parent = row
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(12, 12, 18)
+	stroke.Thickness = 2
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = row
+
+	local number = Kit.label(tostring(def.Order))
+	number.Name = "Number"
+	number.AnchorPoint = Vector2.new(0.5, 0.5)
+	number.Position = UDim2.fromScale(0.065, 0.5)
+	number.Size = UDim2.fromScale(0.07, 0.5)
+	number.Parent = row
+
+	local name = Kit.label(`{def.Emoji} {def.Name}`)
+	name.Name = "ZoneName"
+	name.AnchorPoint = Vector2.new(0, 0.5)
+	name.Position = UDim2.fromScale(0.13, 0.4)
+	name.Size = UDim2.fromScale(0.52, 0.46)
+	name.TextXAlignment = Enum.TextXAlignment.Left
+	name.Parent = row
+
+	local info = Kit.label(`x{def.KeyMultiplier} Clacks per key · {Zones.studCount(def.Id)} zone studs`)
+	info.Name = "Info"
+	info.AnchorPoint = Vector2.new(0, 0.5)
+	info.Position = UDim2.fromScale(0.13, 0.78)
+	info.Size = UDim2.fromScale(0.52, 0.24)
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.TextColor3 = def.Color
+	info.Parent = row
+
+	local button = Kit.button("Green", "Teleport")
+	button.Name = "Action"
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.fromScale(0.97, 0.5)
+	button.Size = UDim2.fromScale(0.27, 0.62)
+	button.Parent = row
+	Interface.bindButton(button, function()
+		onZone(def)
+	end)
+	return row
+end
+
 local function rebuild()
 	Kit.list(items)
 	table.clear(cards)
-	Kit.header(items, "Unlock zones with Clacks", 1)
 	for index, def in Zones.List do
-		local studs = Zones.studCount(def.Id)
-		local card = Kit.card({
-			Title = def.Name,
-			Description = `x{def.KeyMultiplier} Clacks from every key · {studs} zone studs`,
-			Icon = def.Emoji,
-			Color = COLORS[(index - 1) % #COLORS + 1],
-		})
-		cards[def.Id] = card
-		Interface.bindButton(card, function()
-			onZone(def)
-		end, 0.97, 0.93)
-		Kit.row(items, card, 2.8, index + 1)
+		local row = makeRow(def)
+		cards[def.Id] = row
+		Kit.row(items, row, 6.2, index)
 		updateCard(def)
 	end
 end

@@ -172,8 +172,9 @@ local function play()
 		if center then
 			pcall(player.RequestStreamAroundAsync, player, center, 2)
 			local side = if index % 2 == 0 then 1 else -1
-			local from = center + Vector3.new(side * 75, 45, -60)
-			local to = center + Vector3.new(side * 30, 22, -35)
+			-- Inside the valley walls (and under the Cave's roof).
+			local from = center + Vector3.new(side * 55, 34, -62)
+			local to = center + Vector3.new(side * 22, 16, -34)
 			camera.CFrame = CFrame.lookAt(from, center)
 			TweenService:Create(camera, TweenInfo.new(SHOT_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
 				CFrame = CFrame.lookAt(to, center + Vector3.new(0, 2, 0)),
