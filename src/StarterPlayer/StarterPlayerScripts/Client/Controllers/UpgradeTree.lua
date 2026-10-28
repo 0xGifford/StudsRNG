@@ -696,13 +696,22 @@ end
 
 local controlsDisabled = false
 
+-- Roblox's default PlayerModule, if this place has one (never waited on:
+-- places with custom player scripts don't, and open/close must not yield).
+local function findControls(): any
+	local scripts = player:FindFirstChild("PlayerScripts")
+	local module = scripts and scripts:FindFirstChild("PlayerModule")
+	if not (module and module:IsA("ModuleScript")) then return nil end
+	local ok, controls = pcall(function()
+		return (require(module) :: any):GetControls()
+	end)
+	return if ok then controls else nil
+end
+
 local function setControls(enabled: boolean)
 	-- Stop the character walking off while the tree is open.
-	local ok, controls = pcall(function()
-		local playerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
-		return playerModule:GetControls()
-	end)
-	if ok and controls then
+	local controls = findControls()
+	if controls then
 		if enabled and controlsDisabled then
 			controls:Enable()
 			controlsDisabled = false

@@ -39,6 +39,8 @@ local PressTracker = {}
 
 -- (player, pressCount, clackValueSum)
 PressTracker.Pressed = Signal.new() :: Signal.Signal<Player, number, number>
+-- (player, hitboxes pressed this sample) — only keys that paid out
+PressTracker.KeysPressed = Signal.new() :: Signal.Signal<Player, { BasePart }>
 
 type KeyInfo = { value: number, world: string? }
 type Tracked = { lastFeet: Vector3?, touching: { [BasePart]: boolean } }
@@ -186,12 +188,14 @@ local function sample(player: Player, state: Tracked, dt: number)
 
 	local count = 0
 	local valueSum = 0
+	local pressed: { BasePart } = {}
 	for _, part in sweepHits do
 		if not state.touching[part] then
 			local info = hitboxes[part]
 			if info and (filter == nil or filter(player, info.world)) then
 				count += 1
 				valueSum += info.value
+				table.insert(pressed, part)
 				if count >= PressConfig.MaxPressesPerSample then
 					break
 				end
@@ -203,7 +207,17 @@ local function sample(player: Player, state: Tracked, dt: number)
 
 	if count > 0 then
 		PressTracker.Pressed:Fire(player, count, valueSum)
+		PressTracker.KeysPressed:Fire(player, pressed)
 	end
+end
+
+-- Every key hitbox currently known (a fresh list).
+function PressTracker.getHitboxes(): { BasePart }
+	local list: { BasePart } = {}
+	for part in hitboxes do
+		table.insert(list, part)
+	end
+	return list
 end
 
 -- Economy sets this so keys in unowned zones never pay.

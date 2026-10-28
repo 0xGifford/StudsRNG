@@ -37,6 +37,7 @@ local ORDER = {
 	"ZoneShop",
 	"Rebirth",
 	"RewardService",
+	"KeyRewards",
 	"Products",
 	"Session",
 	"DevCommands",

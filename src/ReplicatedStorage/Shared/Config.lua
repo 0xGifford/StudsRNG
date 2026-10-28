@@ -45,6 +45,20 @@ Config.Press = {
 	TeleportSlack = 6,
 }
 
+-- Reward tiles: random keys light up with "+1" text; the first player to
+-- step on one (in a zone they own) gets the reward. KeyCapper's letter
+-- labels are hidden so only reward tiles carry text.
+Config.KeyRewards = {
+	HideLetters = true,
+	Interval = 3, -- seconds between new reward tiles
+	MaxActive = 8, -- reward tiles on the board at once
+	Lifetime = 40, -- seconds before an unclaimed tile fades
+	Text = "+1",
+	-- Any Shared/Rewards kind: Clacks (scaled by progress), FreeRolls, Spins...
+	Reward = { Kind = "FreeRolls", Amount = 1 },
+	Attribute = "RewardTile", -- set on the key Model while active
+}
+
 Config.Economy = {
 	PressesPerFreeRoll = 150,
 	MinPressesPerFreeRoll = 40, -- floor after meter upgrades

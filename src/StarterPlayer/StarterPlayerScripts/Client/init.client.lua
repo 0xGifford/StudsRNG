@@ -18,6 +18,7 @@ local ORDER = {
 	"RollReveal",
 	"Hud",
 	"EventsHud",
+	"KeyLabels",
 	"IndexMenu",
 	"StudsMenu",
 	"OptionsMenu",
