@@ -32,6 +32,7 @@ local entries: { Entry } = {
 			"Welcome back bonus: earn Clacks while you're away.",
 			"Glowing +1 tiles appear on random keys: step on them for free rolls.",
 			"A first-join tour and tutorial, plus way more effects everywhere.",
+			"Brand new roll: a spinning reel over your head, AUTO and HIDE buttons, and a cleaner HUD with Roll at the bottom.",
 		},
 	},
 	{
