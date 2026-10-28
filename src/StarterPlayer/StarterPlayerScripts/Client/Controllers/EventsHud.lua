@@ -9,7 +9,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- Bottom-right timers. HUD.Events.Started lists everything running (the
+-- Event timers along the top. HUD.Events.Started lists everything running (the
 -- global event, Server Luck, your boosts) as Templates.Events icons with a
 -- countdown; HUD.Events.NextEvent shows when the next global event starts.
 -- Server-wide timers come from ReplicatedStorage attributes set by
