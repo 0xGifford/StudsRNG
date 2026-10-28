@@ -57,8 +57,8 @@ local function buildCombo()
 
 	local label = source:Clone()
 	label.Name = "Combo"
-	label.AnchorPoint = Vector2.new(0.5, 1)
-	label.Position = UDim2.new(amounts.Position.X.Scale, 0, amounts.Position.Y.Scale - amounts.Size.Y.Scale * 0.55, 0)
+	label.AnchorPoint = Vector2.new(0.5, 0)
+	label.Position = UDim2.new(amounts.Position.X.Scale, 0, amounts.Position.Y.Scale + amounts.Size.Y.Scale * 0.55, 0)
 	label.Size = UDim2.fromScale(amounts.Size.X.Scale * 0.8, amounts.Size.Y.Scale * 0.38)
 	label.Text = ""
 	label.TextTransparency = 1
