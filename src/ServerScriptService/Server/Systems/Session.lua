@@ -11,11 +11,13 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Answers GetSnapshot: the client's full starting state on join (and after
 -- any desync). Incremental changes then arrive as StateSync patches.
+-- Also records which update log version the player has read.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared.Net)
+local UpdateLog = require(Shared.UpdateLog)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -36,6 +38,13 @@ local CLIENT_FIELDS = {
 	"Index",
 	"AutoDelete",
 	"UnlockedWorlds",
+	"Rebirths",
+	"Upgrades",
+	"LuckyRolls",
+	"Boosts",
+	"Spins",
+	"Daily",
+	"SeenUpdate",
 }
 
 function Session.init()
@@ -52,7 +61,18 @@ function Session.init()
 		for _, field in CLIENT_FIELDS do
 			snapshot[field] = (data :: any)[field]
 		end
+		for field, value in StateSync.getVolatile(player) do
+			snapshot[field] = value
+		end
 		return { Ok = true, Seq = seq, Data = snapshot }
+	end)
+
+	Net.handle("MarkUpdateSeen", { Rate = 0.5, Burst = 2 }, function(player)
+		local data = PlayerData.get(player)
+		if not data then return { Ok = false, Error = "NotLoaded" } end
+		data.SeenUpdate = UpdateLog.Latest
+		StateSync.push(player, "SeenUpdate", data.SeenUpdate)
+		return { Ok = true }
 	end)
 end
 

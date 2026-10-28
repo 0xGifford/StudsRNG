@@ -10,13 +10,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 
 --!strict
 -- Owns studs: granting, the index, equipping, fusing, deleting and
--- auto-delete. Also owns the derived stats (multiplier, luck, slots), cached
--- per player and invalidated whenever studs/equipped/index change.
+-- auto-delete. Derived stats (multiplier, slots, capacity) live in
+-- Modifiers; this module invalidates them whenever studs/equipped/index change.
 --
 -- Equipped studs are mirrored to the player attribute "EquippedStuds"
 -- (comma-separated keys) so every client can render followers.
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -29,6 +28,7 @@ local RollLogic = require(Shared.Util.RollLogic)
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
 local StateSync = require(Systems.StateSync)
+local Modifiers = require(Systems.Modifiers)
 
 type Stats = Types.Stats
 type Response = Types.Response
@@ -36,8 +36,6 @@ type Response = Types.Response
 export type GrantResult = { Key: string, New: boolean, Kept: boolean, Reason: string? }
 
 local Inventory = {}
-
-local statsCache: { [Player]: Stats } = {}
 
 --------------------------------------------------------------------------
 -- Internal helpers
@@ -48,7 +46,7 @@ local function syncEquippedAttribute(player: Player, data: any)
 end
 
 local function invalidate(player: Player)
-	statsCache[player] = nil
+	Modifiers.invalidate(player)
 end
 
 -- Removes equipped entries the player no longer owns enough of, and trims
@@ -90,15 +88,7 @@ end
 --------------------------------------------------------------------------
 
 function Inventory.getStats(player: Player): Stats
-	local cached = statsCache[player]
-	if cached then return cached end
-	local data = PlayerData.get(player)
-	if not data then
-		return RollLogic.computeStats({ Index = {}, Equipped = {}, Studs = {} })
-	end
-	local stats = RollLogic.computeStats(data)
-	statsCache[player] = stats
-	return stats
+	return Modifiers.get(player)
 end
 
 -- Drops cached stats and re-mirrors equipped studs (after external data edits).
@@ -128,7 +118,7 @@ function Inventory.grant(player: Player, id: string, variant: string): GrantResu
 	local autoDelete = variantDef.Name == "Normal" and data.AutoDelete[def.Rarity] == true
 	if autoDelete and not (isNew and Config.Inventory.KeepFirstDiscovery) then
 		result.Reason = "AutoDelete"
-	elseif RollLogic.countStuds(data.Studs) >= Config.Inventory.MaxStuds then
+	elseif RollLogic.countStuds(data.Studs) >= Inventory.getStats(player).MaxStuds then
 		result.Reason = "Full"
 	else
 		data.Studs[key] = (data.Studs[key] or 0) + 1
@@ -206,7 +196,7 @@ function Inventory.fuse(player: Player, key: string): Response
 	local nextVariant = Variants.Next[variantDef.Name]
 	if not nextVariant then return fail("MaxVariant") end
 
-	local cost = Config.Inventory.FuseCost
+	local cost = Inventory.getStats(player).FuseCost
 	if (data.Studs[key] or 0) < cost then return fail("NotEnough") end
 
 	removeStuds(data, key, cost)
@@ -267,10 +257,6 @@ function Inventory.init()
 		invalidate(player)
 		syncEquippedAttribute(player, data)
 	end)
-	Players.PlayerRemoving:Connect(function(player)
-		statsCache[player] = nil
-	end)
-
 	local actionLimit = { Rate = 6, Burst = 10 }
 
 	Net.handle("Equip", actionLimit, function(player, key)
@@ -298,7 +284,7 @@ function Inventory.init()
 
 	Net.handle("Delete", actionLimit, function(player, key, amount)
 		if not isKey(key) then return fail("InvalidStud") end
-		if not isWholeNumber(amount, 1, Config.Inventory.MaxStuds) then return fail("InvalidAmount") end
+		if not isWholeNumber(amount, 1, 100_000) then return fail("InvalidAmount") end
 		return Inventory.delete(player, key, amount)
 	end)
 

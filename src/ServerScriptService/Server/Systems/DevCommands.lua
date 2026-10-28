@@ -13,6 +13,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- does nothing at all. Uses the same API paths as real gameplay.
 --
 -- Commands: "Clacks" n | "FreeRolls" n | "Stud" "Id:Variant" | "Roll" n | "Reset"
+--           "Rebirth" | "Zones" | "Upgrades" | "Boost" id | "Spins" n | "Luck" n
+--           "ServerLuck" | "Event" id
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -27,6 +29,13 @@ local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
 local Inventory = require(Systems.Inventory)
 local Rolls = require(Systems.Rolls)
+local Modifiers = require(Systems.Modifiers)
+local Boosts = require(Systems.Boosts)
+local ServerEffects = require(Systems.ServerEffects)
+local UpgradeShop = require(Systems.UpgradeShop)
+local ZoneShop = require(Systems.ZoneShop)
+local Rebirth = require(Systems.Rebirth)
+local RewardService = require(Systems.RewardService)
 
 local DevCommands = {}
 
@@ -41,16 +50,13 @@ local function resync(player: Player)
 	local data = PlayerData.get(player)
 	if not data then return end
 	for field, value in data :: any do
-		if field ~= "Version" then
+		if field ~= "Version" and field ~= "PurchaseIds" then
 			StateSync.push(player, field, value)
 		end
 	end
 	Inventory.refresh(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	local clacks = leaderstats and leaderstats:FindFirstChild("Clacks")
-	if clacks and clacks:IsA("NumberValue") then
-		clacks.Value = math.floor(data.Clacks)
-	end
+	Economy.refreshLeaderstats(player)
+	Modifiers.invalidate(player)
 end
 
 local function run(player: Player, command: unknown, arg: unknown): any
@@ -59,7 +65,7 @@ local function run(player: Player, command: unknown, arg: unknown): any
 	if command == "Clacks" then
 		Economy.addClacks(player, amount)
 	elseif command == "FreeRolls" then
-		Economy.addFreeRolls(player, amount)
+		Economy.addFreeRolls(player, amount, true)
 	elseif command == "Stud" then
 		local def, variant = RollLogic.decodeKey(arg)
 		if not def or not variant then return "bad key" end
@@ -69,6 +75,26 @@ local function run(player: Player, command: unknown, arg: unknown): any
 	elseif command == "Reset" then
 		PlayerData.reset(player)
 		resync(player)
+	elseif command == "Rebirth" then
+		return Rebirth.perform(player, true)
+	elseif command == "Zones" then
+		ZoneShop.unlockAll(player)
+	elseif command == "Upgrades" then
+		UpgradeShop.maxAll(player)
+	elseif command == "Boost" then
+		local id = if typeof(arg) == "string" then arg else ""
+		local boost = Config.Boosts[id]
+		if not boost then return "bad boost id" end
+		Boosts.add(player, id, boost.Duration)
+	elseif command == "Spins" then
+		RewardService.addSpins(player, amount)
+	elseif command == "Luck" then
+		RewardService.addLuck(player, amount)
+	elseif command == "ServerLuck" then
+		ServerEffects.addServerLuck(player)
+	elseif command == "Event" then
+		local id = if typeof(arg) == "string" then arg else ""
+		if not ServerEffects.forceEvent(id, 120) then return "bad event id" end
 	else
 		return "unknown command"
 	end

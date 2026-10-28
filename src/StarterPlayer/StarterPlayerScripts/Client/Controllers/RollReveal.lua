@@ -11,7 +11,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Owns the roll flow on the client: decides free vs paid, asks the server,
 -- then plays the reveal (slot-machine spin → land → hold → fade). Also runs
--- auto-roll and turns server announcements into chat messages.
+-- auto-roll (unlocked by the Auto Roll upgrade) and turns server
+-- announcements into chat messages. The reveal speeds up with roll speed
+-- (Fast Roll pass, boosts, upgrades) and shows every stud a roll gave.
 -- The server has already decided the result before the spin starts; the spin
 -- is pure theatre.
 
@@ -42,6 +44,8 @@ local RollReveal = {}
 
 RollReveal.AutoChanged = Signal.new() :: Signal.Signal<boolean>
 RollReveal.BusyChanged = Signal.new() :: Signal.Signal<boolean>
+-- Fired when the player tries Auto without the upgrade.
+RollReveal.AutoLocked = Signal.new() :: Signal.Signal<>
 
 local busy = false
 local auto = false
@@ -64,7 +68,7 @@ local function buildGui()
 	holder.Name = "Holder"
 	holder.AnchorPoint = Vector2.new(0.5, 0.5)
 	holder.Position = UDim2.fromScale(0.5, 0.45)
-	holder.Size = UDim2.fromScale(0.7, 0.34)
+	holder.Size = UDim2.fromScale(0.8, 0.34)
 	holder.BackgroundTransparency = 1
 	holder.GroupTransparency = 1
 	holder.Visible = false
@@ -95,11 +99,13 @@ end
 
 type Card = { frame: Frame, viewport: ViewportFrame, caption: TextLabel, scale: UIScale, result: RollResult }
 
-local function makeCard(result: RollResult, order: number): Card
+local function makeCard(result: RollResult, order: number, total: number): Card
 	local def = Studs.ById[result.Id]
 	local frame = StudCell.new(def, Variants.ById.Normal)
 	frame.LayoutOrder = order
-	frame.Size = UDim2.fromScale(0.3, 0.62) -- leaves room for the caption below
+	-- Leaves room for the caption below; narrower when a roll gives many studs.
+	local width = if total <= 3 then 0.3 else 0.9 / total
+	frame.Size = UDim2.fromScale(width, 0.62)
 	frame.Position = UDim2.new()
 
 	local scale = Instance.new("UIScale")
@@ -170,12 +176,14 @@ local function land(card: Card)
 end
 
 local function reveal(results: { RollResult }, quick: boolean)
-	local spinTime = if quick then UIConfig.Reveal.AutoSpinTime else UIConfig.Reveal.SpinTime
-	local holdTime = if quick then UIConfig.Reveal.AutoHoldTime else UIConfig.Reveal.HoldTime
+	-- Faster rolling = faster reveal, so the animation never holds the player back.
+	local speed = math.max(State.stats().RollSpeed, 1)
+	local spinTime = (if quick then UIConfig.Reveal.AutoSpinTime else UIConfig.Reveal.SpinTime) / speed
+	local holdTime = (if quick then UIConfig.Reveal.AutoHoldTime else UIConfig.Reveal.HoldTime) / speed
 
 	local cards: { Card } = {}
 	for i, result in results do
-		local card = makeCard(result, i)
+		local card = makeCard(result, i, #results)
 		table.insert(cards, card)
 	end
 
@@ -240,10 +248,25 @@ function RollReveal.nextRollKind(): string?
 	if (State.get("FreeRolls") or 0) > 0 then
 		return "free"
 	end
-	if (State.get("Clacks") or 0) >= Config.Rolls.ClackCost then
+	if (State.get("Clacks") or 0) >= State.stats().RollCost then
 		return "paid"
 	end
 	return nil
+end
+
+-- Plays the reveal for results the server already granted (jackpot wheel).
+function RollReveal.showResults(results: { RollResult })
+	if #results == 0 then return end
+	while busy do
+		task.wait(0.1)
+	end
+	setBusy(true)
+	local ok, err = pcall(reveal, results, false)
+	if not ok then
+		warn("[RollReveal]", err)
+		holder.Visible = false
+	end
+	setBusy(false)
 end
 
 -- One roll (free first, then paid). Returns true if a roll happened.
@@ -252,7 +275,7 @@ function RollReveal.roll(quick: boolean?): boolean
 	local kind = RollReveal.nextRollKind()
 	if not kind then
 		if not auto then
-			Interface.toast(`Walk the keys for free rolls, or earn {Format.number(Config.Rolls.ClackCost)} Clacks`)
+			Interface.toast(`Walk the keys for free rolls, or earn {Format.number(State.stats().RollCost)} Clacks`)
 		end
 		return false
 	end
@@ -277,6 +300,10 @@ end
 
 function RollReveal.setAuto(value: boolean)
 	if auto == value then return end
+	if value and not State.stats().AutoRoll then
+		RollReveal.AutoLocked:Fire()
+		return
+	end
 	auto = value
 	RollReveal.AutoChanged:Fire(value)
 	if not value then return end
@@ -286,7 +313,7 @@ function RollReveal.setAuto(value: boolean)
 			if not RollReveal.roll(true) then
 				task.wait(0.5) -- nothing to spend yet; check again shortly
 			else
-				task.wait(Config.Rolls.Cooldown * 0.2)
+				task.wait(State.stats().RollCooldown * 0.2)
 			end
 		end
 	end)

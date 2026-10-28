@@ -12,6 +12,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- The roll. Client asks Roll(count, useFree); the server checks cooldown and
 -- payment, rolls stud + variant with the player's luck, grants through
 -- Inventory, and answers with the results for the reveal animation.
+--
+-- One paid/free roll gives Stats.StudsPerRoll studs (Double Roll pass) plus
+-- a Stats.ExtraRollChance chance of one more (Multi Roll upgrade).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -27,6 +30,7 @@ local PlayerData = require(Systems.PlayerData)
 local StateSync = require(Systems.StateSync)
 local Inventory = require(Systems.Inventory)
 local Economy = require(Systems.Economy)
+local Modifiers = require(Systems.Modifiers)
 
 type RollResult = Types.RollResult
 type Response = Types.Response
@@ -37,24 +41,25 @@ local rng = Random.new()
 local lastRoll: { [Player]: number } = {}
 local busy: { [Player]: boolean } = {}
 
--- Extra luck sources (potions, events, gamepasses) plug in here later.
 function Rolls.getLuck(player: Player): number
-	return Inventory.getStats(player).Luck
+	return Modifiers.get(player).Luck
 end
 
 -- Rolls `count` studs for a player WITHOUT payment. Used by the remote
--- handler after it has charged, and by dev commands.
-function Rolls.rollFor(player: Player, count: number): { RollResult }
+-- handler after it has charged, by the jackpot wheel (luckMultiplier) and by
+-- dev commands.
+function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): { RollResult }
 	local data = PlayerData.get(player)
 	if not data then return {} end
+	local boost = luckMultiplier or 1
 
 	local results: { RollResult } = {}
 	for _ = 1, count do
-		-- Luck is re-read per roll: a new index milestone mid-batch applies at once.
-		local luck = Rolls.getLuck(player)
-		local def = RollLogic.rollStud(rng, luck, data.UnlockedWorlds)
+		-- Stats are re-read per roll: a new index milestone mid-batch applies at once.
+		local stats = Modifiers.get(player)
+		local def = RollLogic.rollStud(rng, stats.Luck * boost, data.UnlockedWorlds)
 		if not def then break end
-		local variant = RollLogic.rollVariant(rng, luck)
+		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * boost)
 
 		local grant = Inventory.grant(player, def.Id, variant.Name)
 		if grant then
@@ -100,25 +105,37 @@ local function handleRoll(player: Player, count: unknown, useFree: unknown): Res
 	local data = PlayerData.get(player)
 	if not data then return { Ok = false, Error = "NotLoaded" } end
 	if busy[player] then return { Ok = false, Error = "Busy" } end
+	local stats = Modifiers.get(player)
 	local now = os.clock()
-	if now - (lastRoll[player] or 0) < Config.Rolls.Cooldown then
+	-- Small grace so network jitter doesn't reject a roll the client timed right.
+	if now - (lastRoll[player] or 0) < stats.RollCooldown * 0.9 then
 		return { Ok = false, Error = "Cooldown" }
 	end
 
 	-- PAYMENT
+	local cost = stats.RollCost * n
 	if useFree then
 		if not Economy.spendFreeRolls(player, n) then
 			return { Ok = false, Error = "NoFreeRolls" }
 		end
 	else
-		if not Economy.spendClacks(player, Config.Rolls.ClackCost * n) then
+		if not Economy.spendClacks(player, cost) then
 			return { Ok = false, Error = "NotEnoughClacks" }
+		end
+	end
+
+	-- Studs this request gives: per-roll count plus Multi Roll chances.
+	local studs = 0
+	for _ = 1, n do
+		studs += stats.StudsPerRoll
+		if stats.ExtraRollChance > 0 and rng:NextNumber() < stats.ExtraRollChance then
+			studs += 1
 		end
 	end
 
 	busy[player] = true
 	lastRoll[player] = now
-	local ok, results = pcall(Rolls.rollFor, player, n)
+	local ok, results = pcall(Rolls.rollFor, player, studs)
 	busy[player] = nil
 
 	if useFree then
@@ -129,9 +146,9 @@ local function handleRoll(player: Player, count: unknown, useFree: unknown): Res
 		warn(`[Rolls] roll failed for {player.Name}: {results}`)
 		-- Refund: a server bug shouldn't cost the player their roll.
 		if useFree then
-			Economy.addFreeRolls(player, n)
+			Economy.addFreeRolls(player, n, true)
 		else
-			Economy.addClacks(player, Config.Rolls.ClackCost * n)
+			Economy.addClacks(player, cost)
 		end
 		return { Ok = false, Error = "ServerError" }
 	end
@@ -143,7 +160,7 @@ local function handleRoll(player: Player, count: unknown, useFree: unknown): Res
 end
 
 function Rolls.init()
-	Net.handle("Roll", { Rate = 2, Burst = 3 }, handleRoll)
+	Net.handle("Roll", { Rate = 6, Burst = 6 }, handleRoll)
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastRoll[player] = nil

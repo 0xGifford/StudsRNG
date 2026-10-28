@@ -20,6 +20,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Studs = require(Shared.Studs)
 local Variants = require(Shared.Variants)
+local Zones = require(Shared.Zones)
 local Types = require(Shared.Types)
 local RollLogic = require(Shared.Util.RollLogic)
 
@@ -93,6 +94,7 @@ local function rebuild()
 	clearCells()
 
 	local index = State.get("Index") or {}
+	local unlocked = State.get("UnlockedWorlds") or {}
 	local variant = Variants.ById[activeVariant]
 	local luck = State.stats().Luck
 
@@ -109,12 +111,15 @@ local function rebuild()
 		end
 		Interface.setText(cell, if found then def.Name else "???")
 		local oneIn = RollLogic.displayOneIn(def.OneIn * variant.OneIn, luck)
-		Interface.setText(cell, Format.oneIn(oneIn), "Count", "Count")
+		local zone = Zones.ById[def.World]
+		local zoneLocked = not unlocked[def.World]
+		Interface.setText(cell, if zoneLocked then `🔒 {if zone then zone.Name else def.World}` else Format.oneIn(oneIn), "Count", "Count")
 
 		Interface.bindButton(cell, function()
 			local name = if found then Format.studName(def, variant) else "???"
 			local mult = Format.multiplier(RollLogic.multiplierOf(def, variant))
-			setInfo(`{name} · {def.Rarity} · {Format.oneIn(oneIn)} · {mult}`)
+			local where = if zone and def.World ~= Zones.Default then ` · {zone.Name}` else ""
+			setInfo(`{name} · {def.Rarity} · {Format.oneIn(oneIn)} · {mult}{where}`)
 		end, 0.95, 0.88)
 
 		cell.Parent = items

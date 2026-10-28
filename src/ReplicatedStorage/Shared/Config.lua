@@ -47,22 +47,107 @@ Config.Press = {
 
 Config.Economy = {
 	PressesPerFreeRoll = 150,
+	MinPressesPerFreeRoll = 40, -- floor after meter upgrades
 	MaxBankedFreeRolls = 25,
 }
 
 Config.Rolls = {
 	ClackCost = 250, -- per paid roll
 	MaxBatch = 3, -- rolls per request
-	Cooldown = 0.9, -- seconds between roll requests (lets the client animate)
+	Cooldown = 0.9, -- seconds between roll requests at x1 roll speed (lets the client animate)
+	MinCooldown = 0.2, -- floor however fast roll speed gets
 	BaseLuck = 1,
+	MinCostFraction = 0.2, -- roll-cost upgrades never go below this share of ClackCost
 }
 
 Config.Inventory = {
-	MaxStuds = 150, -- total stud count (sum of all stacks)
+	MaxStuds = 150, -- total stud count (sum of all stacks) before Storage upgrades
 	BaseSlots = 3,
-	MaxSlots = 8,
+	MaxSlots = 12, -- hard cap after milestones, upgrades and the +1 Equip pass
 	FuseCost = 5, -- this many of one stud+variant fuse into one of the next variant
+	MinFuseCost = 2,
 	KeepFirstDiscovery = true, -- never auto-delete a brand-new index entry
+}
+
+Config.Movement = {
+	BaseWalkSpeed = 16, -- Swift Feet upgrades add to this (server sets Humanoid.WalkSpeed)
+}
+
+-- Rebirth costs Clacks and resets Clacks (and zones, if ResetZones). Studs,
+-- the index, upgrades, Lucky Rolls, spins and boosts are kept.
+Config.Rebirth = {
+	BaseCost = 500_000,
+	CostGrowth = 3, -- cost × this for every rebirth already done
+	ClacksPerRebirth = 0.5, -- +x0.5 Clacks multiplier per rebirth (1 → 1.5 → 2 ...)
+	LuckPerRebirth = 0.1, -- +10% luck per rebirth
+	ResetZones = true,
+}
+
+-- Personal timed boosts (Robux, rewards, wheel). Time only counts down
+-- while the player is in the game; buying more adds time.
+export type BoostDef = {
+	Name: string,
+	Short: string, -- tiny label for the HUD timer
+	Luck: number?, -- added to base luck (before multipliers)
+	Clacks: number?, -- multiplies Clacks
+	RollSpeed: number?, -- multiplies roll speed
+	Duration: number, -- seconds per purchase
+	Color: Color3,
+}
+
+local boosts: { [string]: BoostDef } = {
+	Luck = { Name = "Luck Boost", Short = "+1 Luck", Luck = 1, Duration = 180, Color = Color3.fromRGB(120, 255, 140) },
+	UltraLuck = { Name = "Ultra Luck Boost", Short = "+2 Luck", Luck = 2, Duration = 180, Color = Color3.fromRGB(80, 255, 220) },
+	Speed = { Name = "Roll Speed Boost", Short = "x2 Speed", RollSpeed = 2, Duration = 180, Color = Color3.fromRGB(110, 200, 255) },
+	Clacks = { Name = "Clacks Boost", Short = "x2 Clacks", Clacks = 2, Duration = 180, Color = Color3.fromRGB(255, 230, 90) },
+}
+Config.Boosts = boosts
+Config.BoostOrder = { "Luck", "UltraLuck", "Speed", "Clacks" }
+Config.MaxBoostSeconds = 24 * 60 * 60
+
+-- Bought with Robux by anyone in the server; multiplies everyone's luck.
+-- Buying again while active adds Duration to the remaining time.
+Config.ServerLuck = {
+	Multiplier = 2,
+	Duration = 15 * 60,
+	MaxDuration = 6 * 60 * 60,
+}
+
+-- Global events: one starts every Interval seconds and lasts Duration.
+-- The schedule is computed from the clock, so every server runs the same
+-- event at the same time with no cross-server messaging.
+export type EventDef = {
+	Id: string,
+	Name: string,
+	Luck: number?, -- multiplies luck
+	Clacks: number?, -- multiplies Clacks
+	RollSpeed: number?, -- multiplies roll speed
+	Color: Color3,
+}
+
+local events: { EventDef } = {
+	{ Id = "LuckyRush", Name = "Lucky Rush", Luck = 2, Color = Color3.fromRGB(120, 255, 140) },
+	{ Id = "ClackFrenzy", Name = "Clack Frenzy", Clacks = 2, Color = Color3.fromRGB(255, 230, 90) },
+	{ Id = "SpeedRush", Name = "Speed Rush", RollSpeed = 1.5, Color = Color3.fromRGB(110, 200, 255) },
+}
+Config.Events = {
+	Interval = 20 * 60,
+	Duration = 5 * 60,
+	List = events,
+}
+
+Config.Social = {
+	FriendBonus = 0.1, -- +10% Clacks per friend in the server
+	MaxFriends = 5,
+	PremiumBonus = 0.2, -- +20% Clacks for Roblox Premium members
+}
+
+Config.VIP = {
+	Clacks = 1.25,
+	Luck = 1.25,
+	TagText = "[VIP]",
+	TagColor = Color3.fromRGB(255, 205, 60),
+	TrailColors = { Color3.fromRGB(255, 220, 90), Color3.fromRGB(255, 120, 200) },
 }
 
 -- Bonuses unlock automatically from the number of index entries discovered
@@ -76,6 +161,9 @@ local milestones: { Milestone } = {
 	{ Count = 30, Slots = 1 },
 	{ Count = 45, Luck = 0.25 },
 	{ Count = 60, Slots = 1, Clacks = 0.5 },
+	{ Count = 80, Luck = 0.25 },
+	{ Count = 100, Clacks = 1 },
+	{ Count = 120, Slots = 1, Luck = 0.5 },
 }
 Config.IndexMilestones = milestones
 
@@ -86,6 +174,14 @@ Config.Announce = {
 Config.Sync = {
 	FlushInterval = 0.2, -- seconds between batched state patches
 }
+
+-- Zone parts in the world (all optional):
+--   workspace.Zones.<ZoneId>.Spawn    BasePart: teleport target
+--   workspace.Zones.<ZoneId>.Barrier  BasePart or Model: walls that open
+--                                     (locally) once the zone is owned
+-- Keys inside workspace.Zones.<ZoneId> (or with a World attribute) only
+-- pay Clacks to players who own that zone.
+Config.ZoneFolder = "Zones"
 
 Config.Followers = {
 	RenderDistance = 120, -- other players' studs further than this are hidden

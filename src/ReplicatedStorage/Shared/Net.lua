@@ -37,12 +37,21 @@ local FUNCTIONS = {
 	"Fuse",
 	"Delete",
 	"SetAutoDelete",
+	"BuyUpgrade",
+	"BuyZone",
+	"TeleportZone",
+	"Rebirth",
+	"ClaimDaily",
+	"ClaimPlaytime",
+	"SpinWheel",
+	"MarkUpdateSeen",
 }
 
 -- Server → client (RemoteEvent).
 local EVENTS = {
 	"StatePatch",
 	"Announce",
+	"Notify", -- { Text: string, Color: Color3?, Results: { RollResult }? }
 }
 
 local Net = {}
