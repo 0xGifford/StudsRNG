@@ -47,10 +47,30 @@ export type PlayerData = {
 	Equipped: { string }, -- keys; the same key may appear more than once
 	Index: { [string]: boolean }, -- key → discovered
 	AutoDelete: { [string]: boolean }, -- rarity → enabled (Normal variant only)
-	UnlockedWorlds: { [string]: boolean },
+	UnlockedWorlds: { [string]: boolean }, -- zone id → owned (see Shared/Zones)
+	Rebirths: number,
+	Upgrades: { [string]: number }, -- upgrade id → level (see Shared/Upgrades)
+	LuckyRolls: number, -- +1 permanent luck each
+	Boosts: { [string]: number }, -- boost id → seconds remaining
+	Spins: number, -- jackpot wheel spins
+	Daily: { Streak: number, LastDay: number }, -- LastDay = UTC day number of the last claim
+	SeenUpdate: string, -- newest update log version the player has opened
+	PurchaseIds: { string }, -- recent receipt ids (server only, never sent to the client)
 }
 
--- Derived from PlayerData by Util/RollLogic.computeStats (same on both sides).
+-- Everything outside PlayerData that changes a player's stats. Built by the
+-- server (Systems/Modifiers); the client receives the finished Stats.
+export type StatContext = {
+	Passes: { [string]: boolean },
+	ActiveBoosts: { [string]: boolean },
+	ServerLuck: number,
+	Event: string?,
+	Friends: number,
+	Premium: boolean,
+}
+
+-- Derived by Util/RollLogic.computeStats. The server's copy is pushed to the
+-- client as the "Stats" state field.
 export type Stats = {
 	ClackMultiplier: number,
 	Luck: number,
@@ -58,6 +78,35 @@ export type Stats = {
 	Discovered: number,
 	IndexTotal: number,
 	StudCount: number,
+	MaxStuds: number,
+	RollSpeed: number,
+	RollCooldown: number,
+	RollCost: number,
+	StudsPerRoll: number,
+	ExtraRollChance: number,
+	VariantLuck: number,
+	PressesPerFreeRoll: number,
+	MaxBankedFreeRolls: number,
+	CritChance: number,
+	FuseCost: number,
+	WalkSpeed: number,
+	ZoneDiscount: number,
+	AutoRoll: boolean,
+	-- Breakdown for the HUD
+	Friends: number,
+	FriendBonus: number,
+	PremiumBonus: number,
+	RebirthClacks: number,
+	RebirthLuck: number,
+	ServerLuck: number,
+}
+
+-- A daily / playtime / wheel prize (see Shared/Rewards).
+export type Reward = {
+	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll"
+	Amount: number, -- Clacks (before scaling), rolls, spins, luck, or the MegaRoll luck multiplier
+	Boost: string?, -- Kind == "Boost": boost id
+	Minutes: number?, -- Kind == "Boost": duration
 }
 
 export type RollResult = {

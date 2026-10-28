@@ -44,6 +44,14 @@ local TEMPLATE: PlayerData = {
 	Index = {},
 	AutoDelete = {},
 	UnlockedWorlds = { Office = true },
+	Rebirths = 0,
+	Upgrades = {},
+	LuckyRolls = 0,
+	Boosts = {},
+	Spins = 0,
+	Daily = { Streak = 0, LastDay = -1 },
+	SeenUpdate = "",
+	PurchaseIds = {},
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.
@@ -74,6 +82,30 @@ end
 -- (e.g. a stud removed from Studs.luau) so nothing downstream sees it.
 local function sanitize(data: any)
 	local RollLogic = require(Shared.Util.RollLogic)
+	local Upgrades = require(Shared.Upgrades)
+	local Zones = require(Shared.Zones)
+
+	for id, level in data.Upgrades do
+		local def = Upgrades.ById[id]
+		if not def or typeof(level) ~= "number" or level <= 0 then
+			data.Upgrades[id] = nil
+		else
+			data.Upgrades[id] = math.min(math.floor(level), def.MaxLevel)
+		end
+	end
+
+	for id in data.UnlockedWorlds do
+		if not Zones.ById[id] then
+			data.UnlockedWorlds[id] = nil
+		end
+	end
+	data.UnlockedWorlds[Zones.Default] = true
+
+	for id, seconds in data.Boosts do
+		if not Config.Boosts[id] or typeof(seconds) ~= "number" or seconds <= 0 then
+			data.Boosts[id] = nil
+		end
+	end
 
 	for key, count in data.Studs do
 		if not RollLogic.decodeKey(key) or typeof(count) ~= "number" or count <= 0 then
@@ -155,6 +187,11 @@ function PlayerData.start()
 	for _, player in Players:GetPlayers() do
 		task.spawn(onPlayerAdded, player)
 	end
+end
+
+-- The ProfileStore profile (receipt handling needs Save / LastSavedData).
+function PlayerData.getProfile(player: Player): any
+	return profiles[player]
 end
 
 -- The live, in-memory data table, or nil if not loaded (or already released).

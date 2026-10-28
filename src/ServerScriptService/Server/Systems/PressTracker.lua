@@ -18,6 +18,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- as a press when it's inside the sweep but wasn't under the player's feet at
 -- the end of the previous sample. Movement faster than the player's server-side
 -- WalkSpeed allows is treated as a teleport and earns nothing.
+--
+-- Each key belongs to a zone: its model's World attribute, or the
+-- workspace.Zones.<ZoneId> folder it sits under. Its Value is multiplied by
+-- that zone's KeyMultiplier, and the filter set by Economy drops keys in
+-- zones the player doesn't own.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -25,6 +30,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Zones = require(Shared.Zones)
 local Signal = require(Shared.Util.Signal)
 
 local PressConfig = Config.Press
@@ -46,13 +52,36 @@ local tracked: { [Player]: Tracked } = {}
 local overlapParams = OverlapParams.new()
 overlapParams.FilterType = Enum.RaycastFilterType.Include
 
+-- (player, zoneId?) -> may this player earn from a key in that zone?
+local filter: ((Player, string?) -> boolean)? = nil
+
+local function resolveWorld(model: Instance?): string?
+	if not model then return nil end
+	local attr = model:GetAttribute(PressConfig.AttrWorld)
+	if typeof(attr) == "string" and attr ~= "" then
+		return attr
+	end
+	local zones = workspace:FindFirstChild(Config.ZoneFolder)
+	if not zones then return nil end
+	local node: Instance? = model
+	while node and node.Parent and node.Parent ~= zones do
+		node = node.Parent
+	end
+	if node and node.Parent == zones then
+		return node.Name
+	end
+	return nil
+end
+
 local function readKeyInfo(hitbox: BasePart): KeyInfo
 	local model = hitbox.Parent
 	local value = model and model:GetAttribute(PressConfig.AttrValue)
-	local world = model and model:GetAttribute(PressConfig.AttrWorld)
+	local world = resolveWorld(model)
+	local zone = if world then Zones.ById[world] else nil
+	local base = if typeof(value) == "number" and value > 0 then value else PressConfig.DefaultKeyValue
 	return {
-		value = if typeof(value) == "number" and value > 0 then value else PressConfig.DefaultKeyValue,
-		world = if typeof(world) == "string" then world else nil,
+		value = base * (if zone then zone.KeyMultiplier else 1),
+		world = world,
 	}
 end
 
@@ -160,7 +189,7 @@ local function sample(player: Player, state: Tracked, dt: number)
 	for _, part in sweepHits do
 		if not state.touching[part] then
 			local info = hitboxes[part]
-			if info then
+			if info and (filter == nil or filter(player, info.world)) then
 				count += 1
 				valueSum += info.value
 				if count >= PressConfig.MaxPressesPerSample then
@@ -175,6 +204,11 @@ local function sample(player: Player, state: Tracked, dt: number)
 	if count > 0 then
 		PressTracker.Pressed:Fire(player, count, valueSum)
 	end
+end
+
+-- Economy sets this so keys in unowned zones never pay.
+function PressTracker.setFilter(fn: (Player, string?) -> boolean)
+	filter = fn
 end
 
 function PressTracker.init()

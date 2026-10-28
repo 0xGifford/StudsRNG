@@ -110,8 +110,9 @@ local function updateActions()
 		end
 		local _, variant = RollLogic.decodeKey(key)
 		if fuseFrame then
+			local fuseCost = State.stats().FuseCost
 			if variant and Variants.Next[variant.Name] then
-				Interface.setText(fuseFrame, `Fuse {math.min(owned(key), Config.Inventory.FuseCost)}/{Config.Inventory.FuseCost}`)
+				Interface.setText(fuseFrame, `Fuse {math.min(owned(key), fuseCost)}/{fuseCost}`)
 			else
 				Interface.setText(fuseFrame, "Fuse")
 			end
@@ -130,8 +131,8 @@ end
 
 local function updateProgress()
 	local stats = State.stats()
-	Interface.setText(progress, `{stats.StudCount}/{Config.Inventory.MaxStuds}`, "Amount", "AmountShadow")
-	local fraction = math.clamp(stats.StudCount / Config.Inventory.MaxStuds, 0, 1)
+	Interface.setText(progress, `{stats.StudCount}/{stats.MaxStuds}`, "Amount", "AmountShadow")
+	local fraction = math.clamp(stats.StudCount / stats.MaxStuds, 0, 1)
 	TweenService:Create(progressBar, Interface.FAST, { Size = UDim2.fromScale(fraction, 1) }):Play()
 end
 
@@ -339,7 +340,7 @@ function StudsMenu.start()
 
 	State.Changed:Connect(function(field)
 		if not Interface.isOpen(MENU) then return end
-		if field == "Studs" or field == "Equipped" then
+		if field == "Studs" or field == "Equipped" or field == "Stats" then
 			queueRebuild()
 		elseif field == "AutoDelete" then
 			updateActions()

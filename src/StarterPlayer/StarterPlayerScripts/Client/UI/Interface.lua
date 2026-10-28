@@ -12,6 +12,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Shared plumbing for every UI controller: references to the HUD/Menu
 -- ScreenGuis and UI assets, sounds, the kit's button feel (hover shrink +
 -- click pop), menu open/close (blur, HUD slides away, canvas fade) and toasts.
+--
+-- Menus are the windows under Menu.Canva, plus "custom" menus that draw
+-- their own ScreenGui (Interface.registerMenu, e.g. the upgrade tree). Only
+-- one menu of either kind is open at a time.
 
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
@@ -53,6 +57,13 @@ local hudHome: { [GuiObject]: UDim2 } = {}
 local blur: BlurEffect? = nil
 local toastGui: ScreenGui? = nil
 local toastTemplate: Frame? = nil
+
+export type CustomMenu = {
+	open: () -> (),
+	close: () -> (),
+	isOpen: () -> boolean,
+}
+local customMenus: { [string]: CustomMenu } = {}
 
 --------------------------------------------------------------------------
 -- Setup
@@ -315,17 +326,57 @@ end
 -- Menus
 --------------------------------------------------------------------------
 
+-- A menu that draws its own full-screen gui instead of a Canva window.
+function Interface.registerMenu(name: string, menu: CustomMenu)
+	customMenus[name] = menu
+end
+
+local function closeCustomMenus(except: string?)
+	for name, menu in customMenus do
+		if name ~= except and menu.isOpen() then
+			menu.close()
+			Interface.MenuClosed:Fire(name)
+		end
+	end
+end
+
+local function customOpen(): boolean
+	for _, menu in customMenus do
+		if menu.isOpen() then
+			return true
+		end
+	end
+	return false
+end
+
 function Interface.isOpen(name: string?): boolean
 	if name then
+		local menu = customMenus[name]
+		if menu then
+			return menu.isOpen()
+		end
 		return currentOpen == name
 	end
-	return currentOpen ~= nil
+	return currentOpen ~= nil or customOpen()
 end
 
 function Interface.open(name: string)
+	local custom = customMenus[name]
+	if custom then
+		if custom.isOpen() or animating then return end
+		if currentOpen then
+			Interface.close()
+		end
+		closeCustomMenus(name)
+		custom.open()
+		Interface.MenuOpened:Fire(name)
+		return
+	end
+
 	if currentOpen == name or animating then return end
 	local window = Interface.Canva:FindFirstChild(name)
 	if not (window and window:IsA("GuiObject")) then return end
+	closeCustomMenus(nil)
 	animating = true
 
 	if currentOpen then
@@ -350,6 +401,17 @@ end
 
 -- Closes the named menu, or whichever is open when name is nil.
 function Interface.close(name: string?)
+	if name and customMenus[name] then
+		local custom = customMenus[name]
+		if custom.isOpen() then
+			custom.close()
+			Interface.MenuClosed:Fire(name)
+		end
+		return
+	end
+	if not name then
+		closeCustomMenus(nil)
+	end
 	if animating or not currentOpen then return end
 	if name and currentOpen ~= name then return end
 	animating = true
@@ -368,7 +430,7 @@ function Interface.close(name: string?)
 end
 
 function Interface.toggle(name: string)
-	if currentOpen == name then
+	if Interface.isOpen(name) then
 		Interface.close(name)
 	else
 		Interface.open(name)

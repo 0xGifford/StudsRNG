@@ -19,7 +19,6 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared.Config)
 local Studs = require(Shared.Studs)
 local RollLogic = require(Shared.Util.RollLogic)
 
@@ -62,14 +61,14 @@ local function printState()
 		State.get("Clacks") or 0,
 		State.get("FreeRolls") or 0,
 		State.get("RollMeter") or 0,
-		Config.Economy.PressesPerFreeRoll,
+		stats.PressesPerFreeRoll,
 		stats.ClackMultiplier,
 		stats.Luck,
 		stats.Slots,
 		stats.Discovered,
 		stats.IndexTotal,
 		stats.StudCount,
-		Config.Inventory.MaxStuds
+		stats.MaxStuds
 		))
 	print("[Dev] Equipped:", table.concat(State.get("Equipped") or {}, ", "))
 	for _, key in RollLogic.sortedOwned(State.get("Studs") or {}) do

@@ -17,6 +17,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   State.Changed:Connect(function(field, value) ... end)
 --   State.get("Clacks"), State.stats().ClackMultiplier
 --   local res = State.roll(1, true)  -- res.Ok, res.Results / res.Error
+--
+-- Stats are computed by the server (Systems/Modifiers, which knows passes,
+-- boosts, friends, events...) and arrive as the "Stats" field.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -35,6 +38,7 @@ local State = {}
 State.Changed = Signal.new() :: Signal.Signal<string, any> -- (field, value)
 State.Ready = Signal.new() :: Signal.Signal<>
 State.Announced = Signal.new() :: Signal.Signal<any>
+State.Notified = Signal.new() :: Signal.Signal<any> -- { Text, Color? }
 
 local data: { [string]: any } = {}
 local seq = -1 -- -1 until the snapshot lands
@@ -42,7 +46,7 @@ local buffered: { StatePatch } = {}
 local cachedStats: Stats? = nil
 local ready = false
 
-local STAT_FIELDS = { Studs = true, Equipped = true, Index = true }
+local STAT_FIELDS = { Studs = true, Equipped = true, Index = true, Stats = true }
 
 local function applyPatch(patch: StatePatch)
 	if typeof(patch) ~= "table" or typeof(patch.Seq) ~= "number" then return end
@@ -91,16 +95,27 @@ function State.get(field: string): any
 	return data[field]
 end
 
--- Multiplier, luck, slots, index progress. Display only.
+-- Multiplier, luck, slots, index progress... Display only.
 function State.stats(): Stats
+	local fromServer = data.Stats
+	if typeof(fromServer) == "table" then
+		return fromServer :: Stats
+	end
+	-- Before the server's first Stats push: base stats from data alone.
 	if not cachedStats then
-		cachedStats = RollLogic.computeStats({
-			Index = data.Index or {},
-			Equipped = data.Equipped or {},
-			Studs = data.Studs or {},
-		})
+		cachedStats = RollLogic.computeStats(data)
 	end
 	return cachedStats :: Stats
+end
+
+-- Owned game passes, by Shared/Products key.
+function State.passes(): { [string]: boolean }
+	return data.Passes or {}
+end
+
+-- Server clock (same timeline as the server's timers).
+function State.serverNow(): number
+	return workspace:GetServerTimeNow()
 end
 
 --------------------------------------------------------------------------
@@ -139,6 +154,38 @@ function State.setAutoDelete(rarity: string, enabled: boolean): Response
 	return Net.invoke("SetAutoDelete", rarity, enabled)
 end
 
+function State.buyUpgrade(id: string): Response
+	return Net.invoke("BuyUpgrade", id)
+end
+
+function State.buyZone(id: string): Response
+	return Net.invoke("BuyZone", id)
+end
+
+function State.teleportZone(id: string): Response
+	return Net.invoke("TeleportZone", id)
+end
+
+function State.rebirth(): Response
+	return Net.invoke("Rebirth")
+end
+
+function State.claimDaily(): Response
+	return Net.invoke("ClaimDaily")
+end
+
+function State.claimPlaytime(index: number): Response
+	return Net.invoke("ClaimPlaytime", index)
+end
+
+function State.spinWheel(): Response
+	return Net.invoke("SpinWheel")
+end
+
+function State.markUpdateSeen(): Response
+	return Net.invoke("MarkUpdateSeen")
+end
+
 --------------------------------------------------------------------------
 -- Lifecycle
 --------------------------------------------------------------------------
@@ -154,6 +201,12 @@ function State.init()
 
 	Net.on("Announce", function(payload)
 		State.Announced:Fire(payload)
+	end)
+
+	Net.on("Notify", function(payload)
+		if typeof(payload) == "table" and typeof(payload.Text) == "string" then
+			State.Notified:Fire(payload)
+		end
 	end)
 end
 

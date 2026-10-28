@@ -14,6 +14,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local Types = require(Shared.Types)
 
 type StudDef = Types.StudDef
@@ -65,6 +66,47 @@ end
 
 function Format.hex(color: Color3): string
 	return string.format("#%02X%02X%02X", color.R * 255 + 0.5, color.G * 255 + 0.5, color.B * 255 + 0.5)
+end
+
+-- 75 → "01:15", 3725 → "1:02:05"
+function Format.duration(seconds: number): string
+	local s = math.max(0, math.floor(seconds))
+	local h = s // 3600
+	local m = (s % 3600) // 60
+	if h > 0 then
+		return string.format("%d:%02d:%02d", h, m, s % 60)
+	end
+	return string.format("%02d:%02d", m, s % 60)
+end
+
+-- 0.25 → "25%", 0.035 → "3.5%"
+function Format.percent(fraction: number): string
+	local value = fraction * 100
+	local text = if value >= 10 then string.format("%d", math.floor(value + 0.5)) else string.format("%.1f", value)
+	text = string.gsub(text, "%.0$", "")
+	return text .. "%"
+end
+
+-- A granted reward ({ Kind, Amount, Boost, Minutes }) as short text.
+function Format.reward(reward: { [string]: any }): string
+	local kind = reward.Kind
+	local amount = reward.Amount or 0
+	if kind == "Clacks" then
+		return `+{Format.number(amount)} Clacks`
+	elseif kind == "FreeRolls" then
+		return `+{amount} Free Rolls`
+	elseif kind == "Spins" then
+		return if amount == 1 then "+1 Spin" else `+{amount} Spins`
+	elseif kind == "Luck" then
+		return `+{amount} Permanent Luck`
+	elseif kind == "MegaRoll" then
+		return `JACKPOT! x{Format.number(amount)} Luck Roll`
+	elseif kind == "Boost" then
+		local boost = reward.Boost and Config.Boosts[reward.Boost]
+		local minutes = reward.Minutes or (if boost then boost.Duration / 60 else 0)
+		return `{if boost then boost.Name else "Boost"} ({minutes}m)`
+	end
+	return tostring(kind)
 end
 
 return Format
