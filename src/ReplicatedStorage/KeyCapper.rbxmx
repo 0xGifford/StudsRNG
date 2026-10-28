@@ -1,0 +1,1943 @@
+<roblox xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="Folder" referent="RBX6FBED0AF018A441F8B26D038C4871C06">
+			<Properties>
+				<BinaryString name="AttributesSerialize">AQAAAAcAAABWZXJzaW9uAgUAAAAwLjYuMA==</BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">KeyCapper</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+			<Item class="ModuleScript" referent="RBX3D1A06AD27EC42B7B08E05ADC4D28CE5">
+				<Properties>
+					<Content name="LinkedSource"><null /></Content>
+					<ProtectedString name="Source">--!strict
+-- KeyCapper runtime — Copyright (c) 2026 sebattfg. All rights reserved.
+-- Proprietary; installed by the KeyCapper plugin. Redistribution of the
+-- plugin or of this runtime is prohibited. sebattfg is the sole authorised
+-- distributor. Icons: Font Awesome 5 Free (CC BY 4.0), fontawesome.com
+--
+-- Centralized settings. Single source of truth for the whole prototype.
+
+return {
+	TAG_HITBOX = "KeyCapper_Hitbox",
+
+	-- Written by the plugin, read here. Must stay identical to
+	-- Constants.GROUPS_FOLDER / Constants.ATTR_GROUP on the plugin side.
+	GROUPS_FOLDER = "KeyCapperGroups",
+	ATTR_GROUP = "Group",
+
+	-- Detection
+	TICK_RATE = 30, -- Hz. 30 is plenty, 60 is wasteful.
+	FEET_BOX_SIZE = Vector3.new(2.2, 1.2, 2.2), -- box tested at the player's feet
+
+	-- Fallback press timing when a group doesn't override its own (see
+	-- RuntimeSource.GroupConfig / AnimationPresets for the per-group style
+	-- and depth).
+	PRESS_TIME = 0.045,
+	RELEASE_TIME = 0.13,
+
+	-- Sound
+	SOUND_ID = "rbxassetid://76552892647565",
+	SOUND_VOLUME = 0.5,
+	SOUND_PITCH_JITTER = 0.06, -- +/- 6% to avoid a repetitive feel
+	SOUND_MAX_DISTANCE = 120, -- was 60: too easy to walk out of hearing range on a normal-sized board
+	-- Minimum gap between two starts of the SAME sound asset (see
+	-- Style.SoundGate). Kept DELIBERATELY under one detection tick
+	-- (1/TICK_RATE = ~33ms): most groups share Config.SOUND_ID as their
+	-- default, so this gate sees the whole board as one asset, and any value
+	-- close to or above the tick period started swallowing ordinary fast
+	-- typing across DIFFERENT keys landing on consecutive ticks — that was
+	-- the "barely hear it" regression, not a volume problem. 15ms only merges
+	-- presses detected in the SAME tick (overlapping hitboxes, a foot
+	-- covering two caps at once), which is the one case this exists for.
+	SOUND_MIN_INTERVAL = 0.015,
+
+	-- Logs of keys arriving/leaving (streaming). Off by default: the per-key
+	-- log calls GetFullName() and prints once per key, which on a board of
+	-- several thousand is seconds of startup on its own. Turn on to diagnose
+	-- streaming, not to leave on.
+	DEBUG = false,
+
+	-- Points system. Toggled from the plugin panel's "Others" section, stored
+	-- in RuntimeSource.Settings ("PointsEnabled"), read by both Client and
+	-- Server here.
+	SETTINGS_FOLDER = "KeyCapperSettings",
+	POINTS_REMOTE = "PointsRemote",
+	POINTS_DATASTORE = "KeyCapperPoints_v1",
+	POINTS_DATA_FOLDER = "KeyCapperData",
+	POINTS_VALUE_NAME = "Points",
+	-- How often the client flushes its pending point count to the server.
+	-- Batched rather than fired per key press: at TICK_RATE=30 a fast typist
+	-- could otherwise fire dozens of remote events a second.
+	POINTS_BATCH_INTERVAL = 1,
+	-- We trust the client's reported delta (no server-side proof a key was
+	-- actually pressed) — this clamp is the only guard against an obviously
+	-- spoofed value: generously above what TICK_RATE could produce in one
+	-- batch interval, but far below anything worth spoofing for.
+	POINTS_MAX_PER_BATCH = 60,
+
+	-- Played by PointsUI when a "+1" popup lands in the counter. A plain
+	-- Config field (not baked into PointsUI) so a technical dev can swap the
+	-- asset without touching the module.
+	POINTS_LAND_SOUND_ID = "rbxassetid://128538570525273",
+	POINTS_LAND_SOUND_VOLUME = 0.4,
+
+	-- Public event name: fired by Client.lua on every local key press,
+	-- regardless of the points system being on. A technical dev listens with
+	-- ReplicatedStorage.KeyCapper.KeyPressed.Event:Connect(function(model, letter) ... end).
+	KEY_PRESSED_EVENT = "KeyPressed",
+}
+</ProtectedString>
+					<string name="ScriptGuid">{30B79548-283B-4F76-8FBA-C542A2F26FBB}</string>
+					<BinaryString name="AttributesSerialize" />
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Config</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBXA52FB6F519B041C78DDA01DB6FFAD5BD">
+				<Properties>
+					<Content name="LinkedSource"><null /></Content>
+					<ProtectedString name="Source">--!strict
+-- Single responsibility: own plugin-wide, non-per-group settings — currently
+-- just whether the points/DataStore system runs at all. Same "kept outside
+-- the versioned runtime folder" pattern as GroupRegistry.GROUPS_FOLDER: the
+-- Installer wipes the RuntimeSource clone on a version bump, and a toggle the
+-- user set once must survive that.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local FOLDER_NAME = "KeyCapperSettings"
+
+local DEFAULTS = {
+	PointsEnabled = true,
+	-- Whether the runtime builds the points counter + "+1" popups itself.
+	-- Off lets a game with its own HUD use the points value without the
+	-- built-in display fighting it.
+	AutoUIEnabled = true,
+}
+
+local Settings = {}
+
+function Settings.EnsureFolder(): Configuration
+	local existing = ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+	if existing then return existing :: Configuration end
+
+	local config = Instance.new("Configuration")
+	config.Name = FOLDER_NAME
+	for key, value in pairs(DEFAULTS) do
+		config:SetAttribute(key, value)
+	end
+	config.Parent = ReplicatedStorage
+	return config
+end
+
+-- Read-only lookup: never creates the folder. The game-side runtime (Server,
+-- Client) only ever reads here; only the plugin panel writes, via Set below.
+function Settings.GetValue(key: string): any
+	local folder = ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+	if not folder then return DEFAULTS[key] end
+	local value = folder:GetAttribute(key)
+	if value == nil then return DEFAULTS[key] end
+	return value
+end
+
+function Settings.Set(key: string, value: any)
+	Settings.EnsureFolder():SetAttribute(key, value)
+end
+
+return Settings
+</ProtectedString>
+					<string name="ScriptGuid">{9601C213-4144-4734-BCDF-FE93342355BA}</string>
+					<BinaryString name="AttributesSerialize" />
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Settings</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+			</Item>
+			<Item class="BindableEvent" referent="RBXE36A9D1D05424AC2BE5409AD992D32D7">
+				<Properties>
+					<BinaryString name="AttributesSerialize" />
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">KeyPressed</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+			</Item>
+			<Item class="Folder" referent="RBX3FABCE099F0640E48F537E6EC93108F1">
+				<Properties>
+					<BinaryString name="AttributesSerialize" />
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Detection</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+				<Item class="ModuleScript" referent="RBX4760FCD268254CA99091E02BB03875C5">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- One key. Single responsibility: its pressed/released state, its
+-- animation, its sound. Knows NOTHING about detection: it's just told
+-- Press() / Release(), that's it.
+
+local TweenService = game:GetService("TweenService")
+local Config = require(script.Parent.Parent.Config)
+local GroupConfig = require(script.Parent.Parent.Style.GroupConfig)
+local AnimationPresets = require(script.Parent.Parent.Style.AnimationPresets)
+local SoundGate = require(script.Parent.Parent.Style.SoundGate)
+
+local Keycap = {}
+Keycap.__index = Keycap
+
+function Keycap.new(hitbox: BasePart)
+	local model = hitbox.Parent
+	local cap = model and model:FindFirstChild("Cap")
+	if not (cap and cap:IsA("BasePart")) then
+		-- Under streaming, the hitbox can arrive before the Cap: this isn't
+		-- an error, the registry will retry once the model is complete.
+		return nil
+	end
+
+	local self = setmetatable({}, Keycap)
+	self.hitbox = hitbox
+	self.cap = cap
+	self.group = model:GetAttribute(Config.ATTR_GROUP)
+	-- Resolved once at build time: a key does not change group while the game
+	-- runs, and re-reading the folder on every press would be wasteful.
+	self.soundIds = GroupConfig.SoundIds(self.group)
+	self.pitchJitter = GroupConfig.PitchJitter(self.group)
+	self.volume = GroupConfig.Volume(self.group)
+	self.restCFrame = cap.CFrame -- rest position, captured once
+	self.restSize = cap.Size -- rest size, captured once
+	self.pressed = false
+	self.tween = nil
+	self.sound = self:_buildSound()
+
+	-- Style and durations are resolved once, like sound: a key does not
+	-- change group mid-game, so there is nothing to gain re-reading the
+	-- group's attributes on every press.
+	local style = AnimationPresets.Resolve(GroupConfig.AnimationStyle(self.group))
+	self.style = style
+	self.pressInfo = TweenInfo.new(
+		GroupConfig.PressTime(self.group),
+		style.PressEasingStyle,
+		style.PressEasingDirection
+	)
+	self.releaseInfo = TweenInfo.new(
+		GroupConfig.ReleaseTime(self.group),
+		style.ReleaseEasingStyle,
+		style.ReleaseEasingDirection
+	)
+
+	return self
+end
+
+function Keycap:_buildSound(): Sound
+	local sound = Instance.new("Sound")
+	sound.Name = "KeyCapperSound"
+	-- A group with no sound of its own falls back to the global default.
+	sound.SoundId = self.soundIds[1] or Config.SOUND_ID
+	sound.Volume = self.volume
+	sound.RollOffMaxDistance = Config.SOUND_MAX_DISTANCE
+	sound.Parent = self.hitbox -- 3D sound, emitted from the key
+	return sound
+end
+
+function Keycap:_tweenTo(targetCFrame: CFrame, targetSize: Vector3, info: TweenInfo)
+	if self.tween then
+		self.tween:Cancel()
+	end
+	self.tween = TweenService:Create(self.cap, info, { CFrame = targetCFrame, Size = targetSize })
+	self.tween:Play()
+end
+
+function Keycap:Press()
+	if self.pressed then return end
+	self.pressed = true
+
+	local style = self.style
+	-- CFrame.new(0, -depth, 0) applied AFTER restCFrame = translation in the
+	-- cap's local frame. This is what makes the press correct on a slope.
+	-- The tilt multiplies on the RIGHT of the sink, so it too is expressed in
+	-- the cap's local frame: a preset that rocks the cap rocks it about the
+	-- cap's own axis, which is what keeps it correct on a sloped surface.
+	-- Presets with no tilt pass 0 and this is an identity rotation.
+	local targetCFrame = self.restCFrame
+		* CFrame.new(0, -style.PressDepth, 0)
+		* CFrame.Angles(math.rad(style.PressTilt or 0), 0, 0)
+	local targetSize = Vector3.new(
+		self.restSize.X * style.PressSizeScale.X,
+		self.restSize.Y * style.PressSizeScale.Y,
+		self.restSize.Z * style.PressSizeScale.Z
+	)
+	self:_tweenTo(targetCFrame, targetSize, self.pressInfo)
+
+	-- Picked per press, not per key: that's what keeps a long typing run from
+	-- sounding like a loop.
+	if #self.soundIds &gt; 1 then
+		self.sound.SoundId = self.soundIds[math.random(#self.soundIds)]
+	end
+
+	-- Checked AFTER the animation is under way, and it only skips the sound:
+	-- a key whose sound was merged into one already playing still goes down.
+	-- Asked after the random pick too, since which asset this press landed on
+	-- is exactly what the gate is deciding about.
+	if not SoundGate.Allow(self.sound.SoundId) then return end
+
+	self.sound.PlaybackSpeed = 1 + (math.random() * 2 - 1) * self.pitchJitter
+	self.sound:Play()
+end
+
+function Keycap:Release()
+	if not self.pressed then return end
+	self.pressed = false
+	self:_tweenTo(self.restCFrame, self.restSize, self.releaseInfo)
+end
+
+function Keycap:Destroy()
+	if self.tween then self.tween:Cancel() end
+	if self.sound then self.sound:Destroy() end
+	-- The key may have been streamed out: the Cap no longer exists then.
+	if self.cap and self.cap.Parent then
+		self.cap.CFrame = self.restCFrame
+		self.cap.Size = self.restSize
+	end
+end
+
+return Keycap
+</ProtectedString>
+						<string name="ScriptGuid">{68F3D188-6E07-4F1C-A5D3-558DCA9F1D42}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Keycap</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX0D955CAC5062401A992BFF34872271DE">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: know which keys exist.
+-- Follows the tag, instantiates/destroys Keycap, and keeps the filter list
+-- for overlap checks up to date (recomputed only when it changes, not every frame).
+
+local CollectionService = game:GetService("CollectionService")
+
+local Config = require(script.Parent.Parent.Config)
+local Keycap = require(script.Parent.Keycap)
+
+local KeycapRegistry = {}
+KeycapRegistry.__index = KeycapRegistry
+
+function KeycapRegistry.new()
+	local self = setmetatable({}, KeycapRegistry)
+	self.byHitbox = {}
+	-- Kept incrementally rather than counted on demand: Count() used to walk
+	-- the whole table, and the DEBUG log below calls it once PER key arriving.
+	-- On a board of several thousand that made startup quadratic.
+	self.count = 0
+	self.pending = {} -- hitbox that arrived without its Cap (streaming in progress)
+	self.connections = {}
+	self._filterDirty = true
+	self._filterList = {}
+	return self
+end
+
+function KeycapRegistry:Start()
+	for _, hitbox in ipairs(CollectionService:GetTagged(Config.TAG_HITBOX)) do
+		self:_add(hitbox)
+	end
+	table.insert(self.connections, CollectionService:GetInstanceAddedSignal(Config.TAG_HITBOX):Connect(function(h)
+		self:_add(h)
+	end))
+	table.insert(self.connections, CollectionService:GetInstanceRemovedSignal(Config.TAG_HITBOX):Connect(function(h)
+		self:_remove(h)
+	end))
+end
+
+function KeycapRegistry:_add(hitbox: Instance)
+	if not hitbox:IsA("BasePart") or self.byHitbox[hitbox] then return end
+
+	local keycap = Keycap.new(hitbox)
+	if keycap then
+		self.byHitbox[hitbox] = keycap
+		self.count += 1
+		self._filterDirty = true
+		if Config.DEBUG then
+			print("[KeyCapper] + key", hitbox:GetFullName(), "total:", self.count)
+		end
+		return
+	end
+
+	-- The Cap hasn't streamed in yet: retry as soon as it arrives.
+	self:_waitForCap(hitbox)
+end
+
+function KeycapRegistry:_waitForCap(hitbox: BasePart)
+	if self.pending[hitbox] then return end
+	local model = hitbox.Parent
+	if not model then return end
+
+	local connection
+	connection = model.ChildAdded:Connect(function(child)
+		if child.Name ~= "Cap" then return end
+		connection:Disconnect()
+		self.pending[hitbox] = nil
+		if hitbox.Parent then
+			self:_add(hitbox)
+		end
+	end)
+	self.pending[hitbox] = connection
+end
+
+function KeycapRegistry:_remove(hitbox: Instance)
+	local waiting = self.pending[hitbox]
+	if waiting then
+		waiting:Disconnect()
+		self.pending[hitbox] = nil
+	end
+
+	local keycap = self.byHitbox[hitbox]
+	if not keycap then return end
+
+	keycap:Destroy()
+	self.byHitbox[hitbox] = nil
+	self.count -= 1
+	self._filterDirty = true
+	if Config.DEBUG then
+		print("[KeyCapper] - key (streamed out), total:", self.count)
+	end
+end
+
+-- List of hitboxes to pass as the OverlapParams whitelist.
+function KeycapRegistry:GetFilterList(): { BasePart }
+	if self._filterDirty then
+		local list = {}
+		for hitbox in pairs(self.byHitbox) do
+			table.insert(list, hitbox)
+		end
+		self._filterList = list
+		self._filterDirty = false
+	end
+	return self._filterList
+end
+
+function KeycapRegistry:Get(hitbox: BasePart)
+	return self.byHitbox[hitbox]
+end
+
+function KeycapRegistry:All()
+	return self.byHitbox
+end
+
+function KeycapRegistry:Count(): number
+	return self.count
+end
+
+return KeycapRegistry
+</ProtectedString>
+						<string name="ScriptGuid">{D3F56A35-8F1A-4173-A370-096FA285D827}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">KeycapRegistry</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="Script" referent="RBXF382AA8F580A49D09B1DF1D76F76BB73">
+					<Properties>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: DETECTION.
+-- Ticks at a fixed rate, tests a box at the player's feet against the
+-- hitboxes, and drives the Keycap objects. Knows nothing about animation or sound.
+--
+-- RunContext = Client: placed directly under ReplicatedStorage.KeyCapper,
+-- the whole module lives in one place, no need for StarterPlayerScripts.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- This script's own folder (Detection): where its sibling KeycapRegistry
+-- lives. KeyCapperFolder is one level up — the installed root
+-- (ReplicatedStorage.KeyCapper) — where the shared singletons and the
+-- Points subfolder live.
+local DetectionFolder = script.Parent
+local KeyCapperFolder = DetectionFolder.Parent
+local Config = require(KeyCapperFolder:WaitForChild("Config"))
+local KeycapRegistry = require(DetectionFolder:WaitForChild("KeycapRegistry"))
+local Settings = require(KeyCapperFolder:WaitForChild("Settings"))
+
+-- A RunContext = Client script starts as soon as IT replicates, which is not
+-- the same moment the client is fully set up: LocalPlayer can still be nil,
+-- and this folder's siblings may not have arrived yet. Both were assumed
+-- present below, and either one missing killed this script outright — no
+-- animation, no sound, nothing, for the whole session. That is the "it just
+-- does nothing until I touch something in the panel" report: the panel edit
+-- was never the fix, reloading into a luckier ordering was.
+while not Players.LocalPlayer do
+	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+end
+local player = Players.LocalPlayer
+
+-- Public: a technical dev listens with
+-- ReplicatedStorage.KeyCapper.KeyPressed.Event:Connect(function(model, letter) ... end).
+-- Fires on every local press regardless of the points system being on —
+-- it is not part of the points feature, just piggybacking on the same
+-- detection loop that already knows a press just happened.
+local keyPressedEvent = KeyCapperFolder:WaitForChild(Config.KEY_PRESSED_EVENT) :: BindableEvent
+
+-- Read once at startup: these are Studio-side toggles the developer flips
+-- rarely, not something that needs to react mid-session.
+local pointsEnabled = Settings.GetValue("PointsEnabled")
+local autoUIEnabled = pointsEnabled and Settings.GetValue("AutoUIEnabled")
+local pendingPoints = 0
+-- Both are filled in by the points bootstrap at the bottom of this file, which
+-- runs in its own thread. Detection must never wait on them: the points system
+-- depends on the SERVER having built the player's data folder, and anything
+-- that stops it doing so (DataStore trouble, the toggle read differently on
+-- the two sides) used to hang this script before the first key was ever
+-- registered. Presses are the feature; points are an extra.
+local remote: RemoteEvent? = nil
+local PointsUI: any = nil
+
+local registry = KeycapRegistry.new()
+registry:Start()
+
+local overlapParams = OverlapParams.new()
+overlapParams.FilterType = Enum.RaycastFilterType.Include
+
+-- The parts whose bottom face IS the sole, in both rigs. R15 names first,
+-- R6's two legs after: a character only ever has one set.
+local LEG_PARTS = { "LeftFoot", "RightFoot", "Left Leg", "Right Leg" }
+
+-- Feet position, measured from the legs themselves rather than derived from
+-- the root.
+--
+-- The old form was root.Position - (root.Size.Y/2 + HipHeight), which is only
+-- correct on R15. On R6 the root sits at the TORSO and HipHeight is 0, so that
+-- landed roughly two studs above the ground: the test box floated at knee
+-- height and never touched a single cap. That is the whole of "it doesn't work
+-- on R6": detection, and therefore animation, sound and points, all silently
+-- off for anyone using the R6 rig.
+--
+-- Taking the lowest leg bottom needs no per-rig arithmetic at all, and stays
+-- right while walking or on a slope. HipHeight is kept only as a fallback for
+-- a character whose limbs haven't replicated yet.
+local function getFeetCFrame(): CFrame?
+	local character = player.Character
+	if not character then return nil end
+
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then return nil end
+
+	local sole: number? = nil
+	for _, name in ipairs(LEG_PARTS) do
+		local part = character:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			local bottom = part.Position.Y - part.Size.Y / 2
+			if not sole or bottom &lt; sole then
+				sole = bottom
+			end
+		end
+	end
+
+	if sole then
+		return CFrame.new(root.Position.X, sole, root.Position.Z)
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return nil end
+	return CFrame.new(root.Position - Vector3.new(0, root.Size.Y / 2 + humanoid.HipHeight, 0))
+end
+
+local STEP = 1 / Config.TICK_RATE
+local accumulator = 0
+local touchingLastTick: { [BasePart]: boolean } = {}
+
+RunService.Heartbeat:Connect(function(deltaTime: number)
+	accumulator += deltaTime
+	if accumulator &lt; STEP then return end
+	accumulator -= STEP
+
+	local touchingNow: { [BasePart]: boolean } = {}
+
+	local feet = getFeetCFrame()
+	if feet then
+		overlapParams.FilterDescendantsInstances = registry:GetFilterList()
+		local hits = workspace:GetPartBoundsInBox(feet, Config.FEET_BOX_SIZE, overlapParams)
+		for _, part in ipairs(hits) do
+			touchingNow[part] = true
+		end
+	end
+
+	-- Diff against the previous tick. We only iterate over the keys involved
+	-- (a handful), never over every loaded key: the cost stays constant
+	-- even with a keyboard of several hundred keys.
+	for hitbox in pairs(touchingNow) do
+		if not touchingLastTick[hitbox] then
+			local keycap = registry:Get(hitbox)
+			if keycap then
+				keycap:Press()
+				keyPressedEvent:Fire(hitbox.Parent, hitbox.Parent and hitbox.Parent:GetAttribute("Letter"))
+				if pointsEnabled then
+					pendingPoints += 1
+					-- PointsUI is nil until the bootstrap below has it: presses
+					-- before that still count, they just don't pop a "+1".
+					if PointsUI then
+						PointsUI.Notify(keycap.cap.Position)
+					end
+				end
+			end
+		end
+	end
+
+	for hitbox in pairs(touchingLastTick) do
+		if not touchingNow[hitbox] then
+			local keycap = registry:Get(hitbox)
+			if keycap then keycap:Release() end
+		end
+	end
+
+	touchingLastTick = touchingNow
+end)
+
+-- Everything points-related, off the critical path — see the note next to the
+-- `remote` declaration. The flush loop batches the pending count instead of
+-- firing per press: at TICK_RATE=30 a fast typist could otherwise fire dozens
+-- of remote events a second. Only the running total since the last flush is
+-- ever sent.
+if pointsEnabled then
+	task.spawn(function()
+		local pointsFolder = KeyCapperFolder:WaitForChild("Points")
+		remote = pointsFolder:WaitForChild("PointsRemote") :: RemoteEvent
+
+		if autoUIEnabled then
+			local ui = require(pointsFolder:WaitForChild("PointsUI"))
+			-- Server.lua builds this under the Player as soon as it joins.
+			-- Waited on HERE rather than at the top of the file: if the server
+			-- never builds it, this thread is the only thing that stalls.
+			local dataFolder = player:WaitForChild(Config.POINTS_DATA_FOLDER)
+			local pointsValue = dataFolder:WaitForChild(Config.POINTS_VALUE_NAME) :: IntValue
+			ui.Init(pointsValue)
+			PointsUI = ui
+		end
+
+		while true do
+			task.wait(Config.POINTS_BATCH_INTERVAL)
+			local target = remote
+			if pendingPoints &gt; 0 and target then
+				local toSend = pendingPoints
+				pendingPoints = 0
+				target:FireServer(toSend)
+			end
+		end
+	end)
+end
+
+-- Under StreamingEnabled this count is normally 0 at startup: keys register
+-- themselves as they stream in.
+if Config.DEBUG then
+	print(string.format("[KeyCapper] client started - %d key(s) initially", registry:Count()))
+end
+</ProtectedString>
+						<bool name="Disabled">false</bool>
+						<Content name="LinkedSource"><null /></Content>
+						<token name="RunContext">2</token>
+						<string name="ScriptGuid">{0FB6BD81-401E-4D2E-B60C-5E3ADB623AAB}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Client</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+			</Item>
+			<Item class="Folder" referent="RBXAE5FA7FE7B0E42D7A8CBCF4A954CEC35">
+				<Properties>
+					<BinaryString name="AttributesSerialize" />
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Style</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+				<Item class="ModuleScript" referent="RBX1F0217AD89D24748ACA6B698918BA7A4">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: turn whatever a user pasted into a sound asset id —
+-- or say why it cannot be one. No storage, no UI, no Sound instances.
+--
+-- Lives in RuntimeSource because BOTH sides need the exact same verdict:
+-- GroupConfig parses stored ids at runtime, and the panel's SoundSection
+-- validates them as they are typed. Two implementations of "is this an id?"
+-- would eventually disagree, and the failure mode of that disagreement is a
+-- field the panel accepts and the game silently ignores — which is the very
+-- thing this module exists to prevent.
+
+local SoundId = {}
+
+-- The forms people actually arrive with: the bare number from the toolbox,
+-- the canonical asset url, and the two roblox.com links you get from the
+-- website's address bar or a Share button.
+local FORMS = {
+	"^(%d+)$",
+	"^rbxassetid://(%d+)$",
+	"^https?://[%w%.]*roblox%.com/asset/%?id=(%d+)",
+	"^https?://[%w%.]*roblox%.com/library/(%d+)",
+}
+
+function SoundId.Trim(raw: string): string
+	return (tostring(raw):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Returns the canonical "rbxassetid://N" form, or nil plus a message written
+-- for the person who typed it. An empty string is neither: it is a row not
+-- filled in yet, so it returns nil with no complaint.
+function SoundId.Parse(raw: string): (string?, string?)
+	local text = SoundId.Trim(raw)
+	if text == "" then return nil, nil end
+
+	for _, form in ipairs(FORMS) do
+		local id = text:match(form)
+		if id then return "rbxassetid://" .. id, nil end
+	end
+
+	-- Everything below is a rejection. The message names what is actually
+	-- wrong rather than restating the rule, because the overwhelmingly common
+	-- case here is a mistyped scheme ("rbxassetid" is a mouthful) where the
+	-- number itself is perfectly fine and the user cannot see the difference.
+	local scheme = text:match("^(%a[%w%+%-%.]*)://")
+	if scheme and scheme:lower() ~= "rbxassetid" then
+		return nil, string.format("“%s://” is not valid — did you mean rbxassetid:// ?", scheme)
+	end
+	if text:match("%d") then
+		return nil, "Not recognised — use the number alone, or rbxassetid://number"
+	end
+	return nil, "No asset id here — it must contain the sound's number"
+end
+
+return SoundId
+</ProtectedString>
+						<string name="ScriptGuid">{EF3974D5-883D-4B56-A758-3B55CB60675B}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">SoundId</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX62B1E067E4744DA18AA90855AE203003">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: stop the SAME sound asset from starting twice within
+-- a few milliseconds. Nothing else — it owns no Sound and plays nothing, it
+-- only answers yes or no.
+--
+-- Two copies of one sample a few ms apart do not sound like two taps, they
+-- sound like one wrong tap: the offset copies comb-filter against each other
+-- and the result is a hollow, flanged version of the sound. Two keys landing
+-- together is completely normal (a chord, a foot covering two caps, one press
+-- detected on overlapping hitboxes), so this happens constantly.
+--
+-- Config.SOUND_MIN_INTERVAL has to stay well under one detection tick: see
+-- that constant for why a value near the tick period silences ordinary fast
+-- typing across different keys instead of only same-tick overlaps.
+--
+-- Gated per ASSET, not per key: two different sounds at the same instant is a
+-- chord and must stay one, and a single key retriggering fast is the same
+-- asset so it is covered by the same rule.
+
+local Config = require(script.Parent.Parent.Config)
+
+local SoundGate = {}
+
+-- Last start time per asset id. Bounded by the number of distinct sounds in
+-- the place, which is the number of ids across all groups — small, and it
+-- never grows with the number of keys or presses.
+local lastPlay: { [string]: number } = {}
+
+-- True if this asset may start now, and records it as started. Callers that
+-- get false must skip the :Play() but everything else (the animation) still
+-- runs — the key was pressed, only its sound is being merged into the one
+-- already sounding.
+function SoundGate.Allow(soundId: string): boolean
+	local now = os.clock()
+	local previous = lastPlay[soundId]
+	if previous and now - previous &lt; Config.SOUND_MIN_INTERVAL then
+		return false
+	end
+	lastPlay[soundId] = now
+	return true
+end
+
+return SoundGate
+</ProtectedString>
+						<string name="ScriptGuid">{3212FF15-7DFA-4771-973B-FE7F152055E6}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">SoundGate</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBXDD0ABF88718D461AAB6CE64E06C4C3BB">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: build a key's UI by code.
+-- The published mesh is now BARE (no SurfaceGui baked in): it's the
+-- plugin/runtime that must build it dynamically at placement time. This
+-- module is the single reference for what a key's UI should look like.
+--
+-- Spec taken as-is from the original prototype (inspected by hand):
+-- SurfaceGui Face=Top, CanvasSize 150x150, PixelsPerStud=70.
+-- Centered TextLabel, TextScaled, FredokaOne font, black outline.
+-- The UIStroke is created DISABLED: it's a lever reserved for the future
+-- "GUI customization" phase (see docs/PLAN.md), not enabled here.
+
+local GuiFactory = {}
+
+function GuiFactory.BuildLabel(cap: BasePart, text: string, maxDistance: number?): SurfaceGui
+	local existing = cap:FindFirstChild("SurfaceGui")
+	if existing then existing:Destroy() end
+
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "SurfaceGui"
+	gui.Face = Enum.NormalId.Top
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+	gui.CanvasSize = Vector2.new(150, 150)
+	gui.PixelsPerStud = 70
+	gui.LightInfluence = 1
+	gui.Brightness = 1
+	gui.ClipsDescendants = true
+	gui.MaxDistance = maxDistance or 150
+
+	local label = Instance.new("TextLabel")
+	label.Name = "TextLabel"
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Position = UDim2.new(0.5, 0, 0.5, 0)
+	label.Size = UDim2.new(0.5, 0, 0.5, 0)
+	label.BackgroundTransparency = 1
+	label.BorderSizePixel = 0
+	label.TextScaled = true
+	label.TextWrapped = true
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.TextColor3 = Color3.new(0, 0, 0)
+	label.TextStrokeColor3 = Color3.new(0, 0, 0)
+	label.TextStrokeTransparency = 1
+	label.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+	label.Text = text
+	label.Parent = gui
+
+	-- Reserved for later (GUI customization): created but disabled, same as
+	-- in the original prototype. Not enabled until that phase.
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "UIStroke"
+	stroke.Enabled = false
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Thickness = 1
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
+
+	gui.Parent = cap
+	return gui
+end
+
+return GuiFactory
+</ProtectedString>
+						<string name="ScriptGuid">{C07D247E-174B-4DB2-91B4-D2637FFD2F58}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">GuiFactory</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBXFAB3A9F258794770B9EB2EB7D938DF41">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: name &lt;-&gt; press-animation shape lookup. Pure data,
+-- no tweening logic here — Keycap reads a preset and drives TweenService
+-- itself, this module only says WHAT the press should look like.
+--
+-- Lives inside RuntimeSource: consumed by Keycap at runtime, so it must ship
+-- with the game like GuiFactory/FontPresets do.
+
+export type Preset = {
+	Name: string,
+	-- How far the cap sinks along its own local Y on press, in studs.
+	--
+	-- Reference for reading these numbers: the cap is Constants.KEY_SIZE.Y =
+	-- 1.368 studs tall and rests ON the surface, so a depth of D leaves
+	-- 1.368 - D standing proud of it. Under about 0.4 of travel the key does
+	-- not look pressed next to its unpressed neighbours, it looks slightly
+	-- lower — which is what these presets were all guilty of.
+	PressDepth: number,
+	-- Per-axis multiplier on the cap's rest Size while pressed.
+	--
+	-- CEILING on X/Z: Constants.GRID_PITCH / Constants.KEY_SIZE.X, i.e.
+	-- 3.15 / 3 = 1.05. At exactly 1.05 a pressed cap fills its cell and its
+	-- edges meet its neighbours'; anything above that overlaps them, and on a
+	-- full keyboard — where every cell IS occupied — that reads as the key
+	-- growing through the ones beside it rather than squashing.
+	PressSizeScale: Vector3,
+	-- Degrees the cap rocks about its own local X on press. 0 for a pure
+	-- vertical press. Applied after the sink, in the cap's local frame, so it
+	-- stays correct on a sloped surface like everything else here.
+	PressTilt: number,
+	PressEasingStyle: Enum.EasingStyle,
+	PressEasingDirection: Enum.EasingDirection,
+	-- Release always returns to rest CFrame/Size: only the easing differs.
+	ReleaseEasingStyle: Enum.EasingStyle,
+	ReleaseEasingDirection: Enum.EasingDirection,
+}
+
+local AnimationPresets = {}
+
+local PRESETS: { Preset } = {
+	{
+		Name = "Default",
+		-- The original prototype's feel: a plain dip, no shape change.
+		-- 1.15 of a 1.368-stud cap leaves ~0.22 standing: the key bottoms out
+		-- against the plate instead of hovering part-way down.
+		PressDepth = 1.15,
+		PressSizeScale = Vector3.new(1, 1, 1),
+		PressTilt = 0,
+		PressEasingStyle = Enum.EasingStyle.Quad,
+		PressEasingDirection = Enum.EasingDirection.Out,
+		ReleaseEasingStyle = Enum.EasingStyle.Back,
+		ReleaseEasingDirection = Enum.EasingDirection.Out,
+	},
+	{
+		Name = "Slime",
+		-- Squash (flatten Y) and spread (widen X/Z) on press, ball-bounce back.
+		--
+		-- The spread sits ON the 1.05 ceiling documented above, not past it: at
+		-- the old 1.28 a pressed cap was 3.84 studs across in a 3.15 cell and
+		-- visibly swallowed its neighbours. Filling the cell exactly is what the
+		-- squash was ever meant to read as — the cap spreading until it meets
+		-- what is next to it, then stopping.
+		--
+		-- Slime goes DOWN by squashing rather than by travelling: the Y scale is
+		-- what makes it look pressed, so it is the number that was raised. At
+		-- 0.34 the cap flattens to ~0.47 studs. The depth is not free either —
+		-- it has to cover the half-height the squash removes, 0.684 x (1 - 0.34)
+		-- = 0.45, or the cap would shrink about its centre and lift off the
+		-- surface. 0.55 covers that and sinks the last 0.1 on top.
+		PressDepth = 0.55,
+		PressSizeScale = Vector3.new(1.05, 0.34, 1.05),
+		PressTilt = 0,
+		PressEasingStyle = Enum.EasingStyle.Quad,
+		PressEasingDirection = Enum.EasingDirection.Out,
+		ReleaseEasingStyle = Enum.EasingStyle.Bounce,
+		ReleaseEasingDirection = Enum.EasingDirection.Out,
+	},
+	{
+		Name = "Typewriter",
+		-- The cap ROCKS forward as it sinks, pivoting about its own local X the
+		-- way a typebar key does, instead of dropping flat. Chosen because it is
+		-- the one thing neither other preset does: Default changes position and
+		-- Slime changes shape, this one changes ORIENTATION, so it stays legible
+		-- next to them at a glance rather than reading as "Default but more".
+		--
+		-- It is also the preset that gains the most from a full keyboard: a
+		-- single key rocking is a small motion, a row of them rocking in
+		-- sequence as you type is the whole effect.
+		--
+		-- Size is untouched (1,1,1), so it cannot overlap a neighbour whatever
+		-- the grid does. 9 degrees over a 3-stud cap lifts the trailing edge by
+		-- ~0.23 studs — clearly readable, and well under the 1.368-stud cap
+		-- height, so the cap never looks like it is coming out of its socket.
+		PressDepth = 0.85,
+		PressSizeScale = Vector3.new(1, 1, 1),
+		PressTilt = 9,
+		-- Quart Out front-loads the travel: the cap snaps down and settles,
+		-- which is what makes it read as mechanical rather than soft.
+		PressEasingStyle = Enum.EasingStyle.Quart,
+		PressEasingDirection = Enum.EasingDirection.Out,
+		-- Back Out overshoots slightly on the way up, so the cap rocks BACK past
+		-- level for a moment before settling — the return half of the same
+		-- pivot, and the reason the release is worth watching at all.
+		ReleaseEasingStyle = Enum.EasingStyle.Back,
+		ReleaseEasingDirection = Enum.EasingDirection.Out,
+	},
+}
+
+AnimationPresets.DEFAULT_NAME = PRESETS[1].Name
+
+function AnimationPresets.List(): { string }
+	local names = {}
+	for _, preset in ipairs(PRESETS) do
+		table.insert(names, preset.Name)
+	end
+	return names
+end
+
+-- Falls back to Default rather than erroring: a stale/unknown name attribute
+-- must not break a key's press animation.
+function AnimationPresets.Resolve(name: string?): Preset
+	for _, preset in ipairs(PRESETS) do
+		if preset.Name == name then
+			return preset
+		end
+	end
+	return PRESETS[1]
+end
+
+return AnimationPresets
+</ProtectedString>
+						<string name="ScriptGuid">{E3C166A7-7247-4DFE-B560-1FDB56FA3C71}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">AnimationPresets</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX1E0546913C194B4E8E5A18DDA9C6574D">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: name &lt;-&gt; Font lookup for the label's typeface.
+-- A curated, short list on purpose: the group panel exposes it as a cycling
+-- button, not a free picker, so every name here must be a Font Studio can
+-- always resolve (no dependency on an uploaded asset being available).
+--
+-- Lives inside RuntimeSource (not Core/Edit) because GuiFactory, which is
+-- cloned into the shipped game, is conceptually the same layer.
+
+local FontPresets = {}
+
+local PRESETS: { { Name: string, Font: Font } } = {
+	{ Name = "Fredoka", Font = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal) },
+	{ Name = "Gotham", Font = Font.fromEnum(Enum.Font.GothamBlack) },
+	{ Name = "Bangers", Font = Font.fromEnum(Enum.Font.Bangers) },
+	{ Name = "Arial", Font = Font.fromEnum(Enum.Font.Arial) },
+	{ Name = "Code", Font = Font.fromEnum(Enum.Font.Code) },
+}
+
+FontPresets.DEFAULT_NAME = PRESETS[1].Name
+
+function FontPresets.List(): { string }
+	local names = {}
+	for _, preset in ipairs(PRESETS) do
+		table.insert(names, preset.Name)
+	end
+	return names
+end
+
+-- Falls back to the default rather than erroring: a stale/unknown name
+-- attribute (renamed preset, hand-edited data) must not break a key's GUI.
+function FontPresets.Resolve(name: string?): Font
+	for _, preset in ipairs(PRESETS) do
+		if preset.Name == name then
+			return preset.Font
+		end
+	end
+	return PRESETS[1].Font
+end
+
+return FontPresets
+</ProtectedString>
+						<string name="ScriptGuid">{D81CF62F-0F72-4802-956E-1744D6C5C239}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">FontPresets</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBXD46D0695CC0E4F70A4CC454A002C2F3D">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- GAME-side counterpart of the plugin's GroupRegistry: reads the group data
+-- the plugin wrote, nothing more. Read-only on purpose — the runtime must
+-- never edit what the plugin owns.
+--
+-- Tolerates the folder being absent entirely: a game whose keys were placed
+-- before groups existed keeps working on the Config defaults.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(script.Parent.Parent.Config)
+local SoundId = require(script.Parent.SoundId)
+
+local GroupConfig = {}
+
+local function groupOf(name: string?): Configuration?
+	if not name then return nil end
+	local folder = ReplicatedStorage:FindFirstChild(Config.GROUPS_FOLDER)
+	if not folder then return nil end
+	local group = folder:FindFirstChild(name)
+	return group and group :: Configuration or nil
+end
+
+-- Splits the comma-separated list the plugin stores. Empty list = the caller
+-- falls back to the global default sound.
+--
+-- Every entry goes through SoundId.Parse, so a bare number stored by an older
+-- version (or typed before the panel started normalising) still plays, and
+-- anything unusable is dropped here rather than assigned to a Sound where it
+-- would fail silently at press time.
+function GroupConfig.SoundIds(name: string?): { string }
+	local group = groupOf(name)
+	if not group then return {} end
+
+	local raw = group:GetAttribute("SoundIds")
+	if type(raw) ~= "string" or raw == "" then return {} end
+
+	local ids: { string } = {}
+	for piece in string.gmatch(raw, "[^,]+") do
+		local id = SoundId.Parse(piece)
+		if id then
+			table.insert(ids, id)
+		end
+	end
+	return ids
+end
+
+function GroupConfig.PitchJitter(name: string?): number
+	local group = groupOf(name)
+	local jitter = group and group:GetAttribute("PitchJitter")
+	if type(jitter) ~= "number" then return Config.SOUND_PITCH_JITTER end
+	return jitter
+end
+
+function GroupConfig.Volume(name: string?): number
+	local group = groupOf(name)
+	local volume = group and group:GetAttribute("Volume")
+	if type(volume) ~= "number" then return Config.SOUND_VOLUME end
+	return volume
+end
+
+function GroupConfig.AnimationStyle(name: string?): string?
+	local group = groupOf(name)
+	local style = group and group:GetAttribute("AnimationStyle")
+	return type(style) == "string" and style or nil
+end
+
+function GroupConfig.PressTime(name: string?): number
+	local group = groupOf(name)
+	local time = group and group:GetAttribute("PressTime")
+	if type(time) ~= "number" then return Config.PRESS_TIME end
+	return time
+end
+
+function GroupConfig.ReleaseTime(name: string?): number
+	local group = groupOf(name)
+	local time = group and group:GetAttribute("ReleaseTime")
+	if type(time) ~= "number" then return Config.RELEASE_TIME end
+	return time
+end
+
+return GroupConfig
+</ProtectedString>
+						<string name="ScriptGuid">{50296E8E-70F9-4EA5-9683-B52EA6B66BD2}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">GroupConfig</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+			</Item>
+			<Item class="Folder" referent="RBX9295E8F19C0C42C88A8817D724459527">
+				<Properties>
+					<BinaryString name="AttributesSerialize" />
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Points</string>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+				<Item class="ModuleScript" referent="RBXC8AEB2F2C1CA44508972F5D0AAD5FCF7">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: the top-center points number, and how it REACTS when
+-- a point lands. Owns nothing but its own pixels: it is told a value and told
+-- "a point just landed", and never decides what the score is.
+--
+-- The resting state is deliberately bare — a white outlined number, top
+-- center, no card, no background, no border. Everything else in this module
+-- is TRANSIENT: every effect returns the counter to exactly that resting
+-- state, so the HUD is only ever "just the number" when nothing is happening.
+--
+-- The feel is built from four things landing together, which is what makes an
+-- impact read as one event rather than four effects:
+--   * a punch — fast scale up, slow elastic settle (see PUNCH_* below);
+--   * a wobble — a few degrees of rotation, unwinding elastically;
+--   * a shockwave — a ring that expands out of the number and fades;
+--   * a rising pitch on the landing sound as presses chain into a combo.
+
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local Config = require(script.Parent.Parent:WaitForChild("Config"))
+
+local Counter = {}
+Counter.__index = Counter
+
+-- One knob for the whole HUD's size. Every pixel metric in this module and in
+-- PointPopup is expressed against it, so the counter and its "+1"s cannot
+-- drift out of proportion with each other — change this alone to rescale the
+-- entire HUD.
+Counter.SCALE = 2.5
+
+-- Exported: PointPopup sizes itself against this so a "+1" can never read as
+-- bigger or louder than the total it is feeding.
+Counter.TEXT_SIZE = 34 * Counter.SCALE
+
+-- Exported so PointPopup outlines its "+1" identically: the counter and the
+-- popups have to read as the same typeface at the same weight, and a stroke
+-- that differs between them is immediately visible as two different fonts.
+-- 2.1 rather than 3 — at SCALE 2.5 a 3px base stroke was thick enough to eat
+-- into the counters of the glyphs and blunt them.
+Counter.STROKE_THICKNESS = 2.1 * Counter.SCALE
+
+local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local TOP_MARGIN = 20 * Counter.SCALE
+
+-- The punch. Asymmetric on purpose and this is the whole trick: a scale-up
+-- that is over almost before it is seen (PUNCH_UP), then a long elastic
+-- return that does the actual selling (PUNCH_DOWN). Symmetric easing on both
+-- halves reads as a gentle pulse; this reads as an impact.
+local PUNCH_SCALE = 1.30
+local PUNCH_UP = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local PUNCH_DOWN = TweenInfo.new(0.45, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+-- Combo adds to the punch on top of PUNCH_SCALE. Kept small: the counter has
+-- to stay readable at the top of a streak, and a number that doubles in size
+-- stops reading as a number.
+local PUNCH_COMBO_BONUS = 0.12
+
+local WOBBLE_DEGREES = 5
+local WOBBLE_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+
+local RING_TIME = 0.4
+local RING_START_PADDING = 14 * Counter.SCALE -- how far outside the digits the ring is born
+local RING_GROWTH = 46 * Counter.SCALE -- how much further it travels before dying
+local RING_THICKNESS = 2 * Counter.SCALE
+
+-- Presses closer together than this chain into a combo; a gap resets it.
+-- 0.6s is a little above a fast typist's inter-key gap, so ordinary typing
+-- sustains a combo and pausing visibly drops it.
+local COMBO_WINDOW = 0.6
+local COMBO_MAX = 8
+-- A rising pitch across a streak is doing most of the audible work here — the
+-- same trick as a coin run in a platformer. The jitter on top keeps a
+-- sustained streak from sounding like a loop.
+local PITCH_COMBO_RANGE = 0.5
+local PITCH_JITTER = 0.06
+
+-- Numbers only roll when they jump by more than one. A single press must
+-- change the digits on the SAME frame the key went down — rolling a +1 would
+-- put the number behind the punch that is meant to be celebrating it. A jump
+-- (the server reconciling a rejoin with a higher persisted total) is the case
+-- worth animating, and there the roll is what makes it read as earned.
+local ROLL_TIME = 0.45
+
+-- The counter growing in from nothing when the HUD is first built.
+local INTRO_TIME = 0.5
+
+function Counter.new(gui: ScreenGui)
+	local self = setmetatable({}, Counter)
+	self.gui = gui
+	self.shown = 0 -- what the digits currently read
+	self.target = 0 -- what they are heading toward
+	self.combo = 0
+	self.lastLand = 0
+	self.wobbleSide = 1
+	self.activeScale = nil :: Tween?
+	self.activeRotation = nil :: Tween?
+	self.rollConnection = nil :: RBXScriptConnection?
+
+	-- AnchorPoint is centered on BOTH axes so the punch and the wobble pivot
+	-- around the middle of the digits. Anchored at the top (the obvious
+	-- choice for a top-margin HUD) the number would visibly grow downward and
+	-- swing from its top edge, which reads as a hinge rather than an impact.
+	local holder = Instance.new("Frame")
+	holder.Name = "Counter"
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.new(0.5, 0, 0, TOP_MARGIN + Counter.TEXT_SIZE / 2)
+	holder.Size = UDim2.fromOffset(0, Counter.TEXT_SIZE)
+	holder.AutomaticSize = Enum.AutomaticSize.X
+	holder.BackgroundTransparency = 1
+	-- Above the shockwave rings, which are siblings (see _shockwave) at
+	-- ZIndex 1. Equal ZIndex would fall back to child order, and a ring
+	-- created later would paint over the digits.
+	holder.ZIndex = 2
+	holder.Parent = gui
+	self.holder = holder
+
+	-- Fixed TextSize + AutomaticSize, NOT TextScaled: TextScaled recomputes
+	-- the glyph layout against the label's OWN size every frame, which fought
+	-- with the UIScale punch — the digits would grow past whatever bounding
+	-- box the label had a moment before ("les chiffres dépassent le
+	-- compteur"). A fixed size that the box grows to fit is stable no matter
+	-- how many digits or how hard the punch is currently stretching them.
+	local label = Instance.new("TextLabel")
+	label.Name = "Value"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(0, 0, 1, 0)
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.TextSize = Counter.TEXT_SIZE
+	label.FontFace = FONT
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 1
+	label.Text = "0"
+	label.Parent = holder
+	self.label = label
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Thickness = Counter.STROKE_THICKNESS
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+
+	local scale = Instance.new("UIScale")
+	scale.Parent = holder
+	self.scale = scale
+
+	local sound = Instance.new("Sound")
+	sound.Name = "PointsLand"
+	sound.SoundId = Config.POINTS_LAND_SOUND_ID
+	sound.Volume = Config.POINTS_LAND_SOUND_VOLUME
+	sound.Parent = gui
+	self.sound = sound
+
+	self:_intro()
+
+	return self
+end
+
+-- The digits grow out of nothing when the HUD first appears, rather than
+-- being there already on frame one. Back/Out overshoots past full size and
+-- settles, so the arrival uses the same vocabulary as the punch every point
+-- landing will use — the counter introduces itself by doing a small version
+-- of the thing it does.
+--
+-- Held in activeScale like any other scale animation so a point landing
+-- during the intro cancels it cleanly instead of fighting it.
+function Counter:_intro()
+	self.scale.Scale = 0
+	local grow = TweenService:Create(
+		self.scale,
+		TweenInfo.new(INTRO_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Scale = 1 }
+	)
+	self.activeScale = grow
+	grow:Play()
+end
+
+-- Screen-space center of the digits. Popups aim here, and it has to be read
+-- fresh every time rather than cached: the counter widens as it gains digits,
+-- so a target cached at "9" would miss by half a glyph at "1000".
+function Counter:Center(): Vector2
+	return self.holder.AbsolutePosition + self.holder.AbsoluteSize / 2
+end
+
+function Counter:_render()
+	self.label.Text = tostring(math.floor(self.shown))
+end
+
+-- Sets the value the digits should read. A step of one lands instantly; a
+-- larger jump rolls (see ROLL_TIME above).
+function Counter:Set(value: number)
+	self.target = value
+
+	if self.rollConnection then
+		self.rollConnection:Disconnect()
+		self.rollConnection = nil
+	end
+
+	if math.abs(value - self.shown) &lt;= 1 then
+		self.shown = value
+		self:_render()
+		return
+	end
+
+	local from = self.shown
+	local elapsed = 0
+	self.rollConnection = RunService.Heartbeat:Connect(function(dt: number)
+		elapsed += dt
+		local t = math.clamp(elapsed / ROLL_TIME, 0, 1)
+		-- Ease out: the roll should sprint through the middle digits and coast
+		-- onto the final one, not crawl to it at a constant rate.
+		local eased = 1 - (1 - t) ^ 3
+		self.shown = from + (self.target - from) * eased
+		self:_render()
+
+		if t &gt;= 1 then
+			self.shown = self.target
+			self:_render()
+			if self.rollConnection then
+				self.rollConnection:Disconnect()
+				self.rollConnection = nil
+			end
+		end
+	end)
+end
+
+-- A ring born at the edge of the digits and expanding outward. Parented to
+-- the ScreenGui rather than to the counter on purpose: the holder is
+-- AutomaticSize.X, so a child wider than the digits would stretch the counter
+-- itself and shove the number off center for as long as the ring lived.
+function Counter:_shockwave()
+	local center = self:Center()
+	local startSize = self.holder.AbsoluteSize.X + RING_START_PADDING
+
+	local ring = Instance.new("Frame")
+	ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = UDim2.fromOffset(center.X, center.Y)
+	ring.Size = UDim2.fromOffset(startSize, startSize)
+	ring.BackgroundTransparency = 1
+	ring.ZIndex = 1 -- under the number: the impact radiates from behind it
+	ring.Parent = self.gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = ring
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(1, 1, 1)
+	stroke.Thickness = RING_THICKNESS
+	stroke.Transparency = 0.35
+	stroke.Parent = ring
+
+	-- Quart Out on both: the ring should be almost fully grown and almost
+	-- gone within the first third of its life, so it registers as a flash of
+	-- impact rather than as an expanding circle the eye can follow.
+	local info = TweenInfo.new(RING_TIME, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	local grown = startSize + RING_GROWTH
+	TweenService:Create(ring, info, { Size = UDim2.fromOffset(grown, grown) }):Play()
+
+	local fade = TweenService:Create(stroke, info, { Transparency = 1, Thickness = 0 })
+	fade:Play()
+	fade.Completed:Once(function()
+		ring:Destroy()
+	end)
+end
+
+function Counter:_punch(intensity: number)
+	local scale = self.scale
+
+	-- Cancel rather than stack. Two tweens driving the same property fight
+	-- for it every frame, which is what made a fast typist's counter look
+	-- broken instead of energetic.
+	if self.activeScale then
+		self.activeScale:Cancel()
+	end
+	if self.activeRotation then
+		self.activeRotation:Cancel()
+	end
+
+	scale.Scale = 1
+	local peak = PUNCH_SCALE + PUNCH_COMBO_BONUS * intensity
+	local up = TweenService:Create(scale, PUNCH_UP, { Scale = peak })
+	self.activeScale = up
+	up:Play()
+	up.Completed:Once(function(state: Enum.PlaybackState)
+		if state ~= Enum.PlaybackState.Completed or not scale.Parent then return end
+		local down = TweenService:Create(scale, PUNCH_DOWN, { Scale = 1 })
+		self.activeScale = down
+		down:Play()
+	end)
+
+	-- Alternating sides rather than a random one: a streak that tips the same
+	-- way twice reads as a drift, and one that picks randomly reads as noise.
+	-- Strict alternation reads as recoil.
+	self.wobbleSide = -self.wobbleSide
+	self.holder.Rotation = WOBBLE_DEGREES * self.wobbleSide * (0.6 + 0.4 * intensity)
+	local unwind = TweenService:Create(self.holder, WOBBLE_INFO, { Rotation = 0 })
+	self.activeRotation = unwind
+	unwind:Play()
+end
+
+function Counter:_playSound(intensity: number)
+	local sound = self.sound
+	if sound.SoundId == "" then return end
+	sound.PlaybackSpeed = 1
+		+ intensity * PITCH_COMBO_RANGE
+		+ (math.random() * 2 - 1) * PITCH_JITTER
+	sound:Play()
+end
+
+-- Called the instant a "+1" reaches the counter. Everything fires together:
+-- that simultaneity is what makes it land as a single impact.
+function Counter:Land()
+	local now = os.clock()
+	self.combo = (now - self.lastLand &lt;= COMBO_WINDOW) and math.min(self.combo + 1, COMBO_MAX) or 0
+	self.lastLand = now
+	local intensity = self.combo / COMBO_MAX
+
+	self:_punch(intensity)
+	self:_shockwave()
+	self:_playSound(intensity)
+end
+
+return Counter
+</ProtectedString>
+						<string name="ScriptGuid">{CAFE8F18-2DC7-4AE0-9C18-40DFC9B490DF}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Counter</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBXC87DB430388A48B7A6F5D162FB32C42E">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: one "+1" flying from a keycap into the counter.
+-- Fire and forget — Spawn() builds it, animates it, cleans it up, and calls
+-- back once at the moment it is absorbed. Owns no state between popups, so
+-- any number of them can be in the air at once without interfering.
+--
+-- The whole flight is hand-driven from a single Heartbeat rather than
+-- assembled from TweenService tweens. Three reasons, all of them things that
+-- were wrong when it was tweens:
+--   * the arc cannot be expressed as a position tween at all;
+--   * the target MOVES (the counter widens as it gains digits), so the
+--     destination has to be re-read every frame, not baked in at spawn;
+--   * scale, rotation, position and fade have to stay in lockstep. As
+--     separate tweens on separate clocks they drifted, and the pop-in was
+--     still finishing while the travel had already started — which read as
+--     two animations fighting instead of one object moving.
+
+local RunService = game:GetService("RunService")
+
+-- WaitForChild, not a plain index: this whole folder is cloned into the
+-- user's game by the plugin's Installer and replicated to the client, and a
+-- sibling is not guaranteed to have arrived when this module first runs.
+local Counter = require(script.Parent:WaitForChild("Counter"))
+
+local PointPopup = {}
+
+local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+
+-- Every pixel metric here is scaled by Counter.SCALE, the HUD's single size
+-- knob, so the popup always stays in proportion with the counter it feeds.
+local SCALE = Counter.SCALE
+
+-- Strictly below the counter's own size, and the peak of the pop-in overshoot
+-- below is applied on top of THIS — so a "+1" never renders larger than the
+-- total it is feeding, at any point in its flight. The gap is scaled too:
+-- a fixed 8px gap would vanish at a large SCALE and the two would read as
+-- the same size.
+local TEXT_SIZE = Counter.TEXT_SIZE - 8 * SCALE
+local DURATION = 0.55
+
+-- How far above the straight line the arc's midpoint sits, and how far to
+-- either side: a straight shot from cap to counter reads as the label sliding
+-- rather than popping, and always bowing the same way reads as mechanical
+-- once a few have landed in a row.
+local ARC_HEIGHT = 90 * SCALE
+local ARC_SPREAD = 70 * SCALE
+
+-- Phase boundaries, as fractions of DURATION.
+local POP_UNTIL = 0.28 -- scaling up out of nothing
+local ABSORB_FROM = 0.72 -- shrinking into the counter
+local FADE_FROM = 0.78 -- fading, deliberately AFTER the shrink starts so it
+                       -- visibly shrinks before it vanishes: fading first
+                       -- just deletes it, fading second reads as swallowed
+local ABSORB_SCALE = 0.45
+-- Not scaled: a tilt is an angle, and angles do not have a pixel size.
+local TILT_DEGREES = 12
+
+-- Overshoot curve: 0 -&gt; past 1 -&gt; settles at exactly 1. Does the pop-in and
+-- its settle in ONE continuous curve, which is why the pop needs no separate
+-- settle tween chasing it.
+local BACK_C1 = 1.70158
+local BACK_C3 = BACK_C1 + 1
+local function backOut(x: number): number
+	local p = x - 1
+	return 1 + BACK_C3 * p * p * p + BACK_C1 * p * p
+end
+
+-- startPosition: screen-space pixels. targetOf: called every frame for the
+-- counter's current center. onLand: fired once, at absorption.
+function PointPopup.Spawn(
+	gui: ScreenGui,
+	startPosition: Vector2,
+	targetOf: () -&gt; Vector2,
+	onLand: () -&gt; ()
+)
+	local popup = Instance.new("TextLabel")
+	popup.Name = "Popup"
+	popup.AnchorPoint = Vector2.new(0.5, 0.5)
+	popup.Position = UDim2.fromOffset(startPosition.X, startPosition.Y)
+	popup.Size = UDim2.new(0, 0, 0, TEXT_SIZE)
+	popup.AutomaticSize = Enum.AutomaticSize.X
+	popup.BackgroundTransparency = 1
+	popup.TextSize = TEXT_SIZE
+	popup.FontFace = FONT
+	popup.TextColor3 = Color3.new(1, 1, 1)
+	popup.TextStrokeTransparency = 1
+	popup.Text = "+1"
+	popup.ZIndex = 5
+	popup.Parent = gui
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Thickness = Counter.STROKE_THICKNESS
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = popup
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0
+	scale.Parent = popup
+
+	-- Which way this one bows. Random per popup so a run of them fans out
+	-- instead of retracing one path.
+	local side = math.random() &lt; 0.5 and -1 or 1
+
+	local elapsed = 0
+	local connection: RBXScriptConnection
+	connection = RunService.Heartbeat:Connect(function(dt: number)
+		elapsed += dt
+		local t = math.clamp(elapsed / DURATION, 0, 1)
+
+		-- Re-read the destination every frame, and rebuild the arc around it:
+		-- the counter drifts sideways as it gains a digit, and a popup already
+		-- in the air has to follow it there rather than land where the counter
+		-- used to be.
+		local target = targetOf()
+		local mid = (startPosition + target) / 2 + Vector2.new(side * ARC_SPREAD, -ARC_HEIGHT)
+
+		-- Eased travel parameter: hangs by the cap while it pops in, then
+		-- accelerates into the counter. A linear parameter made the popup
+		-- leave before the eye had registered it and coast in at the end —
+		-- exactly backwards from what should feel urgent.
+		local travel = t ^ 1.7
+		local a = startPosition:Lerp(mid, travel)
+		local b = mid:Lerp(target, travel)
+		local position = a:Lerp(b, travel)
+		popup.Position = UDim2.fromOffset(position.X, position.Y)
+
+		if t &lt; POP_UNTIL then
+			scale.Scale = backOut(t / POP_UNTIL)
+		elseif t &gt;= ABSORB_FROM then
+			local k = (t - ABSORB_FROM) / (1 - ABSORB_FROM)
+			scale.Scale = 1 - (1 - ABSORB_SCALE) * k
+		else
+			scale.Scale = 1
+		end
+
+		-- Unwinds as it flies: most tilted at launch, upright by arrival, so
+		-- it settles into the counter's own orientation instead of hitting it
+		-- askew.
+		popup.Rotation = side * TILT_DEGREES * (1 - travel)
+
+		local fade = t &gt; FADE_FROM and (t - FADE_FROM) / (1 - FADE_FROM) or 0
+		popup.TextTransparency = fade
+		stroke.Transparency = fade
+
+		if t &gt;= 1 then
+			connection:Disconnect()
+			popup:Destroy()
+			onLand()
+		end
+	end)
+end
+
+return PointPopup
+</ProtectedString>
+						<string name="ScriptGuid">{6B141636-6DC9-4032-AAA1-4EB2BC39432F}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">PointPopup</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX72F4773CAA384AE7A5131FBA95B56F43">
+					<Properties>
+						<Content name="LinkedSource"><null /></Content>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: own the points HUD as a whole — create it, keep the
+-- number it should be showing, and turn a local key press into a "+1" in
+-- flight. The pixels and the motion belong to Counter and PointPopup; this
+-- module is the orchestrator and holds the only public API (Init/Notify).
+--
+-- Purely cosmetic and purely local: never the source of truth for the count
+-- (that's Player.KeyCapperData.Points, owned by Server.lua and replicated
+-- automatically since it lives under the Player instance), only a display
+-- of it.
+--
+-- Local display is OPTIMISTIC: every press bumps it immediately, before the
+-- batched RemoteEvent (see Client.lua) has even reached the server. Mirroring
+-- points.Value directly would make the counter visibly stutter — it would sit
+-- still for up to POINTS_BATCH_INTERVAL, then jump. Instead the server value
+-- is only ever allowed to push the display UP, never down: our own presses
+-- are already reflected the instant they happen, so the server catching up a
+-- second later is not new information and must not un-count anything. It can
+-- still only push it up, e.g. a client rejoining with a higher persisted
+-- total than whatever it predicted this session.
+--
+-- Note the two clocks that follow from that. `displayed` moves the moment a
+-- key goes down; the COUNTER only reacts (punch, shockwave, sound) when the
+-- "+1" actually arrives, ~0.55s later. Landing the impact on key-down instead
+-- would fire it while the popup is still mid-flight, and the popup would then
+-- fly into a counter that had already finished celebrating it.
+
+local Players = game:GetService("Players")
+
+local PointsFolder = script.Parent
+local Counter = require(PointsFolder:WaitForChild("Counter"))
+local PointPopup = require(PointsFolder:WaitForChild("PointPopup"))
+
+local PointsUI = {}
+
+local GUI_NAME = "KeyCapperPointsUI"
+
+local player = Players.LocalPlayer
+
+local displayed = 0
+local counter = nil :: any
+local screenGui: ScreenGui? = nil
+
+-- pointsValue: the player's Player.KeyCapperData.Points IntValue. Owned and
+-- written by Server.lua; this module only ever reads it.
+function PointsUI.Init(pointsValue: IntValue)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = GUI_NAME
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.Parent = player:WaitForChild("PlayerGui")
+	screenGui = gui
+
+	counter = Counter.new(gui)
+	displayed = pointsValue.Value
+	counter:Set(displayed)
+
+	pointsValue.Changed:Connect(function(newValue: number)
+		if newValue &gt; displayed then
+			displayed = newValue
+			-- Rolls rather than snaps, because this is always a jump of more
+			-- than one (see Counter:Set). No impact is played: nothing was
+			-- pressed, the server merely told us we own more than we thought.
+			counter:Set(displayed)
+		end
+	end)
+end
+
+-- Called once per local press, optimistically — before the batch that press
+-- belongs to has even gone out, let alone come back confirmed.
+function PointsUI.Notify(worldPosition: Vector3)
+	local gui = screenGui
+	if not (gui and counter) then return end
+
+	displayed += 1
+	counter:Set(displayed)
+
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+
+	-- Lifted a stud so the "+1" is born above the cap rather than inside it.
+	local screenPoint, onScreen = camera:WorldToViewportPoint(worldPosition + Vector3.new(0, 1, 0))
+	-- Off-screen presses still count (the number above already moved), they
+	-- just get no popup: one flying in from behind the camera would enter the
+	-- frame from an arbitrary edge with no visible origin.
+	if not onScreen then return end
+
+	PointPopup.Spawn(
+		gui,
+		Vector2.new(screenPoint.X, screenPoint.Y),
+		function()
+			return counter:Center()
+		end,
+		function()
+			counter:Land()
+		end
+	)
+end
+
+return PointsUI
+</ProtectedString>
+						<string name="ScriptGuid">{02A5BD50-1237-456E-9737-E046F96A4020}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">PointsUI</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="Script" referent="RBXAB0302596E3E4341AFF62E892E1AEFD6">
+					<Properties>
+						<ProtectedString name="Source">--!strict
+-- Single responsibility: points bookkeeping. Creates each player's
+-- KeyCapperData/Points IntValue, loads/saves it via DataStore, and applies
+-- the batched deltas the client reports over PointsRemote.
+--
+-- We trust the client's delta here — there is no server-side proof a key was
+-- actually pressed, only a clamp against an obviously spoofed value (see
+-- Config.POINTS_MAX_PER_BATCH). Good enough for a prototype scoreboard, not
+-- for anything competitive.
+--
+-- RunContext = Server: lives under ReplicatedStorage.KeyCapper alongside
+-- Client, same reason Client gives for living there instead of somewhere
+-- under ServerScriptService.
+
+local Players = game:GetService("Players")
+local DataStoreService = game:GetService("DataStoreService")
+
+-- This script's own folder (Points): where its sibling PointsRemote lives.
+-- KeyCapperFolder is one level up — the installed root — where Config and
+-- Settings live.
+local PointsFolder = script.Parent
+local KeyCapperFolder = PointsFolder.Parent
+local Config = require(KeyCapperFolder:WaitForChild("Config"))
+local Settings = require(KeyCapperFolder:WaitForChild("Settings"))
+
+local remote = PointsFolder:WaitForChild("PointsRemote") :: RemoteEvent
+
+-- GetDataStore itself throws if API access to Studio/DataStores is disabled
+-- (Game Settings &gt; Security, or datastores simply unavailable in this
+-- context) — a pcall here keeps the rest of the script (HUD, remote, points
+-- in-session) working with in-memory-only points instead of erroring out
+-- before a single connection is even set up.
+local storeOk, store = pcall(function()
+	return DataStoreService:GetDataStore(Config.POINTS_DATASTORE)
+end)
+if not storeOk then
+	warn("[KeyCapper] DataStore unavailable, points will not persist across sessions:", store)
+	store = nil
+end
+
+-- Which players actually got a Points value built, so PlayerRemoving and
+-- BindToClose know who to save without re-checking Settings — a mid-session
+-- toggle flip must not lose data for a player already being tracked.
+local tracked: { [Player]: IntValue } = {}
+
+local function loadPoints(player: Player): number
+	if not store then return 0 end
+	local ok, result = pcall(function()
+		return store:GetAsync(tostring(player.UserId))
+	end)
+	if ok and typeof(result) == "number" then
+		return result
+	end
+	return 0
+end
+
+local function savePoints(player: Player, points: IntValue)
+	if not store then return end
+	local ok, err = pcall(function()
+		store:SetAsync(tostring(player.UserId), points.Value)
+	end)
+	if not ok then
+		warn("[KeyCapper] failed to save points for", player.Name, ":", err)
+	end
+end
+
+local function onPlayerAdded(player: Player)
+	-- Checked once, at join: a toggle flipped mid-session shouldn't yank the
+	-- value out from under players already tracked (see `tracked` above).
+	if not Settings.GetValue("PointsEnabled") then return end
+
+	local folder = Instance.new("Folder")
+	folder.Name = Config.POINTS_DATA_FOLDER
+	folder.Parent = player
+
+	local points = Instance.new("IntValue")
+	points.Name = Config.POINTS_VALUE_NAME
+	points.Value = loadPoints(player)
+	points.Parent = folder
+
+	tracked[player] = points
+end
+
+local function onPlayerRemoving(player: Player)
+	local points = tracked[player]
+	if not points then return end
+	tracked[player] = nil
+	savePoints(player, points)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(onPlayerAdded, player)
+end
+
+remote.OnServerEvent:Connect(function(player: Player, delta: any)
+	if not Settings.GetValue("PointsEnabled") then return end
+	local points = tracked[player]
+	if not points then return end
+	if typeof(delta) ~= "number" then return end
+
+	delta = math.floor(delta)
+	if delta &lt;= 0 then return end
+	delta = math.min(delta, Config.POINTS_MAX_PER_BATCH)
+
+	points.Value += delta
+end)
+
+-- Best-effort: Studio's own shutdown budget is short, this is a courtesy
+-- save on top of the per-player one in PlayerRemoving, not a replacement.
+game:BindToClose(function()
+	for player, points in pairs(tracked) do
+		savePoints(player, points)
+	end
+end)
+</ProtectedString>
+						<bool name="Disabled">false</bool>
+						<Content name="LinkedSource"><null /></Content>
+						<token name="RunContext">1</token>
+						<string name="ScriptGuid">{ECC97261-B8CE-45CD-B033-8041CEFDBBA3}</string>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Server</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="RemoteEvent" referent="RBX960F780A37BE4A47AC532D80D594C3A6">
+					<Properties>
+						<BinaryString name="AttributesSerialize" />
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">PointsRemote</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+		<External>null</External>
+	<External>nil</External>
+	<SharedStrings>
+		<SharedString md5="N1XlNMb4t91Rf/q68/LVMQ==">Yzc4ZjY1YTg0NTMyZjRiYjNlZWJmODlmNWQzZTQxODc=</SharedString>
+		<SharedString md5="ab2bVmJluRl5Bh3mAMD3KQ==">QXNzaXN0YW50OjQxNjE0M2JlLTU4NTgtNDEwNy1iYjhjLThhMWY1OTUxZTVlMQ==</SharedString>
+		<SharedString md5="yuZpQdnvvUBOTYh1jqZ2cA==" />
+		<SharedString md5="+qv2o0HSW+htH+ALwYQpiw==">Q1NHUEhTAAAAAEJMT0NL</SharedString>
+	</SharedStrings>
+</roblox>
