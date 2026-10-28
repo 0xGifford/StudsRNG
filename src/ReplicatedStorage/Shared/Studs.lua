@@ -72,45 +72,65 @@ local list: { StudDef } = {
 	{ Id = "Glitch", Name = "???", Rarity = "Secret", OneIn = 1000000, Multiplier = 50, World = "Office",
 		Color = Color3.fromRGB(0, 255, 120), Material = Enum.Material.Neon, Particle = "Glitch", Light = true },
 
-	-- Arcade (zone exclusive)
-	{ Id = "Pixel", Name = "Pixel", Rarity = "Uncommon", OneIn = 35, Multiplier = 1.8, World = "Arcade",
-		Color = Color3.fromRGB(255, 120, 200), Material = Enum.Material.SmoothPlastic, Particle = "Dust" },
-	{ Id = "Token", Name = "Token", Rarity = "Rare", OneIn = 200, Multiplier = 3, World = "Arcade",
+	-- Beach (zone exclusive; Id Arcade)
+	{ Id = "Pixel", Name = "Seashell", Rarity = "Uncommon", OneIn = 35, Multiplier = 1.8, World = "Arcade",
+		Color = Color3.fromRGB(255, 190, 200), Material = Enum.Material.SmoothPlastic, Particle = "Dust" },
+	{ Id = "Token", Name = "Sandcastle", Rarity = "Rare", OneIn = 200, Multiplier = 3, World = "Arcade",
 		Color = Color3.fromRGB(255, 190, 60), Material = Enum.Material.Foil, Particle = "Sparkle" },
-	{ Id = "Combo", Name = "Combo", Rarity = "Epic", OneIn = 1200, Multiplier = 5, World = "Arcade",
-		Color = Color3.fromRGB(120, 80, 255), Material = Enum.Material.Neon, Particle = "Sparkle", Light = true },
-	{ Id = "Highscore", Name = "Highscore", Rarity = "Legendary", OneIn = 8000, Multiplier = 10, World = "Arcade",
-		Color = Color3.fromRGB(255, 60, 90), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
+	{ Id = "Combo", Name = "Lagoon", Rarity = "Epic", OneIn = 1200, Multiplier = 5, World = "Arcade",
+		Color = Color3.fromRGB(40, 220, 210), Material = Enum.Material.Neon, Particle = "Sparkle", Light = true },
+	{ Id = "Highscore", Name = "Sunset", Rarity = "Legendary", OneIn = 8000, Multiplier = 10, World = "Arcade",
+		Color = Color3.fromRGB(255, 120, 60), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
 
-	-- Studio (zone exclusive)
-	{ Id = "Vinyl", Name = "Vinyl", Rarity = "Rare", OneIn = 300, Multiplier = 3.5, World = "Studio",
-		Color = Color3.fromRGB(30, 30, 36), Material = Enum.Material.Glass, Particle = "Dust" },
-	{ Id = "Spotlight", Name = "Spotlight", Rarity = "Epic", OneIn = 2000, Multiplier = 6, World = "Studio",
-		Color = Color3.fromRGB(255, 250, 220), Material = Enum.Material.Neon, Particle = "Sparkle", Light = true },
-	{ Id = "Encore", Name = "Encore", Rarity = "Legendary", OneIn = 12000, Multiplier = 12, World = "Studio",
-		Color = Color3.fromRGB(255, 150, 40), Material = Enum.Material.Foil, Particle = "Flare", Light = true },
-	{ Id = "Platinum", Name = "Platinum", Rarity = "Mythic", OneIn = 80000, Multiplier = 25, World = "Studio",
+	-- Polar (zone exclusive; Id Studio)
+	{ Id = "Vinyl", Name = "Snowflake", Rarity = "Rare", OneIn = 300, Multiplier = 3.5, World = "Studio",
+		Color = Color3.fromRGB(235, 245, 255), Material = Enum.Material.Glass, Particle = "Snow" },
+	{ Id = "Spotlight", Name = "Glacier", Rarity = "Epic", OneIn = 2000, Multiplier = 6, World = "Studio",
+		Color = Color3.fromRGB(140, 210, 255), Material = Enum.Material.Ice, Particle = "Sparkle", Light = true },
+	{ Id = "Encore", Name = "Aurora", Rarity = "Legendary", OneIn = 12000, Multiplier = 12, World = "Studio",
+		Color = Color3.fromRGB(90, 255, 170), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
+	{ Id = "Platinum", Name = "Permafrost", Rarity = "Mythic", OneIn = 80000, Multiplier = 25, World = "Studio",
 		Color = Color3.fromRGB(220, 230, 240), Material = Enum.Material.Foil, Particle = "Stars", Light = true },
 
-	-- Neon City (zone exclusive)
-	{ Id = "Synth", Name = "Synth", Rarity = "Epic", OneIn = 3000, Multiplier = 7, World = "Neon",
-		Color = Color3.fromRGB(0, 230, 255), Material = Enum.Material.Neon, Particle = "Sparkle", Light = true },
-	{ Id = "Laser", Name = "Laser", Rarity = "Legendary", OneIn = 20000, Multiplier = 14, World = "Neon",
-		Color = Color3.fromRGB(255, 0, 80), Material = Enum.Material.Neon, Particle = "Embers", Light = true },
-	{ Id = "Overdrive", Name = "Overdrive", Rarity = "Mythic", OneIn = 120000, Multiplier = 30, World = "Neon",
-		Color = Color3.fromRGB(255, 240, 0), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
-	{ Id = "Cyber", Name = "Cyber", Rarity = "Mythic", OneIn = 250000, Multiplier = 40, World = "Neon",
-		Color = Color3.fromRGB(170, 0, 255), Material = Enum.Material.ForceField, Particle = "Glitch", Light = true },
+	-- Volcano (zone exclusive; Id Neon)
+	{ Id = "Synth", Name = "Magma", Rarity = "Epic", OneIn = 3000, Multiplier = 7, World = "Neon",
+		Color = Color3.fromRGB(255, 120, 20), Material = Enum.Material.Neon, Particle = "Embers", Light = true },
+	{ Id = "Laser", Name = "Obsidian", Rarity = "Legendary", OneIn = 20000, Multiplier = 14, World = "Neon",
+		Color = Color3.fromRGB(40, 20, 50), Material = Enum.Material.Glass, Particle = "Embers", Light = true },
+	{ Id = "Overdrive", Name = "Eruption", Rarity = "Mythic", OneIn = 120000, Multiplier = 30, World = "Neon",
+		Color = Color3.fromRGB(255, 70, 20), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
+	{ Id = "Cyber", Name = "Inferno", Rarity = "Mythic", OneIn = 250000, Multiplier = 40, World = "Neon",
+		Color = Color3.fromRGB(255, 40, 0), Material = Enum.Material.ForceField, Particle = "Embers", Light = true },
 
-	-- Space (zone exclusive)
-	{ Id = "Comet", Name = "Comet", Rarity = "Legendary", OneIn = 30000, Multiplier = 16, World = "Space",
-		Color = Color3.fromRGB(150, 220, 255), Material = Enum.Material.Ice, Particle = "Snow", Light = true },
-	{ Id = "Quasar", Name = "Quasar", Rarity = "Mythic", OneIn = 200000, Multiplier = 35, World = "Space",
+	-- Islands (zone exclusive)
+	{ Id = "Coconut", Name = "Coconut", Rarity = "Rare", OneIn = 500, Multiplier = 4, World = "Islands",
+		Color = Color3.fromRGB(130, 85, 50), Material = Enum.Material.Wood, Particle = "Dust" },
+	{ Id = "Hibiscus", Name = "Hibiscus", Rarity = "Epic", OneIn = 5000, Multiplier = 9, World = "Islands",
+		Color = Color3.fromRGB(255, 70, 120), Material = Enum.Material.SmoothPlastic, Particle = "Sparkle", Light = true },
+	{ Id = "Tsunami", Name = "Tsunami", Rarity = "Legendary", OneIn = 25000, Multiplier = 15, World = "Islands",
+		Color = Color3.fromRGB(30, 140, 255), Material = Enum.Material.Glass, Particle = "Flare", Light = true },
+	{ Id = "Kraken", Name = "Kraken", Rarity = "Mythic", OneIn = 180000, Multiplier = 33, World = "Islands",
+		Color = Color3.fromRGB(120, 40, 160), Material = Enum.Material.Neon, Particle = "Void", Light = true },
+
+	-- Cave (zone exclusive)
+	{ Id = "Amethyst", Name = "Amethyst", Rarity = "Epic", OneIn = 8000, Multiplier = 11, World = "Cave",
+		Color = Color3.fromRGB(170, 90, 255), Material = Enum.Material.Glass, Particle = "Sparkle", Light = true },
+	{ Id = "Glowshroom", Name = "Glowshroom", Rarity = "Legendary", OneIn = 40000, Multiplier = 18, World = "Cave",
+		Color = Color3.fromRGB(60, 255, 200), Material = Enum.Material.Neon, Particle = "Stars", Light = true },
+	{ Id = "Geode", Name = "Geode", Rarity = "Mythic", OneIn = 300000, Multiplier = 42, World = "Cave",
+		Color = Color3.fromRGB(255, 120, 220), Material = Enum.Material.Foil, Particle = "Flare", Light = true },
+	{ Id = "Abyss", Name = "Abyss", Rarity = "Secret", OneIn = 1800000, Multiplier = 80, World = "Cave",
+		Color = Color3.fromRGB(15, 5, 30), Material = Enum.Material.ForceField, Particle = "Void", Light = true },
+
+	-- Heaven (zone exclusive; Id Space)
+	{ Id = "Comet", Name = "Halo", Rarity = "Legendary", OneIn = 30000, Multiplier = 16, World = "Space",
+		Color = Color3.fromRGB(255, 230, 140), Material = Enum.Material.Foil, Particle = "Sparkle", Light = true },
+	{ Id = "Quasar", Name = "Seraph", Rarity = "Mythic", OneIn = 200000, Multiplier = 35, World = "Space",
 		Color = Color3.fromRGB(255, 255, 255), Material = Enum.Material.Neon, Particle = "Stars", Light = true },
-	{ Id = "Supernova", Name = "Supernova", Rarity = "Mythic", OneIn = 400000, Multiplier = 50, World = "Space",
-		Color = Color3.fromRGB(255, 110, 40), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
-	{ Id = "Singularity", Name = "Singularity", Rarity = "Secret", OneIn = 2500000, Multiplier = 100, World = "Space",
-		Color = Color3.fromRGB(10, 0, 20), Material = Enum.Material.ForceField, Particle = "Void", Light = true },
+	{ Id = "Supernova", Name = "Paradise", Rarity = "Mythic", OneIn = 400000, Multiplier = 50, World = "Space",
+		Color = Color3.fromRGB(255, 200, 230), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
+	{ Id = "Singularity", Name = "Divine", Rarity = "Secret", OneIn = 2500000, Multiplier = 100, World = "Space",
+		Color = Color3.fromRGB(255, 250, 210), Material = Enum.Material.ForceField, Particle = "Stars", Light = true },
 }
 
 local byId: { [string]: StudDef } = {}
