@@ -30,6 +30,7 @@ local entries: { Entry } = {
 			"Zones are now Grasslands, Beach, Polar, Volcano, Islands, Cave and Heaven. Your unlocks carry over.",
 			"Two new zones, Islands and Cave, each with four new zone studs.",
 			"The Teleporter: numbered zone list with one-tap teleports.",
+			"New 3D scenery in every biome: palms, snowy pines, lava rocks, tiki totems, glowing mushrooms and more, plus a lighthouse, igloo and dragon skull.",
 		},
 	},
 	{
