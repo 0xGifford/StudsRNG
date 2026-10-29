@@ -49,7 +49,6 @@ local FUNCTIONS = {
 	"AdvanceTutorial",
 	"ClaimQuest",
 	"ClaimIndexTab",
-	"FightEnemy",
 	"StopFight",
 }
 

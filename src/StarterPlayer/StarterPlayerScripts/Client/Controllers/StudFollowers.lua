@@ -14,7 +14,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- anchored, and hidden past Config.Followers.RenderDistance (except your own).
 -- Bigger variants (Big, Huge, Jumbo) are bigger parts and take more room in
 -- the line. While the player's FightTarget attribute names an enemy
--- (Systems/Combat) the studs surround it and take turns lunging at it.
+-- (Systems/Combat) the studs break off, fly to it and hover around it, each
+-- one in turn winding up and dashing in; when the attribute clears they fly
+-- back into line (or straight on to the next enemy the server picks).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -28,6 +30,10 @@ local StudVisuals = require(Shared.Util.StudVisuals)
 local Tags = require(Shared.Tags)
 
 local FollowConfig = Config.Followers
+
+-- One attack cycle per stud: hover, wind up, dash in, recoil.
+local ATTACK_PERIOD = 1.5
+local HOVER_END, WINDUP_END, DASH_END = 0.55, 0.72, 0.8
 local localPlayer = Players.LocalPlayer
 
 local StudFollowers = {}
@@ -178,14 +184,41 @@ local function update(dt: number)
 			local position: Vector3
 			local spin: CFrame
 			if enemy then
-				-- A ring around the enemy; each stud lunges in on its own beat.
-				local angle = (i / total) * math.pi * 2 + t * 0.6
-				local reach = enemy.Size.X / 2 + 1.5 + follower.size
-				local lunge = math.max(0, math.sin(t * 7 + follower.phase)) ^ 6
-				local radius = reach - lunge * (reach - enemy.Size.X / 2 - follower.size / 2)
-				local goal = enemy.Position + Vector3.new(math.cos(angle) * radius, follower.size / 2 - enemy.Size.Y * 0.15, math.sin(angle) * radius)
-				position = part.Position:Lerp(goal, 1 - math.exp(-FollowConfig.FollowSpeed * 1.6 * dt))
-				spin = CFrame.Angles(lunge * 1.2, t * 3 + follower.phase, 0)
+				-- Hover on a slowly turning ring around the enemy. Studs are
+				-- staggered through the cycle so they dash in one after another.
+				local angle = (i / total) * math.pi * 2 + t * 0.5
+				local outward = Vector3.new(math.cos(angle), 0, math.sin(angle))
+				local surface = enemy.Size.X / 2 + follower.size / 2
+				local hover = surface + 2 + follower.size
+				local u = ((t + (i - 1) / total * ATTACK_PERIOD + follower.phase * 0.05) / ATTACK_PERIOD) % 1
+				local radius, lift, tilt, speed = hover, 0, 0, 3
+				if u < HOVER_END then
+					lift = math.sin(t * 2.5 + follower.phase) * 0.6
+				elseif u < WINDUP_END then
+					-- Pull back and rise, tilting away.
+					local k = (u - HOVER_END) / (WINDUP_END - HOVER_END)
+					local ease = k * k * (3 - 2 * k)
+					radius = hover + ease * 1.5
+					lift = ease * 1.2
+					tilt = -ease * 0.6
+				elseif u < DASH_END then
+					-- Snap into the enemy.
+					radius = surface - 0.2
+					lift = 0
+					tilt = 1.1
+					speed = 14
+				else
+					-- Bounce back out to the ring.
+					local k = (u - DASH_END) / (1 - DASH_END)
+					radius = surface + k * (hover - surface)
+					lift = math.sin(k * math.pi) * 0.8
+					tilt = (1 - k) * 0.8
+				end
+				local goal = enemy.Position + outward * radius + Vector3.new(0, follower.size / 2 - enemy.Size.Y * 0.1 + lift, 0)
+				position = part.Position:Lerp(goal, 1 - math.exp(-FollowConfig.FollowSpeed * speed * dt))
+				-- Face the enemy, tipping forward into the dash.
+				local facing = CFrame.lookAt(Vector3.zero, -outward)
+				spin = facing.Rotation * CFrame.Angles(-tilt, 0, 0) * CFrame.Angles(0, t * 2 + follower.phase, 0)
 			else
 				local bob = math.sin(t * FollowConfig.BobSpeed + follower.phase) * FollowConfig.BobHeight
 				local target = basis * CFrame.new((offsets :: { Vector3 })[i] + Vector3.new(0, bob, 0))

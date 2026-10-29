@@ -233,20 +233,37 @@ Config.IndexTabReward = {
 	Clacks = 0.05,
 }
 
--- Enemies (Systems/Combat, Shared/Enemies). Equipped studs fight them: the
--- team deals its total Strength per second and has its total Health; the
--- enemy hits back. Defeating one pays Clacks.
+-- Enemies (Systems/Combat, Shared/Enemies). An enemy chases (pathfinds to)
+-- any player who owns its zone within AggroRange, never straying more than
+-- HomeRadius from where it lives. Players fight automatically: the nearest
+-- enemy within EngageRange draws their equipped studs, which deal the team's
+-- total Strength per second while the enemy hits the team's total Health.
+-- A defeat pays Clacks; the studs then take the next enemy within
+-- RetargetRange, or fly home.
 Config.Combat = {
 	PerZone = 4, -- enemies alive in each zone (when no EnemySpawn parts are placed)
 	Tick = 0.25, -- seconds per combat step
-	FightRange = 40, -- studs: how close the player must be to start a fight
-	LeashRange = 80, -- walking further than this away ends the fight
-	Respawn = 8, -- seconds before a defeated enemy comes back
+	AggroRange = 50, -- studs: enemies notice players this close
+	EngageRange = 32, -- studs: studs start fighting an enemy this close
+	RetargetRange = 45, -- studs: after a defeat, the next enemy this close is next
+	LeashRange = 80, -- the player walking further than this ends the fight
+	HomeRadius = 70, -- enemies never chase further than this from home
+	ChaseSpeed = 11, -- studs per second
+	WanderSpeed = 5,
 	WanderRadius = 14,
-	WakeRange = 260, -- enemies only move while a player is this close
+	RepathTime = 0.8, -- seconds between path recomputes while chasing
+	WakeRange = 260, -- enemies only spawn and move while a player is this close
+	Respawn = 8, -- seconds before a defeated enemy comes back
 	RegenPerSecond = 0.15, -- share of team Health restored per second out of a fight
 	KnockoutCooldown = 4, -- seconds before a defeated team can fight again
+	RetreatCooldown = 6, -- seconds RETREAT keeps the studs out of fights
 	FreeRollChance = 0.1, -- extra drop on each defeat
+	-- Mini bosses: any spawn can be one.
+	BossChance = 1 / 12,
+	BossHealth = 8,
+	BossDamage = 2,
+	BossReward = 10,
+	BossSize = 1.7,
 }
 
 Config.Announce = {
