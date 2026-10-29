@@ -36,25 +36,28 @@ local list: { ZoneDef } = {
 	-- is Heaven.
 	{ Id = "Office", Name = "Grasslands", Order = 1, Price = 0, KeyMultiplier = 1, Emoji = "🌳",
 		Color = Color3.fromRGB(120, 220, 90) },
-	{ Id = "Arcade", Name = "Beach", Order = 2, Price = 25_000, KeyMultiplier = 2, Emoji = "🏖️",
+	{ Id = "Arcade", Name = "Beach", Order = 2, Price = 1_400, KeyMultiplier = 2, Emoji = "🏖️",
 		Color = Color3.fromRGB(255, 214, 120) },
-	{ Id = "Studio", Name = "Polar", Order = 3, Price = 400_000, KeyMultiplier = 4, Emoji = "❄️",
+	{ Id = "Studio", Name = "Polar", Order = 3, Price = 3_700, KeyMultiplier = 4, Emoji = "❄️",
 		Color = Color3.fromRGB(150, 220, 255) },
-	{ Id = "Neon", Name = "Volcano", Order = 4, Price = 6_000_000, KeyMultiplier = 8, Emoji = "🌋",
+	{ Id = "Neon", Name = "Volcano", Order = 4, Price = 9_700, KeyMultiplier = 7, Emoji = "🌋",
 		Color = Color3.fromRGB(255, 110, 50) },
-	{ Id = "Islands", Name = "Islands", Order = 5, Price = 40_000_000, KeyMultiplier = 12, Emoji = "🏝️",
+	{ Id = "Islands", Name = "Islands", Order = 5, Price = 22_000, KeyMultiplier = 11, Emoji = "🏝️",
 		Color = Color3.fromRGB(60, 220, 200) },
-	{ Id = "Cave", Name = "Cave", Order = 6, Price = 250_000_000, KeyMultiplier = 20, Emoji = "💎",
+	{ Id = "Cave", Name = "Cave", Order = 6, Price = 45_000, KeyMultiplier = 17, Emoji = "💎",
 		Color = Color3.fromRGB(176, 104, 255) },
-	{ Id = "Space", Name = "Heaven", Order = 7, Price = 1_500_000_000, KeyMultiplier = 32, Emoji = "☁️",
+	{ Id = "Space", Name = "Heaven", Order = 7, Price = 91_000, KeyMultiplier = 26, Emoji = "☁️",
 		Color = Color3.fromRGB(255, 236, 150) },
 }
 
 -- Zones 8+ are priced on a curve from the last hand-priced zone: each costs
 -- PRICE_GROWTH times the one before and multiplies keys by MULTIPLIER_GROWTH
 -- (prices kept to 2 significant figures). Built in Studio with tools/ZoneKit.
-local PRICE_GROWTH = 3.5
-local MULTIPLIER_GROWTH = 1.45
+-- Balance (see the curve notes below): each zone pays x1.5 per key and costs
+-- x1.95 more, so the next zone takes ~4 minutes early and ~45 near the end
+-- for a player whose studs / rebirths / upgrades keep pace.
+local PRICE_GROWTH = 1.95
+local MULTIPLIER_GROWTH = 1.5
 local curved: { { Id: string, Name: string, Emoji: string, Color: Color3 } } = {
 	{ Id = "Desert", Name = "Desert", Emoji = "🏜️", Color = Color3.fromHex("#FFAA3C") },
 	{ Id = "Jungle", Name = "Jungle", Emoji = "🌴", Color = Color3.fromHex("#3CC85A") },

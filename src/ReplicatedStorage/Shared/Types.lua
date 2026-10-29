@@ -111,6 +111,7 @@ export type Stats = {
 	StudsPerRoll: number,
 	ExtraRollChance: number,
 	VariantLuck: number,
+	VariantBoosts: { [string]: number }, -- active boosts' per-variant chance multipliers
 	PressesPerFreeRoll: number,
 	MaxBankedFreeRolls: number,
 	CritChance: number,

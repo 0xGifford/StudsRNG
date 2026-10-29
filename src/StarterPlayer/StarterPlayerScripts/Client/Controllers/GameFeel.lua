@@ -293,7 +293,15 @@ local function watchMilestones()
 	end)
 
 	State.Notified:Connect(function(payload)
-		if payload.Kind == "Welcome" then
+		if payload.Kind == "RareDrop" then
+			local boost = Config.Boosts[payload.Boost]
+			if boost then
+				Juice.banner("RARE DROP!", `{boost.Name} · {boost.Short} chance`, boost.Color, 1.6)
+				Juice.confetti(45)
+				Juice.flash(boost.Color, 0.25, 0.4)
+				CombatFx.sound("Coin", nil, 1.5, 0.6)
+			end
+		elseif payload.Kind == "Welcome" then
 			Juice.banner("WELCOME BACK!", `+{Format.number(payload.Amount or 0)} Clacks while you were away`, Color3.fromRGB(255, 220, 90), 2.6)
 			Juice.confetti(70)
 		end

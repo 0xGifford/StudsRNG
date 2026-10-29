@@ -63,7 +63,7 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 		local stats = Modifiers.get(player)
 		local def = RollLogic.rollStud(rng, stats.Luck * boost, data.UnlockedWorlds)
 		if not def then break end
-		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * boost)
+		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * boost, stats.VariantBoosts)
 
 		local grant = Inventory.grant(player, def.Id, variant.Name)
 		if grant then

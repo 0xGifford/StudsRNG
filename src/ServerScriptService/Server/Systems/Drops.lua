@@ -40,7 +40,8 @@ function Drops.roll(player: Player, baseLuck: number, enemyLevel: number): RollR
 		* (if Products.ownsPass(player, "LuckyDrops") then 2 else 1)
 	local def = RollLogic.rollDrop(rng, luck)
 	if not def then return nil end
-	local variant = RollLogic.rollVariant(rng, Modifiers.get(player).VariantLuck)
+	local stats = Modifiers.get(player)
+	local variant = RollLogic.rollVariant(rng, stats.VariantLuck, stats.VariantBoosts)
 	local grant = Inventory.grant(player, def.Id, variant.Name)
 	if not grant then return nil end
 

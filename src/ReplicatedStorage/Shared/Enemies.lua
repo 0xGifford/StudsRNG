@@ -13,6 +13,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Damage and Clacks reward follow the zone's place in the list, so deeper
 -- zones need stronger studs (RollLogic.statsOf). Read by the server's Combat
 -- system and the client's Enemies controller.
+--
+-- Balance: Health and Damage grow exponentially, like a player's team does,
+-- so an enemy in your own zone takes ~4-7 s to defeat and your studs last
+-- 2-4x that. Reward is ~25 key presses of that zone, and Combat multiplies
+-- it by the player's Clacks multiplier, so fighting keeps pace with
+-- pressing keys the whole game.
 
 local Zones = require(script.Parent.Zones)
 
@@ -21,7 +27,7 @@ export type EnemyDef = {
 	Level: number,
 	Health: number,
 	Damage: number, -- per second against the player's team
-	Reward: number, -- Clacks per defeat, before rebirths
+	Reward: number, -- Clacks per defeat, before the player's Clacks multiplier
 	Color: Color3,
 	Size: number, -- body size in studs
 }
@@ -41,9 +47,9 @@ function Enemies.forZone(zoneId: string): EnemyDef?
 	local def: EnemyDef = {
 		Name = `{zone.Name} {KINDS[(n - 1) % #KINDS + 1]}`,
 		Level = n,
-		Health = math.floor(40 * n ^ 2.2),
-		Damage = math.floor(1.5 * n ^ 1.5 * 10 + 0.5) / 10,
-		Reward = math.floor(60 * zone.KeyMultiplier * (1 + n * 0.25)),
+		Health = math.floor(45 * 1.2 ^ n),
+		Damage = math.floor(4 * 1.16 ^ n * 10 + 0.5) / 10,
+		Reward = math.floor(25 * zone.KeyMultiplier),
 		Color = zone.Color,
 		Size = 4 + math.min(n, 30) * 0.1,
 	}

@@ -80,7 +80,7 @@ Config.Combo = {
 Config.Offline = {
 	MinAway = 5 * 60,
 	MaxSeconds = 8 * 60 * 60,
-	ClacksPerSecond = 2,
+	ClacksPerSecond = 0.5, -- × Rewards.scale; ~8% of active play at zone 1
 }
 
 Config.Tutorial = {
@@ -150,6 +150,7 @@ export type BoostDef = {
 	Luck: number?, -- added to base luck (before multipliers)
 	Clacks: number?, -- multiplies Clacks
 	RollSpeed: number?, -- multiplies roll speed
+	Variants: { [string]: number }?, -- multiplies the chance of these variants (Shared/Variants names)
 	Duration: number, -- seconds per purchase
 	Color: Color3,
 }
@@ -159,9 +160,14 @@ local boosts: { [string]: BoostDef } = {
 	UltraLuck = { Name = "Ultra Luck Boost", Short = "+2 Luck", Luck = 2, Duration = 180, Color = Color3.fromRGB(80, 255, 220) },
 	Speed = { Name = "Roll Speed Boost", Short = "x2 Speed", RollSpeed = 2, Duration = 180, Color = Color3.fromRGB(110, 200, 255) },
 	Clacks = { Name = "Clacks Boost", Short = "x2 Clacks", Clacks = 2, Duration = 180, Color = Color3.fromRGB(255, 230, 90) },
+	-- Rare enemy drops (Config.Combat.RareDrops), also sold in the shop.
+	BigRoll = { Name = "Big Roll", Short = "x4 Big", Variants = { Big = 4, Huge = 2, Jumbo = 2 }, Duration = 120,
+		Color = Color3.fromRGB(255, 160, 60) },
+	ShinyRoll = { Name = "Shiny Roll", Short = "x4 Shiny", Variants = { Shiny = 4 }, Duration = 120,
+		Color = Color3.fromRGB(255, 250, 170) },
 }
 Config.Boosts = boosts
-Config.BoostOrder = { "Luck", "UltraLuck", "Speed", "Clacks" }
+Config.BoostOrder = { "Luck", "UltraLuck", "Speed", "Clacks", "BigRoll", "ShinyRoll" }
 Config.MaxBoostSeconds = 24 * 60 * 60
 
 -- Bought with Robux by anyone in the server; multiplies everyone's luck.
@@ -265,6 +271,14 @@ Config.Combat = {
 	-- Crits: each combat step can land a crit for CritMultiplier damage.
 	CritChance = 0.12,
 	CritMultiplier = 2.5,
+	-- Rare drops: each defeat may drop a variant boost (Config.Boosts).
+	-- Mini Bosses multiply the chance by BossDropBonus, Titans by TitanDropBonus.
+	RareDrops = {
+		{ Boost = "BigRoll", Chance = 1 / 30 },
+		{ Boost = "ShinyRoll", Chance = 1 / 120 },
+	},
+	BossDropBonus = 5,
+	TitanDropBonus = 10,
 	-- Kill streaks: defeats within StreakWindow of each other chain up, each
 	-- link adding StreakBonus Clacks on a defeat, up to StreakMax links.
 	StreakWindow = 15,
@@ -309,7 +323,7 @@ Config.ZoneBoss = {
 	Interval = 20 * 60,
 	Warning = 60, -- seconds of warning before they spawn
 	Lifetime = 5 * 60, -- then it escapes
-	Health = 25,
+	Health = 40,
 	Damage = 3,
 	Reward = 30,
 	Size = 3.2,

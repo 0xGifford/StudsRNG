@@ -27,6 +27,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local ProductDefs = require(Shared.Products)
+local RewardDefs = require(Shared.Rewards)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -130,7 +131,9 @@ local function grantProduct(player: Player, key: string)
 	assert(def, `unknown product {key}`)
 
 	if def.Clacks then
-		Economy.addClacks(player, def.Clacks)
+		-- Packs scale with progress like every Clacks reward (Rewards.scale).
+		local data = PlayerData.get(player)
+		Economy.addClacks(player, math.floor(def.Clacks * (if data then RewardDefs.scale(data) else 1)))
 	end
 	if def.Spins then
 		RewardService.addSpins(player, def.Spins)
