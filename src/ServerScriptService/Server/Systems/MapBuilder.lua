@@ -11,11 +11,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Builds the playable map at server start (Config.Map), Slime RNG style:
 -- every zone is a wide biome valley walled in by chunky cliffs, joined to
--- the next zone (along +Z) by a canyon pass with a gate. The map is built
--- from Parts; the look of each biome comes from Shared/MapThemes. Generated
--- 3D models (Shared/MapAssets) then load in the background and replace their
--- Part fallbacks, so the map is playable at once and still whole if a model
--- can't load.
+-- the next zone (along +Z) by a canyon pass with a gate. Everything is
+-- plain Parts; the look of each biome comes from Shared/MapThemes.
 --
 -- workspace.Zones.<ZoneId> (Model, attributes Center/ZoneSize) contains
 --   Ground                  floor, patches, trail, sea (Beach / Islands)
@@ -29,15 +26,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Gate, Barrier           entrance arch and force field (opens locally
 --                           when owned, see ZonesMenu)
 --   Props                   trees, rocks, crystals... and the biome set pieces
---                           (mesh props are Models named after their
---                           MapAssets entry, plus the zone's Landmark)
 --
 -- A zone that already exists under workspace.Zones is skipped, so any zone
 -- can be replaced by a hand-built one. Players who fall out of the map are
 -- put back at the nearest zone they own.
 
 local CollectionService = game:GetService("CollectionService")
-local InsertService = game:GetService("InsertService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -45,7 +39,6 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local MapThemes = require(Shared.MapThemes)
-local MapAssets = require(Shared.MapAssets)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -711,9 +704,9 @@ PROPS.Cloud = function(parent, at, _theme)
 	end
 end
 
--- Free spots for props: off the trail, the keyboard, the spawn and the
--- landmark, and out of the shallows.
-local function propSpots(center: Vector3, theme: Theme, count: number, landmark: MapAssets.LandmarkAsset?): { Vector3 }
+-- Free spots for props: off the trail, the keyboard and the spawn, and out
+-- of the shallows.
+local function propSpots(center: Vector3, theme: Theme, count: number): { Vector3 }
 	local halfW, halfD = MapConfig.ZoneWidth / 2, MapConfig.ZoneDepth / 2
 	local board = keyboardSize()
 	local spots: { Vector3 } = {}
@@ -725,9 +718,6 @@ local function propSpots(center: Vector3, theme: Theme, count: number, landmark:
 		local ok = math.abs(x) > 11 -- the trail
 			and not (math.abs(x) < board.X / 2 + 8 and math.abs(z - KEYBOARD_OFFSET.Z) < board.Z / 2 + 8)
 			and not (theme.Water ~= nil and x > halfW - 36)
-		if ok and landmark then
-			ok = (Vector3.new(x, 0, z) - landmark.Offset).Magnitude > landmark.Radius + 6
-		end
 		if ok then
 			for _, other in spots do
 				if (Vector3.new(x, 0, z) - other).Magnitude < 11 then
@@ -762,160 +752,6 @@ local function weightedPick(weights: { [string]: number }): string
 		end
 	end
 	return names[#names]
-end
-
---------------------------------------------------------------------------
--- Mesh props (Shared/MapAssets)
---------------------------------------------------------------------------
-
--- A spot waiting for its mesh; `fallback` (Part props) stands in until then.
-type MeshSlot = {
-	id: number,
-	name: string,
-	height: number,
-	collide: boolean,
-	light: Color3?,
-	parent: Instance,
-	cframe: CFrame,
-	fallback: Instance?,
-}
-local meshSlots: { MeshSlot } = {}
-
-local function placeProp(parent: Instance, name: string, at: Vector3, theme: Theme)
-	local asset = MapAssets.Props[name]
-	-- Drawn either way so the rest of the map doesn't depend on which meshes exist.
-	local yaw = rng:NextNumber(0, math.pi * 2)
-	local scale = rng:NextNumber(0.85, 1.15)
-	local build = PROPS[if asset then asset.Fallback else name]
-	if not asset or asset.Id == 0 then
-		if build then
-			build(parent, at, theme)
-		end
-		return
-	end
-	local fallback = Instance.new("Model")
-	fallback.Name = `{name}Fallback`
-	fallback.Parent = parent
-	if build then
-		build(fallback, at, theme)
-	end
-	table.insert(meshSlots, {
-		id = asset.Id,
-		name = name,
-		height = asset.Height * scale,
-		collide = asset.Collide,
-		parent = parent,
-		cframe = CFrame.new(at) * CFrame.Angles(0, yaw, 0),
-		fallback = fallback,
-	})
-end
-
-local function placeLandmark(parent: Instance, zoneId: string, center: Vector3)
-	local asset = MapAssets.Landmarks[zoneId]
-	if not asset or asset.Id == 0 then return end
-	table.insert(meshSlots, {
-		id = asset.Id,
-		name = "Landmark",
-		height = asset.Height,
-		collide = true,
-		light = asset.Light,
-		parent = parent,
-		cframe = CFrame.new(center + asset.Offset) * CFrame.Angles(0, math.rad(asset.Yaw), 0),
-		fallback = nil,
-	})
-end
-
--- Loads an asset as a Model whose pivot is the bottom centre of its bounds,
--- with every part anchored and inert. Returns the model and its height.
-local function loadTemplate(id: number): (Model?, number)
-	local ok, container = pcall(InsertService.LoadAsset, InsertService, id)
-	if not ok or not container then
-		warn(`[MapBuilder] couldn't load mesh {id}: {container}`)
-		return nil, 0
-	end
-	local root = (container :: Instance):GetChildren()[1]
-	local model: Model
-	if root and root:IsA("Model") then
-		model = root
-	elseif root and root:IsA("BasePart") then
-		model = Instance.new("Model")
-		root.Parent = model
-	else
-		warn(`[MapBuilder] mesh {id} has no model or part`)
-		return nil, 0
-	end
-	model.Parent = nil
-	;(container :: Instance):Destroy()
-	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			descendant.Anchored = true
-			descendant.CanTouch = false
-			descendant.CanQuery = false
-		elseif descendant:IsA("Script") or descendant:IsA("LocalScript") then
-			descendant:Destroy()
-		end
-	end
-	local box, size = model:GetBoundingBox()
-	if size.Y <= 0 then
-		return nil, 0
-	end
-	model.WorldPivot = CFrame.new(box.Position - Vector3.new(0, size.Y / 2, 0))
-	return model, size.Y
-end
-
-local function placeMesh(slot: MeshSlot, template: Model, templateHeight: number)
-	local model = template:Clone()
-	model.Name = slot.name
-	model:ScaleTo(template:GetScale() * slot.height / templateHeight)
-	model:PivotTo(slot.cframe)
-	local biggest: BasePart? = nil
-	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			descendant.CanCollide = slot.collide
-			if not biggest or descendant.Size.Magnitude > biggest.Size.Magnitude then
-				biggest = descendant
-			end
-		end
-	end
-	if slot.light and biggest then
-		local l = Instance.new("PointLight")
-		l.Color = slot.light
-		l.Range = 40
-		l.Brightness = 2
-		l.Shadows = false
-		l.Parent = biggest
-	end
-	model.Parent = slot.parent
-	if slot.fallback then
-		slot.fallback:Destroy()
-	end
-end
-
--- Fetches each distinct mesh once, then swaps every waiting slot over to it.
-local function loadMeshes()
-	local byId: { [number]: { MeshSlot } } = {}
-	for _, slot in meshSlots do
-		byId[slot.id] = byId[slot.id] or {}
-		table.insert(byId[slot.id], slot)
-	end
-	local loaded, failed = 0, 0
-	for id, slots in byId do
-		local template, height = loadTemplate(id)
-		if template then
-			for _, slot in slots do
-				local ok, err = pcall(placeMesh, slot, template, height)
-				if not ok then
-					warn(`[MapBuilder] couldn't place mesh {id}: {err}`)
-				end
-			end
-			template:Destroy()
-			loaded += 1
-		else
-			failed += 1
-		end
-	end
-	table.clear(meshSlots)
-	print(`[MapBuilder] loaded {loaded} mesh(es), {failed} failed`)
 end
 
 --------------------------------------------------------------------------
@@ -1020,7 +856,7 @@ local function islets(parent: Instance, center: Vector3, theme: Theme)
 		local d = rng:NextNumber(16, 26)
 		cylinder(parent, at + Vector3.new(0, -0.5, 0), 2, d, rgb(240, 220, 160), Enum.Material.Sand)
 		cylinder(parent, at + Vector3.new(0, 0.6, 0), 0.6, d * 0.65, theme.Floor, Enum.Material.Grass)
-		placeProp(parent, "PalmTree", at + Vector3.new(0, 0.9, 0), theme)
+		PROPS.Palm(parent, at + Vector3.new(0, 0.9, 0), theme)
 	end
 end
 
@@ -1217,10 +1053,12 @@ local function buildZone(zonesFolder: Instance, def: Zones.ZoneDef, index: numbe
 	local props = Instance.new("Folder")
 	props.Name = "Props"
 	props.Parent = zone
-	for _, spot in propSpots(center, theme, theme.PropCount, MapAssets.Landmarks[def.Id]) do
-		placeProp(props, weightedPick(theme.Props), spot, theme)
+	for _, spot in propSpots(center, theme, theme.PropCount) do
+		local build = PROPS[weightedPick(theme.Props)]
+		if build then
+			build(props, spot, theme)
+		end
 	end
-	placeLandmark(props, def.Id, center)
 	setPieces(props, def, center, theme)
 
 	zone.Parent = zonesFolder
@@ -1328,7 +1166,6 @@ end
 
 function MapBuilder.start()
 	if not MapConfig.Enabled then return end
-	task.spawn(loadMeshes)
 	local floorY = MapConfig.Origin.Y - FALL_DEPTH
 	while true do
 		task.wait(0.5)
