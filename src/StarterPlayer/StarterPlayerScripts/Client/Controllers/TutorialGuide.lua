@@ -32,6 +32,7 @@ local Tags = require(Shared.Tags)
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
+local StudsMenu = require(Controllers.StudsMenu)
 local Intro = require(Controllers.Intro)
 local Interface = require(UI.Interface)
 local Juice = require(UI.Juice)
@@ -201,9 +202,7 @@ local function hudTarget(name: string): GuiObject?
 		local frame = top and top:FindFirstChild("Frame")
 		local target = frame and frame:FindFirstChild(name)
 		if name == "Studs" and Interface.isOpen("Studs") then
-			local window = Interface.Canva:FindFirstChild("Studs")
-			local side = window and window:FindFirstChild("Side")
-			target = side and side:FindFirstChild("EquipBest")
+			target = StudsMenu.equipBestButton()
 		end
 		return if target and target:IsA("GuiObject") then target else nil
 	end
