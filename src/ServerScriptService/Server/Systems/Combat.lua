@@ -65,6 +65,7 @@ local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
 local Drops = require(Systems.Drops)
 local RewardService = require(Systems.RewardService)
+local Products = require(Systems.Products)
 
 local Combat = {}
 
@@ -92,6 +93,8 @@ type Enemy = {
 	fighters: { [Player]: boolean },
 	-- Zone Bosses
 	zoneBoss: boolean,
+	forceBoss: boolean, -- always a Mini Boss (summoned)
+	summoned: boolean, -- bought (Summon Mini Boss): gone for good once defeated
 	damageBy: { [Player]: number },
 	expiresAt: number,
 	-- Movement
@@ -246,7 +249,7 @@ local function spawnEnemy(enemy: Enemy)
 		enemy.size = def.Size * zoneBoss.Size
 		enemy.name = `{if zone then zone.Name else "Zone"} Titan`
 	else
-		enemy.boss = rng:NextNumber() < Settings.BossChance
+		enemy.boss = enemy.forceBoss or rng:NextNumber() < Settings.BossChance
 		enemy.maxHealth = math.floor(def.Health * (if enemy.boss then Settings.BossHealth else 1))
 		enemy.damage = def.Damage * (if enemy.boss then Settings.BossDamage else 1)
 		enemy.reward = math.floor(def.Reward * (if enemy.boss then Settings.BossReward else 1))
@@ -276,9 +279,9 @@ local function spawnEnemy(enemy: Enemy)
 	end
 end
 
-local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
+local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?, summoned: boolean?): Enemy?
 	local def = Enemies.forZone(zoneId)
-	if not def then return end
+	if not def then return nil end
 	nextId += 1
 	local enemy: Enemy = {
 		id = nextId,
@@ -297,6 +300,8 @@ local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
 		alive = false,
 		fighters = {},
 		zoneBoss = zoneBoss == true,
+		forceBoss = summoned == true,
+		summoned = summoned == true,
 		damageBy = {},
 		expiresAt = if zoneBoss then os.clock() + Config.ZoneBoss.Lifetime else math.huge,
 		chasing = nil,
@@ -310,6 +315,7 @@ local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
 	}
 	enemies[enemy.id] = enemy
 	spawnEnemy(enemy)
+	return enemy
 end
 
 --------------------------------------------------------------------------
@@ -711,7 +717,10 @@ local function defeat(enemy: Enemy)
 			StateSync.push(player, "EnemiesDefeated", data.EnemiesDefeated)
 			-- Every equipped stud earns XP (once per stud, however many copies).
 			local levels = Config.Levels
-			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level) * (if enemy.boss then levels.BossXp else 1) * (if enemy.zoneBoss then 4 else 1))
+			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level)
+				* (if enemy.boss then levels.BossXp else 1)
+				* (if enemy.zoneBoss then 4 else 1)
+				* (if Products.ownsPass(player, "StudTrainer") then 2 else 1))
 			local seen: { [string]: boolean } = {}
 			for _, key in data.Equipped do
 				local def = RollLogic.decodeKey(key)
@@ -755,8 +764,8 @@ local function defeat(enemy: Enemy)
 		local nextEnemy = if canFight(player, teams[player]) then nearestEnemy(player, Settings.RetargetRange, enemy) else nil
 		setFight(player, nextEnemy)
 	end
-	if enemy.zoneBoss then
-		enemies[enemy.id] = nil -- Titans don't respawn: the next comes on the clock
+	if enemy.zoneBoss or enemy.summoned then
+		enemies[enemy.id] = nil -- Titans come on the clock; summons are one-offs
 		return
 	end
 	task.delay(Settings.Respawn, function()
@@ -769,6 +778,42 @@ end
 --------------------------------------------------------------------------
 -- Zone Bosses
 --------------------------------------------------------------------------
+
+-- The owned zone the player stands in, if any.
+local function zoneAt(player: Player, position: Vector3): string?
+	scanZones()
+	for zone, state in zoneStates do
+		local cframe, size = Tags.zoneBox(zone)
+		if cframe and size and Economy.ownsZone(player, state.id) then
+			local localPoint = cframe:PointToObjectSpace(position)
+			if math.abs(localPoint.X) <= size.X / 2 and math.abs(localPoint.Z) <= size.Z / 2 then
+				return state.id
+			end
+		end
+	end
+	return nil
+end
+
+-- Summon Mini Boss (a product): a crowned Mini Boss of the zone the player
+-- stands in, just in front of them. False when they aren't in a zone they
+-- own (the product falls back to spins).
+function Combat.summonMiniBoss(player: Player): boolean
+	local root = rootOf(player)
+	if not root then return false end
+	local zoneId = zoneAt(player, root.Position)
+	if not zoneId then return false end
+	local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local ahead = if look.Magnitude > 0.01 then look.Unit * 14 else Vector3.new(0, 0, -14)
+	local enemy = addEnemy(zoneId, root.Position - Vector3.new(0, 3, 0) + ahead, false, true)
+	if not enemy then return false end
+	Net.fireAll("Announce", {
+		Player = player.DisplayName,
+		UserId = player.UserId,
+		Summon = true,
+		Name = enemy.name,
+	})
+	return true
+end
 
 -- Spawns a Titan in every Every-th zone that's on the map and has none.
 function Combat.spawnZoneBosses(): { string }
@@ -935,6 +980,14 @@ function Combat.init()
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = workspace
+
+	-- Summon Mini Boss product. Never throws: no valid spot → 2 spins instead.
+	Products.registerAction("SummonBoss", function(player)
+		if not Combat.summonMiniBoss(player) then
+			RewardService.addSpins(player, 2)
+			notify(player, "Stand in a zone you own to summon a Mini Boss. Here are 2 Jackpot Spins instead!", Color3.fromRGB(255, 205, 60))
+		end
+	end)
 
 	-- RETREAT: studs come home and stay out of fights for a moment.
 	Net.handle("StopFight", { Rate = 2, Burst = 4 }, function(player)

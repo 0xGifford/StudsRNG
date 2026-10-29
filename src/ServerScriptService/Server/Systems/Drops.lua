@@ -26,6 +26,7 @@ local RollLogic = require(Shared.Util.RollLogic)
 local Systems = script.Parent
 local Inventory = require(Systems.Inventory)
 local Modifiers = require(Systems.Modifiers)
+local Products = require(Systems.Products)
 
 type RollResult = Types.RollResult
 
@@ -36,6 +37,7 @@ local rng = Random.new()
 -- baseLuck: Config.Drops.MiniBossLuck or ZoneBossLuck. Returns the drop, if any.
 function Drops.roll(player: Player, baseLuck: number, enemyLevel: number): RollResult?
 	local luck = baseLuck * (1 + enemyLevel * Config.Drops.PerEnemyLevel)
+		* (if Products.ownsPass(player, "LuckyDrops") then 2 else 1)
 	local def = RollLogic.rollDrop(rng, luck)
 	if not def then return nil end
 	local variant = RollLogic.rollVariant(rng, Modifiers.get(player).VariantLuck)

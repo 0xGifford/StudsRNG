@@ -59,6 +59,7 @@ local CLIENT_FIELDS = {
 	"Achievements",
 	"Title",
 	"Pass",
+	"Bought",
 }
 
 function Session.init()

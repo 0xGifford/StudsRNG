@@ -40,6 +40,15 @@ local RewardService = require(Systems.RewardService)
 
 local Products = {}
 
+-- Product actions other systems provide (avoids require cycles):
+-- Products.registerAction("SummonBoss", fn). fn must not yield for long and
+-- must not throw for a player-side reason (the receipt would retry forever).
+local actions: { [string]: (Player) -> () } = {}
+
+function Products.registerAction(name: string, fn: (Player) -> ())
+	actions[name] = fn
+end
+
 local PURCHASE_ID_CACHE_SIZE = 100
 local TRAIL_NAME = "VIPTrail"
 
@@ -126,6 +135,9 @@ local function grantProduct(player: Player, key: string)
 	if def.Spins then
 		RewardService.addSpins(player, def.Spins)
 	end
+	if def.FreeRolls then
+		Economy.addFreeRolls(player, def.FreeRolls, true)
+	end
 	if def.Boost then
 		local boost = Config.Boosts[def.Boost]
 		assert(boost, `unknown boost {def.Boost}`)
@@ -142,6 +154,17 @@ local function grantProduct(player: Player, key: string)
 		assert(result.Ok, `rebirth failed: {result.Error}`)
 	elseif def.Action == "SkipPlaytime" then
 		RewardService.skipPlaytime(player)
+	elseif def.Action then
+		local action = actions[def.Action]
+		assert(action, `no handler for action {def.Action}`)
+		action(player)
+	end
+	if def.OneTime then
+		local data = PlayerData.get(player)
+		if data then
+			data.Bought[key] = true
+			StateSync.push(player, "Bought", data.Bought)
+		end
 	end
 end
 

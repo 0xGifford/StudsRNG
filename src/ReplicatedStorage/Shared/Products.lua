@@ -15,6 +15,14 @@ Copyright © 2026. Mosswake, all rights reserved.
 --
 -- Keys (VIP, LuckyRoll, ...) are referenced by code: rename the display
 -- Name freely, never the key.
+--
+-- Suggested Robux prices (set them in the Creator Hub), from Roblox
+-- simulator norms:
+--   Passes:   VIP 399 · Double Roll 249 · Fast Roll 149 · +1 Equip 99
+--             Stud Pass Premium 499 · Lucky Drops 199 · Stud Trainer 149
+--   Products: Starter Pack 49 (one time) · Server Luck 99 · Lucky Roll 25
+--             Summon Mini Boss 35 · Spins 25 / 99 / 199 · Boosts 15-35
+--             Clacks 49 / 299 / 699 · Skip Rebirth 75 · Skip Rewards 49
 
 export type PassDef = {
 	Id: number,
@@ -40,7 +48,9 @@ export type ProductDef = {
 	Boost: string?, -- Config.Boosts id
 	Luck: number?, -- permanent luck
 	ServerLuck: boolean?,
-	Action: string?, -- "SkipRebirth" | "SkipPlaytime"
+	FreeRolls: number?,
+	Action: string?, -- "SkipRebirth" | "SkipPlaytime" | "SummonBoss" (Products.registerAction)
+	OneTime: boolean?, -- bought once (PlayerData.Bought); hidden from the shop after
 }
 
 local passes: { [string]: PassDef } = {
@@ -52,12 +62,22 @@ local passes: { [string]: PassDef } = {
 		Description = "Roll twice as fast." },
 	ExtraEquip = { Id = 0, Name = "+1 Equip", Order = 4, Color = "Green", Icon = "➕",
 		Description = "Equip an extra stud." },
+	LuckyDrops = { Id = 0, Name = "Lucky Drops", Order = 6, Color = "Purple", Icon = "🎁",
+		Description = "x2 chance of boss drops from Mini Bosses and Titans." },
+	StudTrainer = { Id = 0, Name = "Stud Trainer", Order = 7, Color = "Green", Icon = "⭐",
+		Description = "Your studs earn x2 XP from every fight." },
 	StudPass = { Id = 0, Name = "Stud Pass Premium", Order = 5, Color = "Orange", Icon = "🎟️",
 		Description = "Unlocks the premium track of this season's Stud Pass: every premium reward, back to tier 1, plus the Champion stud." },
 }
 
 local products: { [string]: ProductDef } = {
 	-- Featured
+	StarterPack = { Id = 0, Name = "Starter Pack", Section = "Featured", Order = 0, Color = "Orange",
+		Icon = "🎁", OneTime = true, Luck = 2, Spins = 10, FreeRolls = 50, Boost = "UltraLuck", Badge = "ONCE",
+		Description = "One time only: +2 permanent luck, 10 jackpot spins, 50 free rolls and an Ultra Luck boost." },
+	SummonBoss = { Id = 0, Name = "Summon Mini Boss", Section = "Featured", Order = 3, Color = "Sunset",
+		Icon = "👑", Action = "SummonBoss",
+		Description = "A Mini Boss appears right next to you: big Clacks, XP and a shot at a boss drop." },
 	ServerLuck = { Id = 0, Name = "Server Luck x2", Section = "Featured", Order = 1, Color = "Green",
 		Icon = "rbxassetid://119611914627070", ServerLuck = true,
 		Description = "Doubles EVERYONE's luck in this server for 15 minutes. Buying more adds time." },

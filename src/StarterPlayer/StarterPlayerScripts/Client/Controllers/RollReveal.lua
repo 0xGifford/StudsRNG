@@ -995,7 +995,20 @@ end
 -- Announcements → chat
 --------------------------------------------------------------------------
 
+local function postToRolls(message: string)
+	-- Only ever the Rolls tab (Systems/ChatChannels), never the main chat.
+	local channels = TextChatService:FindFirstChild("TextChannels")
+	local rolls = channels and channels:FindFirstChild(Config.Announce.Channel)
+	if rolls and rolls:IsA("TextChannel") then
+		rolls:DisplaySystemMessage(message)
+	end
+end
+
 local function announce(payload: any)
+	if payload.Summon then
+		postToRolls(`<font color="#FFCD3C"><b>{tostring(payload.Player)} summoned a {tostring(payload.Name)}!</b></font>`)
+		return
+	end
 	local def = Studs.ById[payload.Id]
 	local variant = Variants.ById[payload.Variant]
 	if not def or not variant then return end
@@ -1008,12 +1021,7 @@ local function announce(payload: any)
 		Format.studName(def, variant),
 		Format.oneIn(payload.OneIn)
 	)
-	-- Only ever the Rolls tab (Systems/ChatChannels), never the main chat.
-	local channels = TextChatService:FindFirstChild("TextChannels")
-	local rolls = channels and channels:FindFirstChild(Config.Announce.Channel)
-	if rolls and rolls:IsA("TextChannel") then
-		rolls:DisplaySystemMessage(message)
-	end
+	postToRolls(message)
 end
 
 function RollReveal.start()

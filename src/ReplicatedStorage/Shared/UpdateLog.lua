@@ -22,6 +22,17 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.6",
+		Date = "Oct 29, 2026",
+		Title = "Season 1: Titans",
+		Notes = {
+			"The Stud Pass: 30 tiers of rewards for playing, with a premium track and two pass-exclusive studs.",
+			"Enemies are brought to life: smooth movement, hopping feet, leaning, blinking, and red eyes when they hunt you.",
+			"Smarter enemies: they route around obstacles and stop piling on top of each other.",
+			"New: Starter Pack, Summon Mini Boss, Lucky Drops and Stud Trainer.",
+		},
+	},
+	{
 		Version = "1.5",
 		Date = "Oct 29, 2026",
 		Title = "Titans & Glory",
