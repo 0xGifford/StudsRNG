@@ -85,6 +85,9 @@ local PRESETS: { [string]: Preset } = {
 	Rainbow = { Texture = SPARKLE, Rate = 10, Lifetime = NumberRange.new(0.6, 1), Speed = NumberRange.new(0.4, 1),
 		Size = NumberSequence.new(0.35, 0), Transparency = fade, LightEmission = 1,
 		SpreadAngle = Vector2.new(180, 180) },
+	Invert = { Texture = SPARKLE, Rate = 8, Lifetime = NumberRange.new(0.5, 0.9), Speed = NumberRange.new(-0.8, -0.3),
+		Size = NumberSequence.new(0.35, 0), Transparency = fade, Color = Color3.fromRGB(20, 0, 40),
+		SpreadAngle = Vector2.new(180, 180) },
 }
 
 local function makeEmitter(name: string, preset: Preset, color: Color3): ParticleEmitter
@@ -130,7 +133,16 @@ local function basePart(): BasePart
 end
 
 function StudVisuals.colorOf(def: StudDef, variant: VariantDef): Color3
-	return variant.ColorOverride or def.Color
+	local color = variant.ColorOverride or def.Color
+	if variant.Invert then
+		return Color3.new(1 - color.R, 1 - color.G, 1 - color.B)
+	end
+	return color
+end
+
+-- How big the stud is: Big < Huge < Jumbo.
+function StudVisuals.scaleOf(variant: VariantDef): number
+	return variant.Scale or 1
 end
 
 -- Returns an unparented, anchored, non-colliding part.
@@ -146,6 +158,7 @@ function StudVisuals.build(def: StudDef, variant: VariantDef): BasePart
 	part.CastShadow = false
 	part.Massless = true
 
+	part.Size *= StudVisuals.scaleOf(variant)
 	local color = StudVisuals.colorOf(def, variant)
 	part.Color = color
 	part.Material = variant.MaterialOverride or def.Material

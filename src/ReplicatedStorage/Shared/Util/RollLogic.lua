@@ -36,7 +36,7 @@ table.sort(studsRarestFirst, function(a, b)
 end)
 
 local variantsRarestFirst: { VariantDef } = {}
-for _, name in Variants.Order do
+for _, name in Variants.Order do -- retired variants aren't in Order, so never roll
 	table.insert(variantsRarestFirst, Variants.ById[name])
 end
 table.sort(variantsRarestFirst, function(a, b)
@@ -114,15 +114,66 @@ function RollLogic.multiplierOf(def: StudDef, variant: VariantDef): number
 	return def.Multiplier * variant.Multiplier
 end
 
+-- Strength and Health of one stud: rarer studs hit harder and last longer,
+-- and the variant multiplies both (a StudDef can set its own).
+function RollLogic.statsOf(def: StudDef, variant: VariantDef): (number, number)
+	local strength = def.Strength or math.max(1, math.floor(1.5 * def.OneIn ^ 0.38 + 0.5))
+	local health = def.Health or math.max(5, math.floor(7 * def.OneIn ^ 0.36 + 0.5))
+	local mult = variant.Stats or 1
+	return math.floor(strength * mult + 0.5), math.floor(health * mult + 0.5)
+end
+
+-- The equipped studs' combined Strength and Health.
+function RollLogic.teamStats(equipped: { string }): (number, number)
+	local strength, health = 0, 0
+	for _, key in equipped do
+		local def, variant = RollLogic.decodeKey(key)
+		if def and variant then
+			local s, h = RollLogic.statsOf(def, variant)
+			strength += s
+			health += h
+		end
+	end
+	return strength, health
+end
+
 function RollLogic.indexTotal(): number
 	return #Studs.List * #Variants.Order
 end
 
+-- Retired variants (Golden, Rainbow) don't count towards the index.
 function RollLogic.countIndex(index: { [string]: boolean }): number
 	local n = 0
 	for key, found in index do
-		if found and RollLogic.decodeKey(key) then
-			n += 1
+		if found then
+			local def, variant = RollLogic.decodeKey(key)
+			if def and variant and not variant.Retired then
+				n += 1
+			end
+		end
+	end
+	return n
+end
+
+-- One Index tab: how many of its studs are found, out of how many.
+function RollLogic.tabProgress(index: { [string]: boolean }, variant: string): (number, number)
+	local found = 0
+	for _, def in Studs.List do
+		if index[RollLogic.encodeKey(def.Id, variant)] then
+			found += 1
+		end
+	end
+	return found, #Studs.List
+end
+
+-- How many Index tab rewards are claimed.
+function RollLogic.claimedTabs(claims: any): number
+	local n = 0
+	if typeof(claims) == "table" then
+		for _, name in Variants.Order do
+			if claims[name] == true then
+				n += 1
+			end
 		end
 	end
 	return n
@@ -192,6 +243,9 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 	local ctx = context or EMPTY_CONTEXT
 	local discovered = RollLogic.countIndex(data.Index or {})
 	local bonusSlots, bonusLuck, bonusClacks = RollLogic.milestoneBonuses(discovered)
+	local tabs = RollLogic.claimedTabs(data.IndexClaims)
+	bonusLuck += tabs * Config.IndexTabReward.Luck
+	bonusClacks += tabs * Config.IndexTabReward.Clacks
 	local upgrades = Upgrades.totals(data.Upgrades)
 	local function up(stat: string): number
 		return upgrades[stat] or 0

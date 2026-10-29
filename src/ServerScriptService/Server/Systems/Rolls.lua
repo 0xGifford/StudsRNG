@@ -93,6 +93,14 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 	data.TotalRolls += #results
 	StateSync.push(player, "TotalRolls", data.TotalRolls)
 	if #results > 0 then
+		-- Shown in the Index ("Rolls: 23").
+		for _, result in results do
+			local key = RollLogic.encodeKey(result.Id, result.Variant)
+			data.RollCounts[key] = (data.RollCounts[key] or 0) + 1
+		end
+		StateSync.push(player, "RollCounts", data.RollCounts)
+	end
+	if #results > 0 then
 		Rolls.Rolled:Fire(player, results)
 	end
 	return results

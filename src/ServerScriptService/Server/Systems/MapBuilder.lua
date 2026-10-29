@@ -1209,7 +1209,8 @@ function MapBuilder.init()
 end
 
 function MapBuilder.start()
-	if not MapConfig.Enabled then return end
+	-- Runs whether or not the map is generated: spawns are found by tag.
+	if MapConfig.FallRescue == false then return end
 	local floorY = MapConfig.Origin.Y - FALL_DEPTH
 	while true do
 		task.wait(0.5)

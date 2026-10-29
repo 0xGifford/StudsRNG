@@ -48,6 +48,9 @@ local FUNCTIONS = {
 	"MarkIntroSeen",
 	"AdvanceTutorial",
 	"ClaimQuest",
+	"ClaimIndexTab",
+	"FightEnemy",
+	"StopFight",
 }
 
 -- Server → client (RemoteEvent).

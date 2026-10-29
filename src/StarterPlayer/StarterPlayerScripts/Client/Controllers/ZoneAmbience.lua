@@ -11,7 +11,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Knows which zone the local player stands in (Zone-tagged instances: their
 -- Center/ZoneSize attributes, or their bounding box, see Shared/Tags) and
--- makes it feel different: lighting, fog and
+-- makes it feel different (its Zone's ClockTime / Ambient / OutdoorAmbient /
+-- FogColor / FogEnd / AtmosphereColor / AtmosphereDensity / Gravity /
+-- Subtitle attributes, as tools/ZoneKit sets them, else Shared/MapThemes):
+-- lighting, fog and
 -- atmosphere blend to Shared/MapThemes, gravity changes locally (Heaven is
 -- floaty) and a title card announces the zone.
 
@@ -80,23 +83,51 @@ local function atmosphere(): Atmosphere
 	return created
 end
 
-function ZoneAmbience.apply(zoneId: string, instant: boolean?)
+local LOOK_FIELDS = {
+	"ClockTime", "Ambient", "OutdoorAmbient", "FogColor", "FogEnd", "AtmosphereColor", "AtmosphereDensity", "Gravity", "Subtitle",
+}
+local DEFAULT_GRAVITY = 196.2
+
+-- A zone's look: its Zone instance's attributes over its MapThemes entry.
+local function lookOf(zoneId: string): { [string]: any }
+	local look: { [string]: any } = {}
 	local theme = MapThemes[zoneId]
-	if not theme then return end
+	if theme then
+		for _, field in LOOK_FIELDS do
+			look[field] = (theme :: any)[field]
+		end
+	end
+	local zone = Tags.forZone(Tags.Zone, zoneId)[1]
+	if zone then
+		for _, field in LOOK_FIELDS do
+			local value = zone:GetAttribute(field)
+			if value ~= nil and value ~= "" then
+				look[field] = value
+			end
+		end
+	end
+	return look
+end
+
+function ZoneAmbience.apply(zoneId: string, instant: boolean?)
+	local look = lookOf(zoneId)
 	local info = if instant then TweenInfo.new(0) else BLEND
-	TweenService:Create(Lighting, info, {
-		ClockTime = theme.ClockTime,
-		Ambient = theme.Ambient,
-		OutdoorAmbient = theme.OutdoorAmbient,
-		FogColor = theme.FogColor,
-		FogEnd = theme.FogEnd,
-	}):Play()
-	TweenService:Create(atmosphere(), info, {
-		Color = theme.AtmosphereColor,
-		Decay = theme.AtmosphereColor:Lerp(Color3.new(0, 0, 0), 0.5),
-		Density = theme.AtmosphereDensity,
-	}):Play()
-	workspace.Gravity = theme.Gravity
+	local lighting: { [string]: any } = {}
+	for _, field in { "ClockTime", "Ambient", "OutdoorAmbient", "FogColor", "FogEnd" } do
+		lighting[field] = look[field]
+	end
+	if next(lighting) then
+		TweenService:Create(Lighting, info, lighting):Play()
+	end
+	local color = look.AtmosphereColor
+	if typeof(color) == "Color3" then
+		TweenService:Create(atmosphere(), info, {
+			Color = color,
+			Decay = color:Lerp(Color3.new(0, 0, 0), 0.5),
+			Density = if typeof(look.AtmosphereDensity) == "number" then look.AtmosphereDensity else 0.3,
+		}):Play()
+	end
+	workspace.Gravity = if typeof(look.Gravity) == "number" then look.Gravity else DEFAULT_GRAVITY
 end
 
 function ZoneAmbience.current(): string?
@@ -129,9 +160,8 @@ function ZoneAmbience.start()
 				ZoneAmbience.apply(zoneId, first)
 				ZoneAmbience.Changed:Fire(zoneId)
 				local def = Zones.ById[zoneId]
-				local theme = MapThemes[zoneId]
-				if def and theme and not ZoneAmbience.Quiet then
-					Juice.banner(string.upper(def.Name), theme.Subtitle, def.Color, 1.4)
+				if def and not ZoneAmbience.Quiet then
+					Juice.banner(string.upper(def.Name), lookOf(zoneId).Subtitle or "", def.Color, 1.4)
 				end
 			end
 		end

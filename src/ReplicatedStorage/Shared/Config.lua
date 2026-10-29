@@ -50,11 +50,16 @@ Config.Press = {
 -- entrance. A zone that already exists under workspace.Zones (built by
 -- hand) is left alone, so you can replace any zone with your own build.
 Config.Map = {
-	Enabled = true,
-	Origin = Vector3.new(0, 60, 0),
+	-- Zones are built in Studio with tools/ZoneKit now; turn this on to
+	-- generate any zone that isn't built (a Zone-tagged instance with its id).
+	Enabled = false,
+	-- Players below Origin.Y - 70 are put back at the nearest zone they own.
+	FallRescue = true,
+	-- Zone 1's floor centre; must match ZoneKit's ORIGIN / WIDTH / DEPTH.
+	Origin = Vector3.new(15, 1, -28),
 	ZoneWidth = 170, -- X (inside the cliffs)
 	ZoneDepth = 150, -- Z
-	Bridge = 40, -- canyon pass between zones
+	Bridge = 0, -- gap between zones (ZoneKit builds them edge to edge)
 	KeyCols = 22,
 	KeyRows = 8,
 	-- Disable SpawnLocations outside the generated map so players spawn in
@@ -220,6 +225,29 @@ local milestones: { Milestone } = {
 	{ Count = 120, Slots = 1, Luck = 0.5 },
 }
 Config.IndexMilestones = milestones
+
+-- Completing an Index tab (every stud in one variant) lets the player claim
+-- this, once per tab. Shown in the Index; stacks with milestones.
+Config.IndexTabReward = {
+	Luck = 0.05,
+	Clacks = 0.05,
+}
+
+-- Enemies (Systems/Combat, Shared/Enemies). Equipped studs fight them: the
+-- team deals its total Strength per second and has its total Health; the
+-- enemy hits back. Defeating one pays Clacks.
+Config.Combat = {
+	PerZone = 4, -- enemies alive in each zone (when no EnemySpawn parts are placed)
+	Tick = 0.25, -- seconds per combat step
+	FightRange = 40, -- studs: how close the player must be to start a fight
+	LeashRange = 80, -- walking further than this away ends the fight
+	Respawn = 8, -- seconds before a defeated enemy comes back
+	WanderRadius = 14,
+	WakeRange = 260, -- enemies only move while a player is this close
+	RegenPerSecond = 0.15, -- share of team Health restored per second out of a fight
+	KnockoutCooldown = 4, -- seconds before a defeated team can fight again
+	FreeRollChance = 0.1, -- extra drop on each defeat
+}
 
 Config.Announce = {
 	MinOneIn = 10000, -- server-wide announcement at or rarer than this (stud × variant odds)

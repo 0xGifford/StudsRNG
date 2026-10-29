@@ -57,6 +57,9 @@ local TEMPLATE: PlayerData = {
 	Quests = { Day = -1, List = {} },
 	LastOnline = 0,
 	TilesClaimed = 0,
+	IndexClaims = {}, -- [variant] = true: Index tab rewards claimed
+	RollCounts = {}, -- [stud key] = times rolled
+	EnemiesDefeated = 0,
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.
