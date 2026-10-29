@@ -108,9 +108,11 @@ function RollLogic.rollDrop(rng: Random, luck: number): StudDef?
 	return nil
 end
 
-function RollLogic.rollVariant(rng: Random, luck: number): VariantDef
+-- boosts: per-variant chance multipliers (Big Roll / Shiny Roll boosts).
+function RollLogic.rollVariant(rng: Random, luck: number, boosts: { [string]: number }?): VariantDef
 	for _, def in variantsRarestFirst do
-		if def.OneIn > 1 and rng:NextNumber() * def.OneIn < luck then
+		local boost = if boosts then boosts[def.Name] or 1 else 1
+		if def.OneIn > 1 and rng:NextNumber() * def.OneIn < luck * boost then
 			return def
 		end
 	end
@@ -145,8 +147,8 @@ end
 -- the variant multiplies both (a StudDef can set its own), and so does the
 -- stud's level.
 function RollLogic.statsOf(def: StudDef, variant: VariantDef, level: number?): (number, number)
-	local strength = def.Strength or math.max(1, math.floor(1.5 * def.OneIn ^ 0.38 + 0.5))
-	local health = def.Health or math.max(5, math.floor(7 * def.OneIn ^ 0.36 + 0.5))
+	local strength = def.Strength or math.max(2, math.floor(3 * def.OneIn ^ 0.38 + 0.5))
+	local health = def.Health or math.max(10, math.floor(14 * def.OneIn ^ 0.36 + 0.5))
 	local mult = (variant.Stats or 1) * RollLogic.levelBonus(level or 1)
 	return math.floor(strength * mult + 0.5), math.floor(health * mult + 0.5)
 end
@@ -289,12 +291,16 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 
 	-- Timed boosts and the global event
 	local boostLuck, boostClacks, boostSpeed = 0, 1, 1
+	local variantBoosts: { [string]: number } = {}
 	for id, active in ctx.ActiveBoosts do
 		local boost = Config.Boosts[id]
 		if active and boost then
 			boostLuck += boost.Luck or 0
 			boostClacks *= boost.Clacks or 1
 			boostSpeed *= boost.RollSpeed or 1
+			for name, multiplier in boost.Variants or {} do
+				variantBoosts[name] = (variantBoosts[name] or 1) * multiplier
+			end
 		end
 	end
 	local event = RollLogic.eventById(ctx.Event)
@@ -349,6 +355,10 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 		StudsPerRoll = if passes.DoubleRoll then 2 else 1,
 		ExtraRollChance = math.clamp(up("ExtraRollChance"), 0, 1),
 		VariantLuck = luck * (1 + up("VariantLuckPct")),
+		VariantBoosts = variantBoosts,
+		TeamStrength = 1 + up("StrengthPct"),
+		TeamHealth = 1 + up("HealthPct"),
+		DropLuck = 1 + up("DropLuckPct"),
 		PressesPerFreeRoll = math.max(Config.Economy.MinPressesPerFreeRoll, math.floor(presses)),
 		MaxBankedFreeRolls = Config.Economy.MaxBankedFreeRolls + up("BankSize"),
 		CritChance = math.clamp(up("CritChance"), 0, 1),

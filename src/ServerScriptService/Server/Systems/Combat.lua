@@ -63,6 +63,8 @@ local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
 local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
+local Modifiers = require(Systems.Modifiers)
+local Boosts = require(Systems.Boosts)
 local Drops = require(Systems.Drops)
 local RewardService = require(Systems.RewardService)
 local Products = require(Systems.Products)
@@ -167,6 +169,9 @@ local function teamOf(player: Player): Team?
 	local data = PlayerData.get(player)
 	if not data then return nil end
 	local strength, health = RollLogic.teamStats(data.Equipped or {}, data.StudXP)
+	local stats = Modifiers.get(player)
+	strength = math.floor(strength * stats.TeamStrength)
+	health = math.floor(health * stats.TeamHealth)
 	local team = teams[player]
 	if not team then
 		team = { hp = health, maxHp = health, strength = strength, knockedUntil = 0, retreatUntil = 0, sent = "" }
@@ -685,7 +690,6 @@ local function defeat(enemy: Enemy)
 	for player in paid do
 		local data = PlayerData.get(player)
 		if data then
-			local rebirths = if typeof(data.Rebirths) == "number" then data.Rebirths else 0
 			-- Kill streak: chain defeats inside the window.
 			local now = os.clock()
 			local existing = streaks[player]
@@ -697,7 +701,9 @@ local function defeat(enemy: Enemy)
 			local streakBonus = 1 + (streak.count - 1) * Settings.StreakBonus
 			local rank = ranks[player]
 			local tier = if rank then rankRewards(rank) else nil
-			local amount = math.floor(enemy.reward * (1 + rebirths * Config.Rebirth.ClacksPerRebirth) * streakBonus * (if tier then tier.Clacks else 1))
+			-- Paid like pressing keys: by the player's whole Clacks multiplier
+			-- (studs, rebirths, upgrades, boosts, passes, events).
+			local amount = math.floor(enemy.reward * Modifiers.get(player).ClackMultiplier * streakBonus * (if tier then tier.Clacks else 1))
 			Economy.addClacks(player, amount)
 			local extra = ""
 			if tier then
@@ -732,6 +738,21 @@ local function defeat(enemy: Enemy)
 			StateSync.push(player, "StudXP", data.StudXP)
 			if enemy.boss then
 				Drops.roll(player, if enemy.zoneBoss then Config.Drops.ZoneBossLuck else Config.Drops.MiniBossLuck, enemy.def.Level)
+			end
+			-- Rare drops: variant boosts (Big Roll, Shiny Roll).
+			local dropBonus = if enemy.zoneBoss then Settings.TitanDropBonus elseif enemy.boss then Settings.BossDropBonus else 1
+			for _, drop in Settings.RareDrops do
+				if rng:NextNumber() < drop.Chance * dropBonus * Modifiers.get(player).DropLuck then
+					local boost = Config.Boosts[drop.Boost]
+					if boost and Boosts.add(player, drop.Boost, boost.Duration) then
+						Net.fire(player, "Notify", {
+							Kind = "RareDrop",
+							Boost = drop.Boost,
+							Text = `RARE DROP! {boost.Name}: {boost.Short} chance for {math.floor(boost.Duration / 60)} min`,
+							Color = boost.Color,
+						})
+					end
+				end
 			end
 			if rank then
 				notify(player, `{enemy.name} defeated! You placed #{rank} · +{shortNumber(amount)} Clacks{extra}`, Color3.fromRGB(255, 205, 60))

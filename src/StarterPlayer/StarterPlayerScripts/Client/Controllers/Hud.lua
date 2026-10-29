@@ -66,7 +66,8 @@ local clacksScale: UIScale
 --------------------------------------------------------------------------
 
 local function side(name: string): Frame?
-	local frame = sideButtons:FindFirstChild(name)
+	-- HudLayout moves side buttons (left column, bottom bar): look everywhere.
+	local frame = Interface.HUD:FindFirstChild(name, true)
 	return if frame and frame:IsA("Frame") then frame else nil
 end
 
@@ -447,7 +448,17 @@ function Hud.start()
 	-- Side buttons open the menu of the same name (Upgrades is the
 	-- full-screen tree, registered by UpgradeTree as a custom menu). One
 	-- with a Menu attribute is wired by Interface instead (Shared/Tags).
-	for _, frame in sideButtons:GetChildren() do
+	local sideFrames: { Instance } = {}
+	for _, frame in (sideButtons.Parent :: Instance):GetDescendants() do
+		if frame:IsA("Frame") and frame.Parent and (frame.Parent == sideButtons or frame.Parent.Name == "LeftButtons") then
+			table.insert(sideFrames, frame)
+		end
+	end
+	local movedUpgrades = top:FindFirstChild("Upgrades")
+	if movedUpgrades then
+		table.insert(sideFrames, movedUpgrades)
+	end
+	for _, frame in sideFrames do
 		if frame:IsA("Frame") and frame:FindFirstChild("Button") and frame:GetAttribute("Menu") == nil then
 			local name = frame.Name
 			Interface.bindButton(frame, function()

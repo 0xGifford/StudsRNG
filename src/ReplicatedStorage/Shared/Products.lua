@@ -102,14 +102,19 @@ local products: { [string]: ProductDef } = {
 		Icon = "⚡", Boost = "Speed", Description = "Roll x2 faster for 3 minutes." },
 	ClacksBoost = { Id = 0, Name = "Clacks Boost", Section = "Boosts", Order = 4, Color = "Orange",
 		Icon = "💰", Boost = "Clacks", Description = "x2 Clacks for 3 minutes." },
+	BigRollBoost = { Id = 0, Name = "Big Roll", Section = "Boosts", Order = 5, Color = "Orange",
+		Icon = "🔶", Boost = "BigRoll", Description = "x4 chance of Big studs (x2 Huge and Jumbo) for 2 minutes." },
+	ShinyRollBoost = { Id = 0, Name = "Shiny Roll", Section = "Boosts", Order = 6, Color = "Purple",
+		Icon = "✨", Boost = "ShinyRoll", Description = "x4 chance of Shiny studs for 2 minutes." },
 
 	-- Clack packs
-	Clacks140K = { Id = 0, Name = "140K Clacks", Section = "Clacks", Order = 1, Color = "Green",
-		Icon = "rbxassetid://117187305699068", Clacks = 140_000, Description = "A pouch of Clacks." },
-	Clacks2M = { Id = 0, Name = "2.10M Clacks", Section = "Clacks", Order = 2, Color = "Blue",
-		Icon = "rbxassetid://117187305699068", Clacks = 2_100_000, Badge = "+50%", Description = "A sack of Clacks, 50% bonus." },
-	Clacks5M = { Id = 0, Name = "5.60M Clacks", Section = "Clacks", Order = 3, Color = "Purple",
-		Icon = "rbxassetid://117187305699068", Clacks = 5_600_000, Badge = "+100%", Description = "A vault of Clacks, 100% bonus." },
+	-- Clacks scale with progress (Rewards.scale: rebirths × best zone).
+	Clacks140K = { Id = 0, Name = "Pouch of Clacks", Section = "Clacks", Order = 1, Color = "Green",
+		Icon = "rbxassetid://117187305699068", Clacks = 20_000, Description = "A pouch of Clacks. Grows with your progress." },
+	Clacks2M = { Id = 0, Name = "Sack of Clacks", Section = "Clacks", Order = 2, Color = "Blue",
+		Icon = "rbxassetid://117187305699068", Clacks = 300_000, Badge = "+50%", Description = "A sack of Clacks, 50% bonus. Grows with your progress." },
+	Clacks5M = { Id = 0, Name = "Vault of Clacks", Section = "Clacks", Order = 3, Color = "Purple",
+		Icon = "rbxassetid://117187305699068", Clacks = 800_000, Badge = "+100%", Description = "A vault of Clacks, 100% bonus. Grows with your progress." },
 
 	-- Bought from other menus
 	SkipRebirth = { Id = 0, Name = "Skip Rebirth", Order = 0, Color = "Sunset", Icon = "🔁",

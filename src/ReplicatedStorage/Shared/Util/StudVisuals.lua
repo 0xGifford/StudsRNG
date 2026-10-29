@@ -90,14 +90,23 @@ local PRESETS: { [string]: Preset } = {
 		SpreadAngle = Vector2.new(180, 180) },
 }
 
-local function makeEmitter(name: string, preset: Preset, color: Color3): ParticleEmitter
+local function scaleSequence(sequence: NumberSequence, factor: number): NumberSequence
+	local points = {}
+	for _, point in sequence.Keypoints do
+		table.insert(points, NumberSequenceKeypoint.new(point.Time, point.Value * factor, point.Envelope * factor))
+	end
+	return NumberSequence.new(points)
+end
+
+local function makeEmitter(name: string, preset: Preset, color: Color3, scale: number?): ParticleEmitter
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = name
 	emitter.Texture = preset.Texture
 	emitter.Rate = preset.Rate
 	emitter.Lifetime = preset.Lifetime
 	emitter.Speed = preset.Speed
-	emitter.Size = preset.Size
+	-- Bigger studs, bigger particles (gently: square root of the size).
+	emitter.Size = if scale and scale > 1 then scaleSequence(preset.Size, math.sqrt(scale)) else preset.Size
 	emitter.Transparency = preset.Transparency or NumberSequence.new(0)
 	emitter.LightEmission = preset.LightEmission or 0
 	emitter.SpreadAngle = preset.SpreadAngle or Vector2.new(30, 30)
@@ -115,10 +124,15 @@ local function basePart(): BasePart
 		return template:Clone()
 	end
 
+	-- A classic brick: the studs surface on all six faces.
 	local part = Instance.new("Part")
 	part.Size = Config.Visuals.Size
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.TopSurface = Enum.SurfaceType.Studs
+	part.BottomSurface = Enum.SurfaceType.Studs
+	part.FrontSurface = Enum.SurfaceType.Studs
+	part.BackSurface = Enum.SurfaceType.Studs
+	part.LeftSurface = Enum.SurfaceType.Studs
+	part.RightSurface = Enum.SurfaceType.Studs
 	if Config.Visuals.FallbackTextureId ~= "" then
 		for _, face in Enum.NormalId:GetEnumItems() do
 			local texture = Instance.new("Texture")
@@ -158,16 +172,17 @@ function StudVisuals.build(def: StudDef, variant: VariantDef): BasePart
 	part.CastShadow = false
 	part.Massless = true
 
-	part.Size *= StudVisuals.scaleOf(variant)
+	local scale = StudVisuals.scaleOf(variant)
+	part.Size *= scale
 	local color = StudVisuals.colorOf(def, variant)
 	part.Color = color
 	part.Material = variant.MaterialOverride or def.Material
 
 	if def.Particle and PRESETS[def.Particle] then
-		makeEmitter("StudParticles", PRESETS[def.Particle], color).Parent = part
+		makeEmitter("StudParticles", PRESETS[def.Particle], color, scale).Parent = part
 	end
 	if variant.Effect and PRESETS[variant.Effect] then
-		makeEmitter("VariantParticles", PRESETS[variant.Effect], color).Parent = part
+		makeEmitter("VariantParticles", PRESETS[variant.Effect], color, scale).Parent = part
 	end
 
 	if def.Light or variant.Effect == "Rainbow" or variant.Effect == "Gold" then
@@ -175,9 +190,22 @@ function StudVisuals.build(def: StudDef, variant: VariantDef): BasePart
 		light.Name = "Glow"
 		light.Color = color
 		light.Brightness = 1.5
-		light.Range = 6
+		light.Range = 6 * math.sqrt(scale)
 		light.Shadows = false
 		light.Parent = part
+	end
+
+	-- Shiny / Inverted stand out with an outline (any number of these can
+	-- show at once, unlike Highlights; StudFollowers adds a Highlight to
+	-- your own).
+	if variant.Outline then
+		local outline = Instance.new("SelectionBox")
+		outline.Name = "Outline"
+		outline.Adornee = part
+		outline.Color3 = variant.Outline
+		outline.LineThickness = 0.035 * part.Size.X
+		outline.SurfaceTransparency = 1
+		outline.Parent = part
 	end
 
 	if variant.Effect == "Rainbow" then

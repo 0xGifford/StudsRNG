@@ -117,7 +117,24 @@ local list: { UpgradeDef } = {
 		Q = 0, R = 3, Requires = { "Storage" }, Format = "Flat", Suffix = "slot" },
 	{ Id = "Fusion", Name = "Efficient Fusion", Icon = "🔮", Description = "Fusing needs one fewer stud.",
 		Stat = "FuseDiscount", PerLevel = 1, MaxLevel = 1, BaseCost = 250_000, CostGrowth = 1,
-		Q = 1, R = 1, Requires = { "Slot1" }, Format = "Flat", Suffix = "fewer studs" },
+		Q = 1, R = 2, Requires = { "Storage" }, Format = "Flat", Suffix = "fewer studs" },
+
+	-- South-east: combat
+	{ Id = "Sharp1", Name = "Sharp Studs I", Icon = "🗡️", Description = "Your studs hit harder.",
+		Stat = "StrengthPct", PerLevel = 0.15, MaxLevel = 5, BaseCost = 1_500, CostGrowth = 1.7,
+		Q = 1, R = 1, Requires = { "Slot1" }, Format = "Percent", Suffix = "Strength" },
+	{ Id = "Sharp2", Name = "Sharp Studs II", Icon = "🗡️", Description = "Your studs hit much harder.",
+		Stat = "StrengthPct", PerLevel = 0.3, MaxLevel = 5, BaseCost = 40_000, CostGrowth = 1.8,
+		Q = 2, R = 1, Requires = { "Sharp1" }, Format = "Percent", Suffix = "Strength" },
+	{ Id = "Sharp3", Name = "Sharp Studs III", Icon = "⚔️", Description = "Your studs hit devastatingly hard.",
+		Stat = "StrengthPct", PerLevel = 0.6, MaxLevel = 5, BaseCost = 1_500_000, CostGrowth = 1.9,
+		Q = 3, R = 1, Requires = { "Sharp2" }, Format = "Percent", Suffix = "Strength" },
+	{ Id = "Tough1", Name = "Tough Studs", Icon = "🛡️", Description = "Your studs take more hits.",
+		Stat = "HealthPct", PerLevel = 0.2, MaxLevel = 5, BaseCost = 20_000, CostGrowth = 1.8,
+		Q = 2, R = 2, Requires = { "Sharp2" }, Format = "Percent", Suffix = "Health" },
+	{ Id = "LootLuck", Name = "Loot Luck", Icon = "🎁", Description = "Better boss drops and more Big / Shiny Roll drops.",
+		Stat = "DropLuckPct", PerLevel = 0.25, MaxLevel = 4, BaseCost = 200_000, CostGrowth = 2,
+		Q = 3, R = 2, Requires = { "Tough1" }, Format = "Percent", Suffix = "drop luck" },
 
 	-- South-west: movement and zones
 	{ Id = "Swift1", Name = "Swift Feet I", Icon = "👟", Description = "Walk faster, press more keys.",

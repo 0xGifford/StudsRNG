@@ -56,7 +56,7 @@ end
 local function strip(part: BasePart)
 	-- Particles and lights don't render in a ViewportFrame; drop the cost.
 	for _, child in part:GetChildren() do
-		if child:IsA("ParticleEmitter") or child:IsA("Light") then
+		if child:IsA("ParticleEmitter") or child:IsA("Light") or child:IsA("SelectionBox") then
 			child:Destroy()
 		end
 	end
@@ -95,7 +95,9 @@ function StudCell.setViewport(viewport: ViewportFrame, def: StudDef, variant: Va
 
 	local part = StudVisuals.build(def, variant)
 	part.Name = "Stud"
-	part.Size = Vector3.one -- normalised so the camera framing always fits
+	-- Normalised so the framing fits, but bigger variants still read bigger:
+	-- Base 0.75 → Jumbo 1.15.
+	part.Size = Vector3.one * (0.75 + math.clamp((StudVisuals.scaleOf(variant) - 1) / 2.6, 0, 1) * 0.4)
 	part.CFrame = CFrame.Angles(math.rad(22), math.rad(38), 0)
 	strip(part)
 	part.Parent = viewport

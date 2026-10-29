@@ -29,9 +29,11 @@ local function container(): Instance?
 	return side and side:FindFirstChild("Buttons")
 end
 
+-- A kit side button to copy, wherever HudLayout has moved it.
 local function template(buttons: Instance): Frame?
+	local side = buttons.Parent or buttons
 	for _, name in TEMPLATES do
-		local frame = buttons:FindFirstChild(name)
+		local frame = side:FindFirstChild(name, true)
 		if frame and frame:IsA("Frame") and frame:FindFirstChild("Button") then
 			return frame
 		end
@@ -51,7 +53,7 @@ function SideButtons.add(menu: string, label: string, icon: string, order: numbe
 		warn(`[SideButtons] HUD.Side.Buttons not found; no button for {menu}`)
 		return nil
 	end
-	local existing = buttons:FindFirstChild(menu)
+	local existing = (buttons.Parent or buttons):FindFirstChild(menu, true)
 	if existing and existing:IsA("Frame") then
 		return existing
 	end
