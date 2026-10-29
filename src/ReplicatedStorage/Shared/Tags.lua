@@ -25,14 +25,13 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                 when falling off the map).
 --                   ZoneId    string   default: the Zone it sits in
 --   ZoneBarrier   BasePart (or a Model of them) blocking a zone's entrance.
---                 Opens locally once the zone is owned. Until then, walking
---                 up to it shows the buy prompt (a ScreenGui) with the zone's
---                 title, its price in Clacks and a Buy button.
+--                 Opens locally once the zone is owned. Until then a sign on
+--                 it (SurfaceGui) shows the zone's title, its price in Clacks
+--                 and a BUY button you click on the barrier itself.
 --                   ZoneId          string   default: the Zone it sits in
---                   ShowPrompt      boolean  default true
---                   PromptDistance  number   studs from the barrier (default 30)
---                   Title           string   prompt title (default: emoji + zone name)
---                   OpenOnTouch     boolean  bumping it opens the Teleporter (default false)
+--                   ShowPrompt      boolean  show the sign (default true)
+--                   PromptDistance  number   studs the sign renders from (default 150)
+--                   Title           string   sign title (default: emoji + zone name)
 --   ZoneGate      Decoration around a barrier (arch, pillars). Hidden locally
 --                 once the zone is owned when HideWhenOwned is true.
 --                   ZoneId          string
@@ -85,7 +84,6 @@ local Tags = {
 		ShowPrompt = "ShowPrompt",
 		PromptDistance = "PromptDistance",
 		Title = "Title",
-		OpenOnTouch = "OpenOnTouch",
 		HideWhenOwned = "HideWhenOwned",
 		KeyValue = "KeyValue",
 		Multiplier = "Multiplier",

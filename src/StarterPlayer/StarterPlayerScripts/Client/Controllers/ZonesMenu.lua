@@ -12,10 +12,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- The Teleporter window (numbered zone rows, Slime RNG style: teleport to
 -- owned zones, buy the next one with Clacks) and the zone barriers in the
 -- world (Shared/Tags):
---   ZoneBarrier  opens (locally) once its zone is owned. Until then, walking
---                up to it shows the buy prompt (a ScreenGui): the zone's
---                title, its price in Clacks and a Buy button. Attributes:
---                ZoneId, ShowPrompt, PromptDistance, Title, OpenOnTouch.
+--   ZoneBarrier  opens (locally) once its zone is owned. Until then a sign
+--                (SurfaceGui, both faces of its biggest part) shows the
+--                zone's title, its price in Clacks and a BUY button you click
+--                right on the barrier. Buying never teleports: the barrier
+--                opens and you walk in. Attributes: ZoneId, ShowPrompt (show
+--                the sign), PromptDistance (how far it renders), Title.
 --   ZoneGate     hidden (locally) once owned when HideWhenOwned is set.
 -- The server decides ownership (Systems/ZoneShop); barriers are cosmetic,
 -- keys in unowned zones never pay anyway.
@@ -40,9 +42,10 @@ local ZonesMenu = {}
 
 local MENU = "Zones"
 local ROW_COLOR = Color3.fromRGB(36, 38, 50)
-local TOUCH_COOLDOWN = 3
-local PROMPT_DISTANCE = 30 -- studs from a locked barrier
-local PROMPT_RATE = 0.15 -- seconds between proximity checks
+local SIGN_DISTANCE = 150 -- studs the barrier sign renders from
+local SIGN_SIZE = Vector2.new(22, 12) -- studs
+local SIGN_PIXELS = 25 -- per stud
+local SIGN_LIFT = 8 -- studs from the barrier's bottom to the sign's centre
 
 local player = Players.LocalPlayer
 local items: ScrollingFrame
@@ -51,17 +54,16 @@ local pending = false
 
 -- Tagged barriers and gates we manage, with their parts' original look.
 type Saved = { Transparency: number, CanCollide: boolean }
+type Face = { gui: SurfaceGui, panel: Frame, title: TextLabel, price: TextLabel, note: TextLabel, button: Frame }
 type Blocker = {
 	root: Instance,
 	tag: string,
 	parts: { [BasePart]: Saved },
 	connections: { RBXScriptConnection },
+	sign: { Face }?,
+	signPart: BasePart?,
 }
-type Prompt = { gui: ScreenGui, title: TextLabel, price: TextLabel, note: TextLabel, button: Frame }
 local blockers: { [Instance]: Blocker } = {}
-local lastTouch = 0
-local prompt: Prompt? = nil
-local promptZone: string? = nil
 
 local function owned(id: string): boolean
 	local unlocked = State.get("UnlockedWorlds") or {}
@@ -213,68 +215,75 @@ local function refreshCards()
 end
 
 --------------------------------------------------------------------------
--- World barriers and gates
+-- Barrier signs (SurfaceGui on the barrier)
 --------------------------------------------------------------------------
 
-local function onBarrierTouched(blocker: Blocker, hit: BasePart)
-	local zone = Tags.zoneOf(blocker.root)
-	local character = player.Character
-	if not zone or not character or not hit:IsDescendantOf(character) or owned(zone) then return end
-	if not Tags.read(blocker.root, Tags.Attr.OpenOnTouch, false) then return end
-	if os.clock() - lastTouch < TOUCH_COOLDOWN then return end
-	lastTouch = os.clock()
-	if not Interface.isOpen(MENU) then
-		Interface.open(MENU)
+local playerGui: PlayerGui
+
+-- The part the sign goes on: the one with the biggest face.
+local function signPartOf(blocker: Blocker): BasePart?
+	local best: BasePart?, bestArea = nil, 0
+	for part in blocker.parts do
+		if part.Parent then
+			local size = part.Size
+			local area = math.max(size.X * size.Y, size.Z * size.Y)
+			if area > bestArea then
+				best, bestArea = part, area
+			end
+		end
 	end
+	return best
 end
 
---------------------------------------------------------------------------
--- Buy prompt (ScreenGui)
---------------------------------------------------------------------------
+local function makeFace(part: BasePart, face: Enum.NormalId, maxDistance: number): Face
+	-- Front/Back faces span X, Left/Right faces span Z.
+	local alongX = face == Enum.NormalId.Front or face == Enum.NormalId.Back
+	local width = if alongX then part.Size.X else part.Size.Z
+	local height = part.Size.Y
+	local scale = math.min(1, width * 0.9 / SIGN_SIZE.X, height * 0.9 / SIGN_SIZE.Y)
+	local lift = math.min(SIGN_LIFT, height / 2)
 
--- Title, Clack icon + price and a Buy button, at the bottom of the screen.
-local function makePrompt(): Prompt
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "ZonePrompt"
+	-- Parented to PlayerGui (adorned to the part) so the button takes clicks.
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "ZoneSign"
+	gui.Adornee = part
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = SIGN_PIXELS
+	gui.LightInfluence = 0
+	gui.MaxDistance = maxDistance
 	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 5
-	gui.Enabled = false
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
-	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.fromScale(0.5, 0.76)
-	panel.Size = UDim2.fromScale(0.34, 0.2)
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.new(0.5, 0, 0, (height - lift) * SIGN_PIXELS)
+	panel.Size = UDim2.fromOffset(SIGN_SIZE.X * SIGN_PIXELS * scale, SIGN_SIZE.Y * SIGN_PIXELS * scale)
 	panel.BackgroundColor3 = ROW_COLOR
 	panel.BackgroundTransparency = 0.05
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
-	local aspect = Instance.new("UIAspectRatioConstraint")
-	aspect.AspectRatio = 2.3
-	aspect.Parent = panel
-	local limit = Instance.new("UISizeConstraint")
-	limit.MaxSize = Vector2.new(520, 230)
-	limit.Parent = panel
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0.12, 0)
 	corner.Parent = panel
 	local stroke = Instance.new("UIStroke")
 	stroke.Name = "Outline"
-	stroke.Thickness = 4
+	stroke.Thickness = 8 * scale
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = panel
 
 	local title = Kit.label("")
 	title.Name = "Title"
-	title.Position = UDim2.fromScale(0.5, 0.2)
-	title.Size = UDim2.fromScale(0.9, 0.3)
+	title.Position = UDim2.fromScale(0.5, 0.19)
+	title.Size = UDim2.fromScale(0.9, 0.26)
 	title.Parent = panel
 
 	local priceRow = Instance.new("Frame")
 	priceRow.Name = "Price"
 	priceRow.BackgroundTransparency = 1
 	priceRow.AnchorPoint = Vector2.new(0.5, 0.5)
-	priceRow.Position = UDim2.fromScale(0.5, 0.47)
+	priceRow.Position = UDim2.fromScale(0.5, 0.46)
 	priceRow.Size = UDim2.fromScale(0.9, 0.22)
 	priceRow.Parent = panel
 	local layout = Instance.new("UIListLayout")
@@ -293,20 +302,19 @@ local function makePrompt(): Prompt
 	icon.LayoutOrder = 1
 	icon.Parent = priceRow
 	Kit.setIcon(icon, UIConfig.Icons.Clacks)
-	-- Its own label, never wrapping: the kit's labels wrap, which can break a
-	-- short price like "400K" across lines and show only part of it.
+	-- Its own label, never wrapping, so "400K" can't break across lines.
 	local price = Instance.new("TextLabel")
 	price.Name = "Amount"
 	price.BackgroundTransparency = 1
-	price.Size = UDim2.fromScale(0.6, 1)
+	price.AutomaticSize = Enum.AutomaticSize.X
+	price.Size = UDim2.fromScale(0, 1)
 	price.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-	price.TextScaled = true
+	price.TextSize = SIGN_SIZE.Y * SIGN_PIXELS * scale * 0.2
 	price.TextWrapped = false
-	price.TextXAlignment = Enum.TextXAlignment.Left
 	price.TextColor3 = Color3.new(1, 1, 1)
 	price.LayoutOrder = 2
 	local priceStroke = Instance.new("UIStroke")
-	priceStroke.Thickness = 2.5
+	priceStroke.Thickness = 4 * scale
 	priceStroke.Color = Color3.fromRGB(12, 12, 16)
 	priceStroke.Parent = price
 	price.Parent = priceRow
@@ -314,100 +322,87 @@ local function makePrompt(): Prompt
 	local button = Kit.button("Green", "BUY")
 	button.Name = "Buy"
 	button.AnchorPoint = Vector2.new(0.5, 0.5)
-	button.Position = UDim2.fromScale(0.5, 0.78)
-	button.Size = UDim2.fromScale(0.42, 0.3)
+	button.Position = UDim2.fromScale(0.5, 0.77)
+	button.Size = UDim2.fromScale(0.5, 0.3)
 	button.Parent = panel
-	Interface.bindButton(button, function()
-		local def = if promptZone then Zones.ById[promptZone] else nil
-		if def then
-			onZone(def)
-		end
-	end)
 
 	-- Shown instead of the button when an earlier zone is still locked.
 	local note = Kit.label("")
 	note.Name = "Note"
-	note.Position = UDim2.fromScale(0.5, 0.78)
+	note.Position = UDim2.fromScale(0.5, 0.77)
 	note.Size = UDim2.fromScale(0.9, 0.2)
 	note.TextColor3 = Color3.fromRGB(255, 120, 120)
 	note.Visible = false
 	note.Parent = panel
 
-	gui.Parent = player:WaitForChild("PlayerGui")
-	return { gui = gui, title = title, price = price, note = note, button = button }
+	gui.Parent = playerGui
+	return { gui = gui, panel = panel, title = title, price = price, note = note, button = button }
 end
 
--- How far a point is from a part's box.
-local function distanceTo(part: BasePart, position: Vector3): number
-	local localPoint = part.CFrame:PointToObjectSpace(position)
-	local half = part.Size / 2
-	local clamped = Vector3.new(
-		math.clamp(localPoint.X, -half.X, half.X),
-		math.clamp(localPoint.Y, -half.Y, half.Y),
-		math.clamp(localPoint.Z, -half.Z, half.Z)
-	)
-	return (localPoint - clamped).Magnitude
-end
-
--- The locked zone whose barrier the player is standing at, if any.
-local function promptTarget(): (Zones.ZoneDef?, Blocker?)
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not (root and root:IsA("BasePart")) or Interface.isOpen() then return nil, nil end
-	local best: Zones.ZoneDef?, bestBlocker: Blocker?, bestDistance = nil, nil, math.huge
-	for _, blocker in blockers do
-		if blocker.tag == Tags.ZoneBarrier and Tags.read(blocker.root, Tags.Attr.ShowPrompt, true) then
-			local zone = Tags.zoneOf(blocker.root)
-			local def = if zone then Zones.ById[zone] else nil
-			if def and not owned(def.Id) then
-				local reach = Tags.read(blocker.root, Tags.Attr.PromptDistance, PROMPT_DISTANCE)
-				for part in blocker.parts do
-					local distance = distanceTo(part, root.Position)
-					if distance <= reach and distance < bestDistance then
-						best, bestBlocker, bestDistance = def, blocker, distance
-					end
-				end
-			end
+local function clearSign(blocker: Blocker)
+	if blocker.sign then
+		for _, face in blocker.sign do
+			face.gui:Destroy()
 		end
 	end
-	return best, bestBlocker
+	blocker.sign = nil
+	blocker.signPart = nil
 end
 
-local function updatePrompt()
-	local def, blocker = promptTarget()
-	if not def or not blocker then
-		promptZone = nil
-		if prompt then prompt.gui.Enabled = false end
+local function updateSign(blocker: Blocker)
+	local zone = Tags.zoneOf(blocker.root)
+	local def = if zone then Zones.ById[zone] else nil
+	local part = signPartOf(blocker)
+	if blocker.tag ~= Tags.ZoneBarrier or not def or owned(def.Id) or not part
+		or not Tags.read(blocker.root, Tags.Attr.ShowPrompt, true) then
+		clearSign(blocker)
 		return
 	end
-	local p = prompt or makePrompt()
-	prompt = p
-	promptZone = def.Id
+
+	-- (Re)build when the part changed (streamed in, resized, replaced).
+	if not blocker.sign or blocker.signPart ~= part then
+		clearSign(blocker)
+		local maxDistance = Tags.read(blocker.root, Tags.Attr.PromptDistance, SIGN_DISTANCE)
+		local alongX = part.Size.Z <= part.Size.X
+		local faces = if alongX then { Enum.NormalId.Front, Enum.NormalId.Back } else { Enum.NormalId.Left, Enum.NormalId.Right }
+		local sign: { Face } = {}
+		for _, normal in faces do
+			local face = makeFace(part, normal, maxDistance)
+			local zoneDef = def
+			Interface.bindButton(face.button, function()
+				onZone(zoneDef)
+			end)
+			table.insert(sign, face)
+		end
+		blocker.sign = sign
+		blocker.signPart = part
+	end
 
 	local nextZone = Zones.nextFor(State.get("UnlockedWorlds") or {})
 	local isNext = nextZone ~= nil and nextZone.Id == def.Id
 	local price = priceOf(def)
 	local clacks = State.get("Clacks") or 0
 	local short = clacks < price
-	p.title.Text = Tags.string(blocker.root, Tags.Attr.Title) or `{def.Emoji} {def.Name}`
-	p.title.TextColor3 = def.Color
-	local outline = p.gui:FindFirstChild("Outline", true)
-	if outline and outline:IsA("UIStroke") then
-		outline.Color = def.Color
+	for _, face in blocker.sign :: { Face } do
+		face.title.Text = Tags.string(blocker.root, Tags.Attr.Title) or `{def.Emoji} {def.Name}`
+		face.title.TextColor3 = def.Color
+		local outline = face.panel:FindFirstChild("Outline")
+		if outline and outline:IsA("UIStroke") then
+			outline.Color = def.Color
+		end
+		face.price.Text = Format.number(price)
+		-- Red price and "NEED 297K" when short, so it's clear what's missing.
+		face.price.TextColor3 = if short and isNext then Color3.fromRGB(255, 120, 120) else Color3.new(1, 1, 1)
+		face.button.Visible = isNext
+		face.note.Visible = not isNext
+		if isNext then
+			Kit.paint(face.button, if short then "Sunset" else "Green")
+			Interface.setText(face.button, if short then `NEED {Format.number(price - clacks)}` else "BUY")
+		else
+			local previous = previousOf(def)
+			face.note.Text = `Unlock {if previous then previous.Name else "the previous zone"} first`
+		end
 	end
-	p.price.Text = Format.number(price)
-	-- Red price and "NEED 297K" when short, so it's clear what's missing.
-	p.price.TextColor3 = if short and isNext then Color3.fromRGB(255, 120, 120) else Color3.new(1, 1, 1)
-	p.button.Visible = isNext
-	p.note.Visible = not isNext
-	if isNext then
-		Kit.paint(p.button, if short then "Sunset" else "Green")
-		Interface.setText(p.button, if short then `NEED {Format.number(price - clacks)}` else "BUY")
-	else
-		local previous = previousOf(def)
-		p.note.Text = `Unlock {if previous then previous.Name else "the previous zone"} first`
-	end
-	p.gui.Enabled = true
 end
 
 --------------------------------------------------------------------------
@@ -435,11 +430,6 @@ local function refreshBlocker(blocker: Blocker)
 	for _, part in partsOf(blocker.root) do
 		if not blocker.parts[part] then
 			blocker.parts[part] = { Transparency = part.Transparency, CanCollide = part.CanCollide }
-			if barrier then
-				table.insert(blocker.connections, part.Touched:Connect(function(hit)
-					onBarrierTouched(blocker, hit)
-				end))
-			end
 		end
 	end
 
@@ -453,7 +443,7 @@ local function refreshBlocker(blocker: Blocker)
 			blocker.parts[part] = nil
 		end
 	end
-
+	updateSign(blocker)
 end
 
 local function refreshWorld()
@@ -482,6 +472,7 @@ local function untrack(root: Instance)
 	local blocker = blockers[root]
 	if not blocker then return end
 	blockers[root] = nil
+	clearSign(blocker)
 	for _, connection in blocker.connections do
 		connection:Disconnect()
 	end
@@ -507,6 +498,7 @@ end
 
 function ZonesMenu.start()
 	Interface.setup()
+	playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 	local window = Interface.Canva:WaitForChild(MENU)
 	items = window:WaitForChild("Main"):WaitForChild("Items") :: ScrollingFrame
 
@@ -524,19 +516,15 @@ function ZonesMenu.start()
 			refreshWorld()
 			if Interface.isOpen(MENU) then refreshCards() end
 		elseif field == "Clacks" then
+			for _, blocker in blockers do
+				updateSign(blocker)
+			end
 			if Interface.isOpen(MENU) then refreshCards() end
 		end
 	end)
 
 	watchTag(Tags.ZoneBarrier)
 	watchTag(Tags.ZoneGate)
-
-	task.spawn(function()
-		while true do
-			updatePrompt()
-			task.wait(PROMPT_RATE)
-		end
-	end)
 end
 
 return ZonesMenu

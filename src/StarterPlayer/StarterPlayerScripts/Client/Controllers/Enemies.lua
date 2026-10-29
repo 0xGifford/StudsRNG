@@ -10,10 +10,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 
 --!strict
 -- The client side of Systems/Combat: a name, level and health bar over every
--- enemy, a "Fight" prompt (E, or tap / click the prompt) that sends your
--- equipped studs at it, damage numbers off the enemy you're fighting, and a
--- team bar (your studs' Health and Strength) with a RETREAT button while a
--- fight is on. The server decides everything; this only shows it.
+-- enemy (gold and bigger for Mini Bosses), damage numbers and hit sparks off
+-- the enemy your studs are fighting, and a team bar (your studs' Health and
+-- Strength) with a RETREAT button while a fight is on. Fights start on their
+-- own when an enemy reaches you; the server decides everything, this only
+-- shows it.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -21,7 +22,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared.Config)
 local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
@@ -36,11 +36,12 @@ local Enemies = {}
 local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 local HP_GREEN = Color3.fromRGB(90, 230, 100)
 local HP_RED = Color3.fromRGB(255, 80, 80)
+local BOSS_GOLD = Color3.fromRGB(255, 205, 60)
 
 local player = Players.LocalPlayer
 local playerGui: PlayerGui
 
-type Tracked = { gui: BillboardGui, fill: Frame, amount: TextLabel, prompt: ProximityPrompt, last: number, connections: { RBXScriptConnection } }
+type Tracked = { gui: BillboardGui, fill: Frame, amount: TextLabel, last: number, connections: { RBXScriptConnection } }
 local tracked: { [Model]: Tracked } = {}
 
 local teamGui: ScreenGui
@@ -126,6 +127,31 @@ local function damagePopup(model: Model, amount: number)
 	end)
 end
 
+-- A quick burst of sparks where a stud dashed into the enemy.
+local function hitSparks(model: Model)
+	local body = model.PrimaryPart
+	if not body then return end
+	local attachment = Instance.new("Attachment")
+	local offset = Vector3.new(math.random() - 0.5, math.random() * 0.6, math.random() - 0.5).Unit * (body.Size.X / 2)
+	attachment.Position = offset
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparks.Color = ColorSequence.new(Color3.fromRGB(255, 240, 150), Color3.fromRGB(255, 150, 60))
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 0) })
+	sparks.Lifetime = NumberRange.new(0.2, 0.4)
+	sparks.Speed = NumberRange.new(10, 18)
+	sparks.SpreadAngle = Vector2.new(70, 70)
+	sparks.EmissionDirection = Enum.NormalId.Top
+	sparks.Enabled = false
+	sparks.Parent = attachment
+	attachment.Parent = body
+	sparks:Emit(10)
+	task.delay(0.6, function()
+		attachment:Destroy()
+	end)
+end
+
 local function refresh(model: Model, entry: Tracked)
 	local health = model:GetAttribute("Health")
 	local max = model:GetAttribute("MaxHealth")
@@ -135,12 +161,9 @@ local function refresh(model: Model, entry: Tracked)
 	entry.amount.Text = `{Format.number(math.max(0, health))} / {Format.number(max)}`
 	if health < entry.last and fighting(model) then
 		damagePopup(model, entry.last - health)
+		hitSparks(model)
 	end
 	entry.last = health
-	-- Only enemies in zones you own can be fought.
-	local zoneId = model:GetAttribute("ZoneId")
-	local owned = (State.get("UnlockedWorlds") or {})[zoneId] == true
-	entry.prompt.Enabled = owned and not fighting(model)
 end
 
 local function track(instance: Instance)
@@ -149,40 +172,40 @@ local function track(instance: Instance)
 	local body = model.PrimaryPart or model:WaitForChild("Body", 5)
 	if not (body and body:IsA("BasePart")) or not model.Parent then return end
 
+	local boss = model:GetAttribute("Boss") == true
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "EnemyBar"
 	gui.Adornee = body
-	gui.Size = UDim2.fromOffset(150, 46)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, body.Size.Y / 2 + 2.2, 0)
-	gui.MaxDistance = 90
+	gui.Size = if boss then UDim2.fromOffset(220, 76) else UDim2.fromOffset(150, 46)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, body.Size.Y / 2 + (if boss then 4 else 2.2), 0)
+	gui.MaxDistance = if boss then 160 else 90
 	gui.LightInfluence = 0
 	local level = model:GetAttribute("Level")
-	label(gui, `{model.Name}  Lv.{if typeof(level) == "number" then level else 1}`, Color3.new(1, 1, 1), UDim2.fromScale(1, 0.45), UDim2.fromScale(0.5, 0.22))
-	local _, fill = bar(gui, UDim2.fromScale(0.95, 0.4), UDim2.fromScale(0.5, 0.72))
+	local levelText = `Lv.{if typeof(level) == "number" then level else 1}`
+	local fill: Frame
+	if boss then
+		local tag = label(gui, "👑 MINI BOSS", BOSS_GOLD, UDim2.fromScale(1, 0.3), UDim2.fromScale(0.5, 0.15))
+		local gradient = Instance.new("UIGradient")
+		gradient.Color = ColorSequence.new(Color3.fromRGB(255, 240, 150), BOSS_GOLD)
+		gradient.Rotation = 90
+		gradient.Parent = tag
+		label(gui, `{model.Name}  {levelText}`, Color3.new(1, 1, 1), UDim2.fromScale(1, 0.28), UDim2.fromScale(0.5, 0.45))
+		local back
+		back, fill = bar(gui, UDim2.fromScale(0.98, 0.3), UDim2.fromScale(0.5, 0.8))
+		local stroke = back:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = BOSS_GOLD
+		end
+	else
+		label(gui, `{model.Name}  {levelText}`, Color3.new(1, 1, 1), UDim2.fromScale(1, 0.45), UDim2.fromScale(0.5, 0.22))
+		_, fill = bar(gui, UDim2.fromScale(0.95, 0.4), UDim2.fromScale(0.5, 0.72))
+	end
 	local amount = label(fill.Parent :: Instance, "", Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.85), UDim2.fromScale(0.5, 0.5))
 	amount.ZIndex = 3
 	gui.Parent = playerGui
 
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "Fight"
-	prompt.ActionText = "Fight"
-	prompt.ObjectText = model.Name
-	prompt.HoldDuration = 0
-	prompt.KeyboardKeyCode = Enum.KeyCode.E
-	prompt.RequiresLineOfSight = false
-	prompt.MaxActivationDistance = Config.Combat.FightRange - 4
-	prompt.Parent = body
-
-	local entry: Tracked = { gui = gui, fill = fill, amount = amount, prompt = prompt, last = math.huge, connections = {} }
+	local entry: Tracked = { gui = gui, fill = fill, amount = amount, last = math.huge, connections = {} }
 	tracked[model] = entry
-	table.insert(entry.connections, prompt.Triggered:Connect(function()
-		local id = model:GetAttribute("EnemyId")
-		if typeof(id) ~= "number" then return end
-		local response = State.fightEnemy(id)
-		if not response.Ok then
-			Interface.toastError(response)
-		end
-	end))
 	table.insert(entry.connections, model.AttributeChanged:Connect(function()
 		refresh(model, entry)
 	end))
@@ -198,7 +221,6 @@ local function untrack(instance: Instance)
 		connection:Disconnect()
 	end
 	entry.gui:Destroy()
-	entry.prompt:Destroy()
 end
 
 local function refreshAll()
@@ -281,8 +303,6 @@ function Enemies.start()
 	State.Changed:Connect(function(field)
 		if field == "Team" then
 			refreshTeam()
-		elseif field == "UnlockedWorlds" then
-			refreshAll()
 		end
 	end)
 	refreshTeam()
