@@ -14,15 +14,18 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- upgrade) and turns server announcements into chat messages.
 --
 -- The reveal (Slime RNG style):
---   * the screen dims and the HUD steps aside; AUTO and HIDE sit at the
---     bottom while rolling (and for as long as Auto is on)
+--   * the screen dims and the HUD steps aside; AUTO sits at the bottom
+--     while rolling (and for as long as Auto is on), HIDE next to it only
+--     while Auto is on
 --   * above the player's head a vertical reel of studs scrolls down, each
 --     with its "1 / X" odds above and name below; white dashes mark the
 --     centre slot and a clover badge shows the player's luck
 --   * the reel eases out onto the result, which pops with light rays
 --   * the result's odds and name then float over the player in the world
--- HIDE skips the reel (results still float over the player). Faster
--- rolling = faster reels. The server decided the results before the reel
+-- HIDE (Auto only) hides the whole reveal: no dim, the HUD stays, and a small
+-- roll display at the top of the screen flicks through studs and lands on
+-- each result instead, with AUTO / HIDE tucked under it. Faster rolling =
+-- faster reels. The server decided the results before the reel
 -- starts: it's pure theatre.
 
 local Players = game:GetService("Players")
@@ -67,7 +70,7 @@ local VISIBLE = 5 -- cells drawn per reel (centre ± 2)
 local player = Players.LocalPlayer
 local busy = false
 local auto = false
-local hidden = false -- HIDE: skip the reel
+local hidden = false -- HIDE: the small top display instead of the reel (Auto only)
 
 local gui: ScreenGui
 local dim: Frame
@@ -76,6 +79,15 @@ local controls: Frame
 local autoButton: TextButton
 local hideButton: TextButton
 local cinematic = false
+
+-- The small roll display at the top (HIDE mode).
+local MINI_TOP = 58 -- px from the top edge, clear of the topbar
+local mini: Frame
+local miniStroke: UIStroke
+local miniViewport: ViewportFrame
+local miniOdds: TextLabel
+local miniName: TextLabel
+local miniScale: UIScale
 local hudWasEnabled = true
 
 --------------------------------------------------------------------------
@@ -178,11 +190,66 @@ local function buildGui()
 		RollReveal.setAuto(not auto)
 	end)
 	hideButton.Activated:Connect(function()
-		hidden = not hidden
-		setPill(hideButton, if hidden then "HIDE - ON" else "HIDE - OFF", hidden)
+		RollReveal.setHidden(not hidden)
 	end)
+	hideButton.Visible = false
 	setPill(autoButton, "AUTO - OFF", false)
 	setPill(hideButton, "HIDE - OFF", false)
+
+	-- Small roll display: stud on the left, odds and name on the right.
+	mini = Instance.new("Frame")
+	mini.Name = "MiniRoll"
+	mini.AnchorPoint = Vector2.new(0.5, 0)
+	mini.Position = UDim2.new(0.5, 0, 0, MINI_TOP)
+	mini.Size = UDim2.fromScale(0.24, 0.08)
+	mini.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+	mini.BackgroundTransparency = 0.1
+	mini.Visible = false
+	mini.Parent = gui
+	local miniRatio = Instance.new("UIAspectRatioConstraint")
+	miniRatio.AspectRatio = 4
+	miniRatio.Parent = mini
+	local miniLimit = Instance.new("UISizeConstraint")
+	miniLimit.MinSize = Vector2.new(200, 50)
+	miniLimit.MaxSize = Vector2.new(340, 85)
+	miniLimit.Parent = mini
+	local miniCorner = Instance.new("UICorner")
+	miniCorner.CornerRadius = UDim.new(0.3, 0)
+	miniCorner.Parent = mini
+	miniStroke = Instance.new("UIStroke")
+	miniStroke.Thickness = 3
+	miniStroke.Color = Color3.new(1, 1, 1)
+	miniStroke.Transparency = 0.5
+	miniStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	miniStroke.Parent = mini
+	miniScale = Instance.new("UIScale")
+	miniScale.Parent = mini
+
+	miniViewport = StudCell.viewport(Studs.List[1], Variants.ById.Normal)
+	miniViewport.AnchorPoint = Vector2.new(0.5, 0.5)
+	miniViewport.Position = UDim2.fromScale(0.14, 0.5)
+	miniViewport.Size = UDim2.fromScale(0.85, 0.85)
+	miniViewport.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	miniViewport.ZIndex = 2
+	miniViewport.Parent = mini
+	miniOdds = text(mini, "AUTO ROLL", ODDS_COLOR, UDim2.fromScale(0.68, 0.34), UDim2.fromScale(0.62, 0.3), 2)
+	miniName = text(mini, "", Color3.new(1, 1, 1), UDim2.fromScale(0.68, 0.42), UDim2.fromScale(0.62, 0.68), 2)
+end
+
+-- AUTO alone, or AUTO + HIDE while Auto is on. In HIDE mode they sit under
+-- the small display at the top; otherwise at the bottom.
+local function layoutControls()
+	hideButton.Visible = auto
+	autoButton.Position = UDim2.fromScale(if auto then 0.27 else 0.5, 0.5)
+	if auto and hidden then
+		controls.AnchorPoint = Vector2.new(0.5, 0)
+		controls.Position = UDim2.new(0.5, 0, 0, MINI_TOP + mini.AbsoluteSize.Y + 6)
+		controls.Size = UDim2.fromScale(0.22, 0.05)
+	else
+		controls.AnchorPoint = Vector2.new(0.5, 1)
+		controls.Position = UDim2.fromScale(0.5, 0.97)
+		controls.Size = UDim2.fromScale(0.3, 0.07)
+	end
 end
 
 --------------------------------------------------------------------------
@@ -195,17 +262,26 @@ local function setCinematic(on: boolean)
 	if on then
 		hudWasEnabled = Interface.HUD.Enabled
 		Interface.HUD.Enabled = false
-		controls.Visible = true
 		TweenService:Create(dim, TweenInfo.new(0.25), { BackgroundTransparency = 0.45 }):Play()
 	else
 		Interface.HUD.Enabled = hudWasEnabled
-		controls.Visible = false
 		TweenService:Create(dim, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
 	end
 end
 
+-- HIDE mode keeps the HUD and the view clear; only the small display shows.
 local function refreshCinematic()
-	setCinematic(busy or auto)
+	local hideMode = auto and hidden
+	mini.Visible = hideMode
+	setCinematic((busy or auto) and not hideMode)
+	controls.Visible = busy or auto
+	layoutControls()
+end
+
+function RollReveal.setHidden(value: boolean)
+	hidden = value
+	setPill(hideButton, if value then "HIDE - ON" else "HIDE - OFF", value)
+	refreshCinematic()
 end
 
 --------------------------------------------------------------------------
@@ -631,11 +707,60 @@ end
 -- The reveal
 --------------------------------------------------------------------------
 
-local function reveal(results: { RollResult }, quick: boolean)
-	if hidden then
-		for i, result in results do
-			floatResult(result, i)
+-- HIDE mode: the small top display flicks through studs, then lands on
+-- each result in turn.
+local function miniReveal(results: { RollResult }, quick: boolean)
+	local speed = math.max(State.stats().RollSpeed, 1)
+	local spinTime = (if quick then UIConfig.Reveal.AutoSpinTime else UIConfig.Reveal.SpinTime) / speed
+	local holdTime = math.max(0.35, (if quick then UIConfig.Reveal.AutoHoldTime else UIConfig.Reveal.HoldTime) / speed)
+	local pool = spinPool()
+	local normal = Variants.ById.Normal
+
+	for _, result in results do
+		local def = Studs.ById[result.Id]
+		local variant = Variants.ById[result.Variant]
+		if not (def and variant) then continue end
+
+		-- Flick: quick at first, slowing into the result.
+		miniStroke.Color = Color3.new(1, 1, 1)
+		miniStroke.Transparency = 0.5
+		miniName.TextColor3 = Color3.new(1, 1, 1)
+		local start = os.clock()
+		local gap = 0.05
+		while os.clock() - start < spinTime do
+			local shown = randomStud(pool)
+			StudCell.setViewport(miniViewport, shown, normal)
+			miniOdds.Text = oddsText(shown, normal)
+			miniName.Text = Format.studName(shown, normal)
+			Interface.play("Hover", 1.1)
+			task.wait(gap)
+			gap = math.min(gap * 1.18, 0.2)
 		end
+
+		-- Land.
+		local rarityColor = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
+		StudCell.setViewport(miniViewport, def, variant)
+		miniOdds.Text = (if result.New then "NEW! " else "") .. oddsText(def, variant)
+		miniName.Text = Format.studName(def, variant)
+			.. (if result.Kept then "" elseif result.Reason == "Full" then " (FULL)" else " (DELETED)")
+		miniName.TextColor3 = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else rarityColor:Lerp(Color3.new(1, 1, 1), 0.2)
+		miniStroke.Color = rarityColor
+		miniStroke.Transparency = 0
+		miniScale.Scale = 1.15
+		TweenService:Create(miniScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		Interface.play("Click", 1.2)
+		-- Only the rarest still get the big moment.
+		local rank = RollLogic.rarityRank(def.Rarity)
+		if rank >= 5 then
+			Juice.banner(string.upper(def.Rarity) .. "!", Format.studName(def, variant), rarityColor, 1.2)
+		end
+		task.wait(holdTime)
+	end
+end
+
+local function reveal(results: { RollResult }, quick: boolean)
+	if auto and hidden then
+		miniReveal(results, quick)
 		return
 	end
 
