@@ -30,6 +30,7 @@ local RewardService = require(Systems.RewardService)
 local Economy = require(Systems.Economy)
 local Rolls = require(Systems.Rolls)
 local UpgradeShop = require(Systems.UpgradeShop)
+local Combat = require(Systems.Combat)
 
 type Response = Types.Response
 
@@ -119,6 +120,12 @@ function QuestService.init()
 	end)
 	UpgradeShop.Bought:Connect(function(player)
 		QuestService.progress(player, "Upgrade", 1)
+	end)
+	Combat.Defeated:Connect(function(player, boss)
+		QuestService.progress(player, "Defeat", 1)
+		if boss then
+			QuestService.progress(player, "Boss", 1)
+		end
 	end)
 end
 

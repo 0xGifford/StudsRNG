@@ -50,6 +50,7 @@ local FUNCTIONS = {
 	"ClaimQuest",
 	"ClaimIndexTab",
 	"StopFight",
+	"SetTitle",
 }
 
 -- Server → client (RemoteEvent).
@@ -57,6 +58,9 @@ local EVENTS = {
 	"StatePatch",
 	"Announce",
 	"Notify", -- { Text: string, Color: Color3?, Results: { RollResult }? }
+	"Drop", -- { RollResult }: a boss dropped a stud for you (Systems/Drops)
+	"Leaderboards", -- { [board]: { { Rank, Name, UserId, Value } } } (Systems/Leaderboards)
+	"ZoneBoss", -- { Phase: "Warning"|"Spawn"|"Board"|"Result"|"Defeated"|"Escaped", ... } (Systems/Combat)
 }
 
 local Net = {}

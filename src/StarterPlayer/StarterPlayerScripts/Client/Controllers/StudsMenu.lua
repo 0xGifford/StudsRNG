@@ -28,6 +28,8 @@ local State = require(Controllers.State)
 local Interface = require(UI.Interface)
 local StudCell = require(UI.StudCell)
 local Format = require(UI.Format)
+local Juice = require(UI.Juice)
+local CombatFx = require(UI.CombatFx)
 
 local StudsMenu = {}
 
@@ -94,7 +96,14 @@ local function selectedInfo(key: string)
 	local def, variant = RollLogic.decodeKey(key)
 	if not def or not variant then return end
 	local mult = Format.multiplier(RollLogic.multiplierOf(def, variant))
-	setInfo(`{Format.studName(def, variant)} · {def.Rarity} · {mult} · {owned(key)} owned, {equippedCount(key)} equipped`)
+	-- Level: earned in fights, shared by every variant of this stud.
+	local xp = (State.get("StudXP") or {})[def.Id] or 0
+	local level = RollLogic.levelOf(xp)
+	local levelText = if level >= Config.Levels.Max
+		then `⭐ Lv {level} (MAX)`
+		else `⭐ Lv {level} ({Format.number(xp - RollLogic.xpForLevel(level))}/{Format.number(RollLogic.xpForLevel(level + 1) - RollLogic.xpForLevel(level))} XP)`
+	local strength, health = RollLogic.statsOf(def, variant, level)
+	setInfo(`{Format.studName(def, variant)} · {def.Rarity} · {mult} · 💪{Format.number(strength)} ❤️{Format.number(health)} · {levelText} · {owned(key)} owned, {equippedCount(key)} equipped`)
 end
 
 local function updateActions()
@@ -236,11 +245,27 @@ local function onFuse()
 		return
 	end
 	run(function()
+		local from = cells[key]
 		local response = State.fuse(key)
 		if response.Ok and response.Key then
 			local def, variant = RollLogic.decodeKey(response.Key)
 			if def and variant then
-				Interface.toast(`Fused into {Format.studName(def, variant)}!`, Color3.fromRGB(255, 230, 90))
+				-- Celebrate: the old cell punches, confetti from it, a banner,
+				-- and the new size gets selected.
+				local color = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
+				if from and from.Parent then
+					Juice.pop(from, 1.35)
+					Juice.confetti(45, from.AbsolutePosition + from.AbsoluteSize / 2)
+				end
+				Juice.flash(color, 0.25, 0.35)
+				Juice.banner("FUSED!", Format.studName(def, variant), color, 1.1)
+				CombatFx.sound("Coin", nil, 0.8, 0.6)
+				task.delay(0.3, function()
+					if cells[response.Key] then
+						select(response.Key)
+						Juice.pop(cells[response.Key], 1.3)
+					end
+				end)
 			end
 		end
 		return response
@@ -342,6 +367,8 @@ function StudsMenu.start()
 		if not Interface.isOpen(MENU) then return end
 		if field == "Studs" or field == "Equipped" or field == "Stats" then
 			queueRebuild()
+		elseif field == "StudXP" and selected then
+			selectedInfo(selected)
 		elseif field == "AutoDelete" then
 			updateActions()
 		end

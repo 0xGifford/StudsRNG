@@ -87,7 +87,7 @@ end
 function RollLogic.rollStud(rng: Random, luck: number, unlockedWorlds: { [string]: boolean }): StudDef?
 	local fallback: StudDef? = nil
 	for _, def in studsRarestFirst do
-		if unlockedWorlds[def.World] then
+		if unlockedWorlds[def.World] and not def.Drop then
 			fallback = def
 			if rng:NextNumber() * def.OneIn < luck then
 				return def
@@ -95,6 +95,17 @@ function RollLogic.rollStud(rng: Random, luck: number, unlockedWorlds: { [string
 		end
 	end
 	return fallback
+end
+
+-- A boss drop: drop studs rarest first, each with chance luck / OneIn.
+-- Nil when nothing drops.
+function RollLogic.rollDrop(rng: Random, luck: number): StudDef?
+	for _, def in studsRarestFirst do
+		if def.Drop and rng:NextNumber() * def.OneIn < luck then
+			return def
+		end
+	end
+	return nil
 end
 
 function RollLogic.rollVariant(rng: Random, luck: number): VariantDef
@@ -114,22 +125,39 @@ function RollLogic.multiplierOf(def: StudDef, variant: VariantDef): number
 	return def.Multiplier * variant.Multiplier
 end
 
+-- Stud levels (Config.Levels): level from XP, XP needed for a level, and
+-- the stat multiplier a level gives.
+function RollLogic.levelOf(xp: number?): number
+	local levels = Config.Levels
+	local x = math.max(0, xp or 0)
+	return math.min(levels.Max, math.floor(math.sqrt(x / levels.XpBase)) + 1)
+end
+
+function RollLogic.xpForLevel(level: number): number
+	return Config.Levels.XpBase * (level - 1) ^ 2
+end
+
+function RollLogic.levelBonus(level: number): number
+	return 1 + (level - 1) * Config.Levels.StatsPerLevel
+end
+
 -- Strength and Health of one stud: rarer studs hit harder and last longer,
--- and the variant multiplies both (a StudDef can set its own).
-function RollLogic.statsOf(def: StudDef, variant: VariantDef): (number, number)
+-- the variant multiplies both (a StudDef can set its own), and so does the
+-- stud's level.
+function RollLogic.statsOf(def: StudDef, variant: VariantDef, level: number?): (number, number)
 	local strength = def.Strength or math.max(1, math.floor(1.5 * def.OneIn ^ 0.38 + 0.5))
 	local health = def.Health or math.max(5, math.floor(7 * def.OneIn ^ 0.36 + 0.5))
-	local mult = variant.Stats or 1
+	local mult = (variant.Stats or 1) * RollLogic.levelBonus(level or 1)
 	return math.floor(strength * mult + 0.5), math.floor(health * mult + 0.5)
 end
 
--- The equipped studs' combined Strength and Health.
-function RollLogic.teamStats(equipped: { string }): (number, number)
+-- The equipped studs' combined Strength and Health (xp: PlayerData.StudXP).
+function RollLogic.teamStats(equipped: { string }, xp: { [string]: number }?): (number, number)
 	local strength, health = 0, 0
 	for _, key in equipped do
 		local def, variant = RollLogic.decodeKey(key)
 		if def and variant then
-			local s, h = RollLogic.statsOf(def, variant)
+			local s, h = RollLogic.statsOf(def, variant, RollLogic.levelOf(xp and xp[def.Id]))
 			strength += s
 			health += h
 		end

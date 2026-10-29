@@ -14,6 +14,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- the same set). Progress kinds are reported by server systems:
 --   Press  key presses        Roll  studs rolled      Earn  Clacks earned
 --   Tiles  reward tiles       Rare  1-in-1,000+ rolls  Upgrade levels bought
+--   Defeat enemies defeated   Boss  Mini Bosses defeated
 -- Earn targets and Clacks rewards scale with Rewards.scale (progress).
 
 local Types = require(script.Parent.Types)
@@ -36,6 +37,9 @@ local pool: { QuestDef } = {
 	{ Id = "Earn", Kind = "Earn", Target = 20_000, Text = "Earn {n} Clacks", Reward = { Kind = "FreeRolls", Amount = 10 } },
 	{ Id = "Tiles5", Kind = "Tiles", Target = 5, Text = "Grab {n} +1 tiles", Reward = { Kind = "Boost", Amount = 1, Boost = "Clacks", Minutes = 10 } },
 	{ Id = "Rare1", Kind = "Rare", Target = 1, Text = "Roll a 1 in 1,000+ stud", Reward = { Kind = "Spins", Amount = 2 } },
+	{ Id = "Defeat15", Kind = "Defeat", Target = 15, Text = "Defeat {n} enemies", Reward = { Kind = "FreeRolls", Amount = 8 } },
+	{ Id = "Defeat50", Kind = "Defeat", Target = 50, Text = "Defeat {n} enemies", Reward = { Kind = "Spins", Amount = 1 } },
+	{ Id = "Boss1", Kind = "Boss", Target = 1, Text = "Defeat a Mini Boss", Reward = { Kind = "Boost", Amount = 1, Boost = "Luck", Minutes = 15 } },
 	{ Id = "Upgrade3", Kind = "Upgrade", Target = 3, Text = "Buy {n} upgrade levels", Reward = { Kind = "Boost", Amount = 1, Boost = "Speed", Minutes = 10 } },
 }
 

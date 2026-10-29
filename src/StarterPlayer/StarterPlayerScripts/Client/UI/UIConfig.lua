@@ -37,6 +37,9 @@ return {
 		-- Results at or rarer than this (stud × variant odds) get a wind-up
 		-- shake before landing.
 		DramaOneIn = 1000,
+		-- Manual rolls: chance a much rarer stud sits right past the result
+		-- and the reel creeps towards it before settling ("SO CLOSE!").
+		NearMissChance = 0.3,
 	},
 
 	Toast = {
@@ -63,6 +66,7 @@ return {
 		Spins = "rbxassetid://72974128962815",
 		Luck = "🍀",
 		MegaRoll = "🎰",
+		Bundle = "🎁",
 		Boost = "rbxassetid://131975246594329",
 		Event = "rbxassetid://119611914627070",
 		ServerLuck = "rbxassetid://119611914627070",
@@ -96,11 +100,11 @@ return {
 		Cooldown = "",
 		Busy = "",
 		RateLimited = "",
-		AlreadyClaimed = "Already claimed",
 		IndexIncomplete = "Find every stud in this tab first",
 		EnemyGone = "",
 		NoStuds = "Equip some studs to fight!",
 		KnockedOut = "Your studs are still recovering",
 		TooFar = "Get closer to fight",
+		TitleLocked = "Unlock that achievement first",
 	} :: { [string]: string },
 }

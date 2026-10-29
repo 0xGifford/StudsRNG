@@ -320,6 +320,9 @@ type Reel = {
 	sequence: { StudDef },
 	result: RollResult,
 	cellHeight: number,
+	target: number, -- sequence index of the result
+	tease: boolean, -- a rarer stud sits just past the result (near miss)
+	creep: number, -- extra scroll towards the tease, added while drawing
 }
 
 local function spinPool(): { StudDef }
@@ -396,16 +399,32 @@ local function makeReel(result: RollResult, offsetX: number, length: number, cel
 	for i = 1, length - 1 do
 		sequence[i] = randomStud(pool)
 	end
-	sequence[length] = Studs.ById[result.Id]
+	local landed = Studs.ById[result.Id]
+	sequence[length] = landed
+
+	-- Near miss: sometimes a much rarer stud sits right past the result.
+	local tease = false
+	local rarer = {}
+	for _, def in pool do
+		if def.OneIn >= landed.OneIn * 20 then
+			table.insert(rarer, def)
+		end
+	end
+	if #rarer > 0 and math.random() < UIConfig.Reveal.NearMissChance then
+		sequence[length + 1] = rarer[math.random(1, #rarer)]
+		tease = true
+	else
+		sequence[length + 1] = randomStud(pool)
+	end
 
 	local cells: { Cell } = {}
 	for _ = 1, VISIBLE do
 		table.insert(cells, makeCell(holder, cellHeight))
 	end
-	return { holder = holder, cells = cells, sequence = sequence, result = result, cellHeight = cellHeight }
+	return { holder = holder, cells = cells, sequence = sequence, result = result, cellHeight = cellHeight, target = length, tease = tease, creep = 0 }
 end
 
--- p = how far the reel has scrolled (0 … #sequence - 1). Entry k sits at
+-- p = how far the reel has scrolled (0 … target - 1). Entry k sits at
 -- y = (p - (k - 1)) cells from the centre: later entries come from above.
 local function drawReel(reel: Reel, p: number)
 	local normal = Variants.ById.Normal
@@ -587,6 +606,19 @@ local function rays(parent: Frame, color: Color3, size: number): Frame
 	return holder
 end
 
+-- "SO CLOSE!" over the rarer stud the reel almost landed on.
+local function soClose(reel: Reel)
+	local label = text(reel.holder, "SO CLOSE!", Color3.fromRGB(255, 90, 90), UDim2.fromScale(1.4, 0.12), UDim2.new(0.5, 0, 0.5, -reel.cellHeight * 1.05), 6)
+	label.Rotation = -6
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.3
+	scale.Parent = label
+	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	task.delay(0.9, function()
+		TweenService:Create(label, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+	end)
+end
+
 local function land(reel: Reel)
 	local result = reel.result
 	local def = Studs.ById[result.Id]
@@ -594,7 +626,7 @@ local function land(reel: Reel)
 	local rarityColor = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 	local center: Cell? = nil
 	for _, cell in reel.cells do
-		if cell.index == #reel.sequence then
+		if cell.index == reel.target then
 			center = cell
 		end
 	end
@@ -804,7 +836,7 @@ local function reveal(results: { RollResult }, quick: boolean)
 		local t = math.clamp((os.clock() - start) / total, 0, 1)
 		local eased = 1 - (1 - t) ^ (if dramatic then 5 else 4)
 		for _, reel in reels do
-			local p = eased * (#reel.sequence - 1)
+			local p = eased * (reel.target - 1) + reel.creep
 			drawReel(reel, p)
 			local step = math.floor(p + 0.5)
 			if step ~= lastTick then
@@ -817,8 +849,37 @@ local function reveal(results: { RollResult }, quick: boolean)
 	while os.clock() - start < total do
 		task.wait()
 	end
+
+	-- Near miss: creep towards the rarer stud past the result... and back.
+	local teasing = false
 	for _, reel in reels do
-		drawReel(reel, #reel.sequence - 1)
+		if reel.tease and not quick then
+			teasing = true
+		end
+	end
+	if teasing then
+		local creepStart = os.clock()
+		local duration = 0.7
+		Interface.play("Hover", 0.7)
+		while os.clock() - creepStart < duration do
+			local u = (os.clock() - creepStart) / duration
+			for _, reel in reels do
+				if reel.tease then
+					reel.creep = 0.48 * math.sin(math.pi * u) ^ 0.7
+				end
+			end
+			task.wait()
+		end
+		for _, reel in reels do
+			if reel.tease then
+				reel.creep = 0
+				soClose(reel)
+			end
+		end
+	end
+
+	for _, reel in reels do
+		drawReel(reel, reel.target - 1)
 		land(reel)
 		task.wait(if quick then 0.04 else 0.12)
 	end
@@ -938,18 +999,27 @@ local function announce(payload: any)
 	local def = Studs.ById[payload.Id]
 	local variant = Variants.ById[payload.Variant]
 	if not def or not variant then return end
-	local color = Format.hex(Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1))
+	-- Secret's colour is near-black: unreadable in chat.
+	local rarityColor = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 	local message = string.format(
-		'<font color="%s"><b>%s rolled %s (%s)!</b></font>',
-		color,
+		if payload.Drop then '<font color="%s"><b>%s got a boss drop: %s (%s)!</b></font>' else '<font color="%s"><b>%s just rolled %s (%s)!</b></font>',
+		Format.hex(rarityColor),
 		tostring(payload.Player),
 		Format.studName(def, variant),
 		Format.oneIn(payload.OneIn)
 	)
+	-- Every announced roll goes to the Rolls tab (Systems/ChatChannels);
+	-- the rarest ones to the main chat too.
 	local channels = TextChatService:FindFirstChild("TextChannels")
-	local system = channels and channels:FindFirstChild("RBXSystem")
-	if system and system:IsA("TextChannel") then
-		system:DisplaySystemMessage(message)
+	local rolls = channels and channels:FindFirstChild(Config.Announce.Channel)
+	if rolls and rolls:IsA("TextChannel") then
+		rolls:DisplaySystemMessage(message)
+	end
+	if (payload.OneIn or 0) >= Config.Announce.MinOneIn then
+		local system = channels and channels:FindFirstChild("RBXSystem")
+		if system and system:IsA("TextChannel") then
+			system:DisplaySystemMessage(message)
+		end
 	end
 end
 

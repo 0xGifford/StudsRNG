@@ -21,8 +21,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                   Center    Vector3  middle of the zone floor   } default: the
 --                   ZoneSize  Vector3  extents of the zone        } bounding box
 --                 Anything inside it belongs to that zone.
---   ZoneSpawn     BasePart players teleport to (Teleporter, after buying,
---                 when falling off the map).
+--   ZoneSpawn     BasePart players teleport to (the Teleporter, and when
+--                 falling off the map; buying a zone never teleports).
 --                   ZoneId    string   default: the Zone it sits in
 --   ZoneBarrier   BasePart (or a Model of them) blocking a zone's entrance.
 --                 Opens locally once the zone is owned. Until then a sign on
@@ -51,6 +51,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                 Zones without any get Config.Combat.PerZone spots of their own.
 --   Enemy         set by the server on each enemy Model (EnemyId, ZoneId,
 --                 Health, MaxHealth attributes); don't place these yourself.
+--   Leaderboard   BasePart showing a global top list on its front face.
+--                   Board     string   Clacks | Enemies | Rarest (default Clacks)
+--                   Face      string   NormalId to draw on (default Front)
 --   MenuTrigger   BasePart that opens a menu.
 --                   Menu        string   menu name (a Menu.Canva window, or Upgrades)
 --                   MenuAction  string   Open (default) | Toggle | Close
@@ -76,6 +79,7 @@ local Tags = {
 	MenuTrigger = "MenuTrigger",
 	EnemySpawn = "EnemySpawn",
 	Enemy = "Enemy",
+	Leaderboard = "Leaderboard",
 
 	Attr = {
 		ZoneId = "ZoneId",
@@ -96,6 +100,8 @@ local Tags = {
 		PromptText = "PromptText",
 		Blur = "Blur",
 		HideHUD = "HideHUD",
+		Board = "Board",
+		Face = "Face",
 	},
 }
 

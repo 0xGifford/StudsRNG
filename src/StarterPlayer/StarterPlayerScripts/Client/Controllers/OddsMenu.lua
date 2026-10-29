@@ -107,6 +107,7 @@ local function rebuild()
 	Kit.header(items, "Stud odds", 3)
 	oddsRow({ "Stud", "Base", "You", "+1 Lucky Roll" }, nil, 4)
 	for index, def in sortedStuds do
+		if def.Drop then continue end -- boss drops never roll
 		local rarity = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 		local locked = not unlocked[def.World]
 		local zone = Zones.ById[def.World]

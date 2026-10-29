@@ -258,6 +258,28 @@ Config.Combat = {
 	KnockoutCooldown = 4, -- seconds before a defeated team can fight again
 	RetreatCooldown = 6, -- seconds RETREAT keeps the studs out of fights
 	FreeRollChance = 0.1, -- extra drop on each defeat
+	-- Fights are paced to the studs' animation: no damage until they've flown
+	-- over, and even a strong team takes a moment, so every stud gets a dash.
+	ArriveTime = 0.7, -- seconds after a fight starts before damage lands
+	MinFightTime = 1.5, -- seconds: the fastest any enemy can go down
+	-- Crits: each combat step can land a crit for CritMultiplier damage.
+	CritChance = 0.12,
+	CritMultiplier = 2.5,
+	-- Kill streaks: defeats within StreakWindow of each other chain up, each
+	-- link adding StreakBonus Clacks on a defeat, up to StreakMax links.
+	StreakWindow = 15,
+	StreakBonus = 0.1,
+	StreakMax = 20,
+	-- Client sounds (built-in Roblox sounds; swap for your own asset ids).
+	-- Played in the SFX SoundGroup, so the Options slider controls them.
+	Sounds = {
+		Dash = "rbxasset://sounds/swordlunge.wav",
+		Hit = "rbxasset://sounds/swordslash.wav",
+		Crit = "rbxasset://sounds/snap.wav",
+		Explode = "rbxasset://sounds/collide.wav",
+		Coin = "rbxasset://sounds/electronicpingshort.wav",
+		Aggro = "rbxasset://sounds/button.wav",
+	},
 	-- Mini bosses: any spawn can be one.
 	BossChance = 1 / 12,
 	BossHealth = 8,
@@ -266,8 +288,63 @@ Config.Combat = {
 	BossSize = 1.7,
 }
 
+-- Stud levels: every stud (all variants of it share one level) earns XP when
+-- it's equipped and its team defeats an enemy. Each level adds StatsPerLevel
+-- to its Strength and Health. XP for level L: XpBase × (L - 1)².
+Config.Levels = {
+	Max = 50,
+	XpBase = 25,
+	StatsPerLevel = 0.05, -- +5% per level → +245% at Lv 50
+	XpPerDefeat = 5, -- + XpPerEnemyLevel × the enemy's level
+	XpPerEnemyLevel = 3,
+	BossXp = 5, -- Mini Boss multiplier
+}
+
+-- Zone Bosses (Systems/Combat): every Interval seconds (on the clock, the
+-- same for every server) a Titan spawns in every Every-th zone (10, 20, ...)
+-- for Lifetime seconds. Everyone who damages it is paid by damage rank.
+-- Stats multiply that zone's normal enemy.
+Config.ZoneBoss = {
+	Every = 10,
+	Interval = 20 * 60,
+	Warning = 60, -- seconds of warning before they spawn
+	Lifetime = 5 * 60, -- then it escapes
+	Health = 25,
+	Damage = 3,
+	Reward = 30,
+	Size = 3.2,
+	-- By damage rank: Clacks multiplier and extras.
+	Ranks = {
+		{ Top = 1, Clacks = 3, FreeRolls = 10, Spins = 2 },
+		{ Top = 3, Clacks = 2, FreeRolls = 5, Spins = 1 },
+		{ Top = math.huge, Clacks = 1, FreeRolls = 3, Spins = 0 },
+	},
+}
+
+-- Boss drops (Studs with Drop = true). Each kill tries the drop studs
+-- rarest first, each hitting with chance Luck / OneIn; Luck grows with the
+-- enemy's level (+PerEnemyLevel per level).
+Config.Drops = {
+	MiniBossLuck = 30,
+	ZoneBossLuck = 600,
+	PerEnemyLevel = 0.04,
+}
+
+-- Global leaderboards (Systems/Leaderboards → Leaderboard-tagged parts).
+Config.Leaderboards = {
+	Refresh = 120, -- seconds between saving scores and reading the top lists
+	Size = 50, -- entries kept per board (parts show the top 10)
+	Stores = { -- OrderedDataStore names; bump the version to reset a board
+		Clacks = "LB_Clacks_v1",
+		Enemies = "LB_Enemies_v1",
+		Rarest = "LB_Rarest_v1",
+	},
+}
+
 Config.Announce = {
-	MinOneIn = 10000, -- server-wide announcement at or rarer than this (stud × variant odds)
+	Channel = "Rolls", -- chat channel (tab) every announced roll goes to
+	ChannelMinOneIn = 100, -- announced in the Rolls channel at or rarer than this (stud × variant odds)
+	MinOneIn = 10000, -- also announced in the main chat at or rarer than this
 }
 
 Config.Sync = {

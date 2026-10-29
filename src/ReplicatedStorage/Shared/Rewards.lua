@@ -11,6 +11,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Daily streak, session playtime rewards and the jackpot wheel.
 --
+-- The daily streak is a 7-day calendar (Day 7: a jackpot bundle). Every
+-- full week kept in a row adds WeekBonus to the Clacks and roll rewards, up
+-- to MaxWeeks weeks (Rewards.dailyReward); missing a day resets both.
+--
 -- Clacks amounts are scaled by Rewards.scale(data) so they stay worth
 -- claiming as the player progresses (rebirths and the best owned zone).
 -- Wheel Weight is relative: chance = Weight / sum of all weights. The wheel
@@ -33,7 +37,10 @@ local daily: { Reward } = {
 	{ Kind = "Spins", Amount = 1 },
 	{ Kind = "Clacks", Amount = 10_000 },
 	{ Kind = "Boost", Amount = 1, Boost = "Clacks", Minutes = 15 },
-	{ Kind = "Luck", Amount = 1 },
+	{ Kind = "Bundle", Amount = 1, Items = {
+		{ Kind = "MegaRoll", Amount = 250 },
+		{ Kind = "Luck", Amount = 1 },
+	} },
 }
 
 -- At: minutes of playtime THIS session. "Leaving Resets Progress!"
@@ -69,6 +76,8 @@ local Rewards = {
 	Playtime = playtime,
 	Wheel = wheel,
 	DaySeconds = 24 * 60 * 60,
+	WeekBonus = 0.5, -- +50% Clacks and rolls per full week kept
+	MaxWeeks = 4,
 }
 
 -- Clacks multiplier for reward amounts: rebirths and best zone.
@@ -103,6 +112,39 @@ function Rewards.dailyState(state: any, today: number): (boolean, number)
 		return true, streak % #daily + 1
 	end
 	return true, 1
+end
+
+-- Full weeks kept after claiming `day` today: a Day 1 that continues the
+-- streak starts a new week; a broken streak starts over.
+function Rewards.weeksAfterClaim(state: any, today: number, day: number): number
+	local weeks = if typeof(state) == "table" and typeof(state.Weeks) == "number" then state.Weeks else 0
+	local lastDay = if typeof(state) == "table" and typeof(state.LastDay) == "number" then state.LastDay else -1
+	local continuing = lastDay == today - 1
+	if not continuing then return 0 end
+	return if day == 1 then weeks + 1 else weeks
+end
+
+function Rewards.weekMultiplier(weeks: number): number
+	return 1 + math.min(weeks, Rewards.MaxWeeks) * Rewards.WeekBonus
+end
+
+-- Day `day`'s reward with the week streak applied (Clacks and FreeRolls).
+function Rewards.dailyReward(day: number, weeks: number): Reward
+	local multiplier = Rewards.weekMultiplier(weeks)
+	local function boosted(reward: Reward): Reward
+		local copy = table.clone(reward)
+		if reward.Kind == "Clacks" or reward.Kind == "FreeRolls" then
+			copy.Amount = math.floor(reward.Amount * multiplier)
+		elseif reward.Kind == "Bundle" and reward.Items then
+			local items = {}
+			for i, item in reward.Items do
+				items[i] = boosted(item)
+			end
+			copy.Items = items
+		end
+		return copy
+	end
+	return boosted(daily[day])
 end
 
 return Rewards

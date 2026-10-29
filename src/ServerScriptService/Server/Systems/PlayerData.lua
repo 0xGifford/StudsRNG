@@ -60,6 +60,12 @@ local TEMPLATE: PlayerData = {
 	IndexClaims = {}, -- [variant] = true: Index tab rewards claimed
 	RollCounts = {}, -- [stud key] = times rolled
 	EnemiesDefeated = 0,
+	StudXP = {}, -- stud id → XP (Config.Levels)
+	BestRoll = 0, -- rarest roll's odds (1 in X), for the Rarest leaderboard
+	BossesDefeated = 0, -- Mini Bosses
+	TitansDefeated = 0, -- Zone Boss Titans (helped defeat)
+	Achievements = {}, -- [id] = true (Shared/Achievements)
+	Title = "", -- achievement id whose title is worn ("" = none)
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.

@@ -104,6 +104,12 @@ function Format.reward(reward: { [string]: any }): string
 		return `+{amount} Permanent Luck`
 	elseif kind == "MegaRoll" then
 		return `JACKPOT! x{Format.number(amount)} Luck Roll`
+	elseif kind == "Bundle" then
+		local parts = {}
+		for _, item in reward.Items or {} do
+			table.insert(parts, Format.reward(item))
+		end
+		return table.concat(parts, " + ")
 	elseif kind == "Boost" then
 		local boost = reward.Boost and Config.Boosts[reward.Boost]
 		local minutes = reward.Minutes or (if boost then boost.Duration / 60 else 0)
