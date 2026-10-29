@@ -4,7 +4,7 @@ require(game:GetService("ServerStorage").ZoneKit:Clone()).build({
 	Rock = { "#24324A", "#1C283C", "#2E3E58" }, Roof = true,
 	Keys = { "#1E2A3A", "#3C5AFF", "#3CF0FF" }, Plate = "#2B2B33",
 	Palette = { "#3C5AFF", "#3CF0FF", "#B478FF" },
-	Props = { Coral = 3, Seaweed = 3, Orb = 2, Crystal = 2 }, PropCount = 30,
+	Props = { Coral = 3, Seaweed = 3, Orb = 2, Crystal = 2, Spire = 2 }, PropCount = 30,
 	Sky = { Clock = 0, Fog = "#0A1428", FogEnd = 350, Ambient = "#3C5A8C", Outdoor = "#28466E", Atmosphere = "#1E3C78", Density = 0.55 },
 	-- Thunder Peaks, the zone before, blends in at the entrance.
 	From = { Ground2 = { "#4E5262", "#6A6E7E" }, Path = "#FFE63C", Rock = { "#5A5E6E", "#4A4E5E", "#6E7282" } },

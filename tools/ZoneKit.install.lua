@@ -573,12 +573,102 @@ local function walls(z, c, cfg, first, last)
 	if last then
 		side(c + Vector3.new(-W - 20, 0, D), c + Vector3.new(W + 20, 0, D), Vector3.new(0, 0, 1))
 	end
-	if cfg.Roof then
-		-- Inset from the zone's ends so it never shares a face with the cliffs there.
-		part(z, Vector3.new(Kit.WIDTH + 44, 6, Kit.DEPTH - 0.4), CFrame.new(c + Vector3.new(0, Kit.WALL + 4, 0)), shade(cfg.Rock[1], -0.3), true).Name = "Roof"
-		for _ = 1, 30 do
-			local h = rng:NextNumber(5, 14)
-			block(z, c + Vector3.new(rng:NextNumber(-W + 6, W - 6), Kit.WALL + 1 - h, rng:NextNumber(-D + 20, D - 6)), Vector3.new(3, h, 3), pick(cfg.Rock), math.rad(45))
+end
+
+-- Roof zones sit inside a mountain: a grid of rock columns whose undersides
+-- form a vaulted ceiling (low and craggy along the walls, a high dome in the
+-- middle, dropping to a cave mouth at each end) and whose tops form the
+-- mountain's slopes, carried on past the cliffs so neighbouring zones see a
+-- mountain with a cave in it rather than a lid. Tile edges sit off the stud
+-- grid and stop short of the zone's ends, so no face lines up with a cliff's.
+local function cave(z, c, cfg)
+	local W, D = Kit.WIDTH, Kit.DEPTH
+	local mouth = Kit.WALL + 2 -- lowest ceiling: clear of the gate's caps
+	local inner = (W + 44.6) / 2 -- the ceiling covers the floor and the cliffs
+	local outer = inner + 34 -- slopes run on past the cliffs
+	local cols, rows = 21, 15
+	local tx = inner * 2 / cols
+	local depth = D - 0.6
+	local tz = depth / rows
+	local mountain = Instance.new("Folder")
+	mountain.Name = "Mountain"
+	mountain.Parent = z
+
+	-- 0 at the zone's ends, 1 in the middle (eased).
+	local function inward(zz: number): number
+		local e = math.clamp((D / 2 - math.abs(zz)) / (D / 2), 0, 1)
+		return e * e * (3 - 2 * e)
+	end
+	-- Height of the mountain's surface above the floor.
+	local function surface(x: number, zz: number): number
+		local u = math.clamp(math.abs(x) / outer, 0, 1)
+		return Kit.WALL + 14 + 46 * inward(zz) * (1 - u * u)
+	end
+
+	local function column(x: number, zz: number, sx: number, bottom: number)
+		local top = math.max(bottom + 6, surface(x, zz) + rng:NextNumber(0, 5))
+		local rock = pick(cfg.Rock)
+		part(mountain, Vector3.new(sx, top - bottom, tz), CFrame.new(c.X + x, c.Y + (bottom + top) / 2, c.Z + zz), rock, true)
+		-- A lighter crust on the slopes reads as the mountain's skin.
+		local crust = cfg.Cap or shade(rock, 0.18)
+		part(mountain, Vector3.new(sx - 0.4, 0.9, tz - 0.4), CFrame.new(c.X + x, c.Y + top + 0.45, c.Z + zz), crust)
+		return bottom
+	end
+
+	local ceiling: { { x: number, z: number, y: number } } = {}
+	for i = 0, cols - 1 do
+		local x = -inner + tx * (i + 0.5)
+		local u = math.abs(x) / inner
+		for j = 0, rows - 1 do
+			local zz = -depth / 2 + tz * (j + 0.5)
+			local e = inward(zz)
+			-- Dome: high in the middle of the cave, down to the mouth at the ends
+			-- and down onto the cliffs at the sides.
+			local dome = (1 - u * u) * 26 * (0.25 + 0.75 * e)
+			local bottom = mouth + dome + rng:NextNumber(-2.5, 4)
+			if math.abs(x) > W / 2 then
+				bottom = Kit.WALL * rng:NextNumber(0.82, 0.98) -- rests on the cliffs
+			end
+			column(x, zz, tx, math.max(bottom, if math.abs(x) > W / 2 then 0 else mouth))
+			if math.abs(x) < W / 2 - 8 and e > 0.35 then
+				table.insert(ceiling, { x = x, z = zz, y = bottom })
+			end
+		end
+	end
+	-- Slopes beyond the cliffs, down to the ground.
+	for _, side in { -1, 1 } do
+		for k = 0, 2 do
+			local sx = (outer - inner) / 3
+			local x = side * (inner + sx * (k + 0.5))
+			for j = 0, rows - 1 do
+				local zz = -depth / 2 + tz * (j + 0.5)
+				column(x, zz, sx, -1.9)
+			end
+		end
+	end
+
+	-- Stalactites: tapering stacks hanging from the vault.
+	for _ = 1, 26 do
+		local spot = ceiling[rng:NextInteger(1, #ceiling)]
+		local at = c + Vector3.new(spot.x + rng:NextNumber(-3, 3), spot.y, spot.z + rng:NextNumber(-3, 3))
+		local yaw = rng:NextNumber(0, math.pi)
+		local w, y = rng:NextNumber(3, 4.5), 0.5
+		for _ = 1, rng:NextInteger(2, 4) do
+			local h = rng:NextNumber(3, 6)
+			part(mountain, Vector3.new(w, h, w), CFrame.new(at + Vector3.new(0, y - h / 2, 0)) * CFrame.Angles(0, yaw, 0), pick(cfg.Rock))
+			y -= h - 0.4
+			w *= 0.62
+		end
+	end
+
+	-- Crystals growing out of the cave walls.
+	for _ = 1, 12 do
+		local side = if rng:NextNumber() < 0.5 then -1 else 1
+		local at = c + Vector3.new(side * (W / 2 - 0.5), rng:NextNumber(8, Kit.WALL * 0.6), rng:NextNumber(-D / 2 + 20, D / 2 - 20))
+		for k = 1, 3 do
+			local h = rng:NextNumber(3, 7)
+			part(mountain, Vector3.new(1.4, h, 1.4), CFrame.new(at + Vector3.new(0, k - 2, k - 2))
+				* CFrame.Angles(math.rad(rng:NextNumber(-20, 20)), math.rad(45), math.rad(side * rng:NextNumber(35, 70))), pick(cfg.Palette))
 		end
 	end
 end
@@ -893,6 +983,9 @@ function Kit.build(cfg)
 	local last = cfg.Last == true
 	ground(z, c, cfg)
 	walls(z, c, cfg, first, last)
+	if cfg.Roof then
+		cave(z, c, cfg)
+	end
 	if not first then
 		transition(z, c, cfg)
 		gate(z, c, cfg, cfg.Index)
