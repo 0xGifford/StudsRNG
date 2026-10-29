@@ -180,6 +180,19 @@ function Tags.zoneBox(zone: Instance): (CFrame?, Vector3?)
 	elseif zone:IsA("BasePart") then
 		return zone.CFrame, zone.Size
 	end
+	-- A Folder: the box around every part inside it.
+	local low: Vector3?, high: Vector3? = nil, nil
+	for _, descendant in zone:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			local half = descendant.Size / 2
+			local a, b = descendant.Position - half, descendant.Position + half
+			low = if low then low:Min(a) else a
+			high = if high then high:Max(b) else b
+		end
+	end
+	if low and high then
+		return CFrame.new((low + high) / 2), (high - low) + Vector3.new(0, 40, 0)
+	end
 	return nil, nil
 end
 
