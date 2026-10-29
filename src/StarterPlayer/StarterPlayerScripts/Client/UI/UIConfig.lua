@@ -37,6 +37,9 @@ return {
 		-- Results at or rarer than this (stud × variant odds) get a wind-up
 		-- shake before landing.
 		DramaOneIn = 1000,
+		-- Manual rolls: chance a much rarer stud sits right past the result
+		-- and the reel creeps towards it before settling ("SO CLOSE!").
+		NearMissChance = 0.3,
 	},
 
 	Toast = {

@@ -22,6 +22,21 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.5",
+		Date = "Oct 29, 2026",
+		Title = "Titans & Glory",
+		Notes = {
+			"Zone Boss Titans: every 20 minutes a Titan invades zones 10, 20, 30, 40 and 50. Fight it together; rewards by damage rank.",
+			"Stud levels: equipped studs earn XP from every fight and get stronger, up to Lv 50.",
+			"Boss drops: five studs you can't roll, only won from Mini Bosses and Titans.",
+			"Achievements: 27 to unlock, with rewards and titles to wear over your head and in chat.",
+			"Global leaderboards for Clacks, enemies defeated and rarest roll.",
+			"Daily rewards: Day 7 is a jackpot, and every week you keep your streak boosts your rewards.",
+			"A Rolls chat tab announcing every 1 in 100+ roll.",
+			"More juice: barriers dissolve when you buy a zone, fusing celebrates, and the reel sometimes almost lands on something rarer...",
+		},
+	},
+	{
 		Version = "1.4",
 		Date = "Oct 29, 2026",
 		Title = "50 Zones",

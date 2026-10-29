@@ -28,6 +28,8 @@ local State = require(Controllers.State)
 local Interface = require(UI.Interface)
 local StudCell = require(UI.StudCell)
 local Format = require(UI.Format)
+local Juice = require(UI.Juice)
+local CombatFx = require(UI.CombatFx)
 
 local StudsMenu = {}
 
@@ -243,11 +245,27 @@ local function onFuse()
 		return
 	end
 	run(function()
+		local from = cells[key]
 		local response = State.fuse(key)
 		if response.Ok and response.Key then
 			local def, variant = RollLogic.decodeKey(response.Key)
 			if def and variant then
-				Interface.toast(`Fused into {Format.studName(def, variant)}!`, Color3.fromRGB(255, 230, 90))
+				-- Celebrate: the old cell punches, confetti from it, a banner,
+				-- and the new size gets selected.
+				local color = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
+				if from and from.Parent then
+					Juice.pop(from, 1.35)
+					Juice.confetti(45, from.AbsolutePosition + from.AbsoluteSize / 2)
+				end
+				Juice.flash(color, 0.25, 0.35)
+				Juice.banner("FUSED!", Format.studName(def, variant), color, 1.1)
+				CombatFx.sound("Coin", nil, 0.8, 0.6)
+				task.delay(0.3, function()
+					if cells[response.Key] then
+						select(response.Key)
+						Juice.pop(cells[response.Key], 1.3)
+					end
+				end)
 			end
 		end
 		return response

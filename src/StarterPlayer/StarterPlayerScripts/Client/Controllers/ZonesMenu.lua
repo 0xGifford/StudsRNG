@@ -19,12 +19,15 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                opens and you walk in. Attributes: ZoneId, ShowPrompt (show
 --                the sign), PromptDistance (how far it renders), Title.
 --   ZoneGate     hidden (locally) once owned when HideWhenOwned is set.
+-- Buying a zone dissolves its barrier in front of you: it flashes, bursts
+-- into sparks with a shockwave and fades away.
 -- The server decides ownership (Systems/ZoneShop); barriers are cosmetic,
 -- keys in unowned zones never pay anyway.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Zones = require(Shared.Zones)
@@ -37,6 +40,7 @@ local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
+local CombatFx = require(UI.CombatFx)
 
 local ZonesMenu = {}
 
@@ -62,6 +66,7 @@ type Blocker = {
 	connections: { RBXScriptConnection },
 	sign: { Face }?,
 	signPart: BasePart?,
+	hidden: boolean?, -- nil until first refreshed (no dissolve on join)
 }
 local blockers: { [Instance]: Blocker } = {}
 
@@ -435,13 +440,28 @@ local function refreshBlocker(blocker: Blocker)
 
 	local open = def ~= nil and owned(def.Id)
 	local hide = open and (barrier or Tags.read(blocker.root, Tags.Attr.HideWhenOwned, false))
+	-- Just bought (not on join): dissolve instead of vanishing.
+	local dissolve = hide and blocker.hidden == false
+	blocker.hidden = hide
 	for part, saved in blocker.parts do
 		if part.Parent then
 			part.CanCollide = if hide then false else saved.CanCollide
-			part.Transparency = if hide then 1 else saved.Transparency
+			if dissolve then
+				local color = if def then def.Color else Color3.new(1, 1, 1)
+				part.Transparency = math.min(saved.Transparency, 0.2)
+				TweenService:Create(part, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+				CombatFx.sparks(part, 40, color)
+				CombatFx.shockwave(part.Position, color, math.min(part.Size.X, 30) * 0.4)
+			else
+				part.Transparency = if hide then 1 else saved.Transparency
+			end
 		else
 			blocker.parts[part] = nil
 		end
+	end
+	if dissolve then
+		local first = next(blocker.parts)
+		CombatFx.sound("Explode", if first then first.Position else nil, 0.7, 0.8)
 	end
 	updateSign(blocker)
 end
