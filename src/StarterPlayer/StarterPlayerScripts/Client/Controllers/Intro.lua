@@ -39,6 +39,7 @@ local Intro = {}
 Intro.Finished = Signal.new() :: Signal.Signal<>
 
 local SHOT_TIME = 3.2
+local MAX_SHOTS = 5
 local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 
 local player = Players.LocalPlayer
@@ -159,8 +160,11 @@ local function play()
 		end
 	end
 
+	-- A teaser: the last zone, a few spread between, then the first.
 	local shots: { Zones.ZoneDef } = {}
-	for i = #Zones.List, 1, -1 do
+	local count = math.min(MAX_SHOTS, #Zones.List)
+	for k = count, 1, -1 do
+		local i = if count == 1 then 1 else 1 + math.floor((k - 1) * (#Zones.List - 1) / (count - 1) + 0.5)
 		table.insert(shots, Zones.List[i])
 	end
 

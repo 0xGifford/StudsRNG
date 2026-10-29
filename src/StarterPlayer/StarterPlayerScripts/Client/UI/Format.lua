@@ -22,7 +22,7 @@ type VariantDef = Types.VariantDef
 
 local Format = {}
 
-local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc" }
+local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "Ud", "Dd", "Td", "Qad", "Qid" }
 
 -- 999 → "999", 1234 → "1.23K", 15600000 → "15.6M"
 function Format.number(value: number): string

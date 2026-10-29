@@ -50,8 +50,13 @@ Config.Press = {
 -- entrance. A zone that already exists under workspace.Zones (built by
 -- hand) is left alone, so you can replace any zone with your own build.
 Config.Map = {
-	Enabled = true,
-	Origin = Vector3.new(0, 60, 0),
+	-- Zones are built in Studio with tools/ZoneKit now; turn this on to
+	-- generate any zone that isn't built (a Zone-tagged instance with its id).
+	Enabled = false,
+	-- Players below Origin.Y - 70 are put back at the nearest zone they own.
+	FallRescue = true,
+	-- Zone 1's floor centre; must match ZoneKit's ORIGIN / WIDTH / DEPTH / GAP.
+	Origin = Vector3.new(15, 1, -28),
 	ZoneWidth = 170, -- X (inside the cliffs)
 	ZoneDepth = 150, -- Z
 	Bridge = 40, -- canyon pass between zones

@@ -22,6 +22,15 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.4",
+		Date = "Oct 29, 2026",
+		Title = "50 Zones",
+		Notes = {
+			"43 new zones, from the Desert to Keyboard Kingdom: 50 in all.",
+			"Every zone is rebuilt brick by brick, with its own sky, fog and gravity.",
+		},
+	},
+	{
 		Version = "1.3",
 		Date = "Oct 28, 2026",
 		Title = "The Biomes Update",

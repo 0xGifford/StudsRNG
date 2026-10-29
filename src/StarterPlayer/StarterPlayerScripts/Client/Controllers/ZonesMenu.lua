@@ -163,7 +163,8 @@ local function makeRow(def: Zones.ZoneDef): Frame
 	name.TextXAlignment = Enum.TextXAlignment.Left
 	name.Parent = row
 
-	local info = Kit.label(`x{def.KeyMultiplier} Clacks per key · {Zones.studCount(def.Id)} zone studs`)
+	local studs = Zones.studCount(def.Id)
+	local info = Kit.label(`x{Format.number(def.KeyMultiplier)} Clacks per key` .. (if studs > 0 then ` · {studs} zone studs` else ""))
 	info.Name = "Info"
 	info.AnchorPoint = Vector2.new(0, 0.5)
 	info.Position = UDim2.fromScale(0.13, 0.78)
