@@ -969,6 +969,19 @@ end
 -- Zone
 --------------------------------------------------------------------------
 
+-- A zone's theme. A zone added to Shared/Zones without a Shared/MapThemes
+-- entry builds with the first zone's look instead of failing the whole map.
+local warnedThemes: { [string]: boolean } = {}
+local function themeFor(zoneId: string): Theme
+	local theme = MapThemes[zoneId]
+	if theme then return theme end
+	if not warnedThemes[zoneId] then
+		warnedThemes[zoneId] = true
+		warn(`[MapBuilder] no MapThemes entry for zone "{zoneId}"; using {Zones.Default}'s. Add one to Shared/MapThemes.`)
+	end
+	return MapThemes[Zones.Default] or (select(2, next(MapThemes)) :: Theme)
+end
+
 local function zoneCenter(index: number): Vector3
 	return MapConfig.Origin + Vector3.new(0, 0, (index - 1) * (MapConfig.ZoneDepth + MapConfig.Bridge))
 end
@@ -1046,7 +1059,7 @@ local function buildSpawn(zone: Model, center: Vector3, theme: Theme, first: boo
 end
 
 local function buildZone(zonesFolder: Instance, def: Zones.ZoneDef, index: number): Model
-	local theme = MapThemes[def.Id]
+	local theme = themeFor(def.Id)
 	local center = zoneCenter(index)
 	local hasEntrance = index > 1
 	local hasExit = index < #Zones.List
@@ -1092,8 +1105,8 @@ local function buildPass(parent: Instance, from: number)
 	local endZ = b.Z - MapConfig.ZoneDepth / 2
 	local length = endZ - startZ
 	local mid = Vector3.new(a.X, a.Y, (startZ + endZ) / 2)
-	local fromTheme = MapThemes[Zones.List[from].Id]
-	local toTheme = MapThemes[Zones.List[from + 1].Id]
+	local fromTheme = themeFor(Zones.List[from].Id)
+	local toTheme = themeFor(Zones.List[from + 1].Id)
 
 	local pass = Instance.new("Folder")
 	pass.Name = `Pass{from}`
