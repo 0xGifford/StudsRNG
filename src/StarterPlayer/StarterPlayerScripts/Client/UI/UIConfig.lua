@@ -100,6 +100,7 @@ return {
 		Cooldown = "",
 		Busy = "",
 		RateLimited = "",
+		InvalidArgs = "",
 		IndexIncomplete = "Find every stud in this tab first",
 		EnemyGone = "",
 		NoStuds = "Equip some studs to fight!",
