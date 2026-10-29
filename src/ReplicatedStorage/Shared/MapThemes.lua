@@ -36,7 +36,7 @@ export type Theme = {
 	Trim: Color3,
 	Keys: { Color3 }, -- keycap colours, cycled per row
 	KeyMaterial: Enum.Material,
-	Props: { [string]: number }, -- MapBuilder / MapAssets prop name → weight
+	Props: { [string]: number }, -- MapBuilder prop name → weight
 	PropCount: number,
 	Weather: string?, -- "Snow" | "Embers" | "Sparkle" | "Fireflies"
 	-- Lighting while the local player is in the zone
@@ -75,7 +75,7 @@ local themes: { [string]: Theme } = {
 		Trim = rgb(255, 230, 120),
 		Keys = { rgb(250, 250, 245), rgb(214, 236, 200), rgb(255, 238, 170) },
 		KeyMaterial = Enum.Material.SmoothPlastic,
-		Props = { Oak = 5, FlowerBush = 3, Flowers = 2, MossRock = 2, Tree = 1 },
+		Props = { Tree = 5, Bush = 3, Flowers = 3, Boulder = 2 },
 		PropCount = 34,
 		Weather = "Fireflies",
 		ClockTime = 14,
@@ -107,7 +107,7 @@ local themes: { [string]: Theme } = {
 		Trim = rgb(255, 150, 80),
 		Keys = { rgb(255, 245, 225), rgb(255, 196, 120), rgb(110, 210, 230) },
 		KeyMaterial = Enum.Material.SmoothPlastic,
-		Props = { PalmTree = 6, BeachSet = 2, Sandcastle = 2, Shells = 1, Boulder = 1 },
+		Props = { Palm = 6, Umbrella = 2, Boulder = 2, Shells = 2 },
 		PropCount = 28,
 		Weather = nil,
 		ClockTime = 15,
@@ -139,7 +139,7 @@ local themes: { [string]: Theme } = {
 		Trim = rgb(150, 230, 255),
 		Keys = { rgb(250, 252, 255), rgb(190, 230, 255), rgb(150, 200, 255) },
 		KeyMaterial = Enum.Material.Ice,
-		Props = { SnowPine = 6, IceCluster = 3, Frosty = 1, Boulder = 1 },
+		Props = { Pine = 6, IceSpike = 3, Snowman = 1, Boulder = 1 },
 		PropCount = 30,
 		Weather = "Snow",
 		ClockTime = 15.5,
@@ -171,7 +171,7 @@ local themes: { [string]: Theme } = {
 		Trim = rgb(255, 110, 30),
 		Keys = { rgb(60, 50, 50), rgb(255, 120, 40), rgb(255, 200, 60) },
 		KeyMaterial = Enum.Material.SmoothPlastic,
-		Props = { LavaPool = 2, LavaRock = 3, CharredTree = 2, Obsidian = 2, Vent = 1 },
+		Props = { LavaPool = 3, Boulder = 3, DeadTree = 2, Vent = 2 },
 		PropCount = 24,
 		Weather = "Embers",
 		ClockTime = 17.6,
@@ -202,7 +202,7 @@ local themes: { [string]: Theme } = {
 		Trim = rgb(60, 230, 200),
 		Keys = { rgb(255, 255, 250), rgb(110, 230, 210), rgb(255, 150, 170) },
 		KeyMaterial = Enum.Material.SmoothPlastic,
-		Props = { PalmTree = 5, Tropical = 3, Flowers = 1, Tiki = 1, StiltHut = 1 },
+		Props = { Palm = 5, Bush = 3, Flowers = 2, Hut = 1 },
 		PropCount = 26,
 		Weather = nil,
 		ClockTime = 13,
@@ -233,7 +233,7 @@ local themes: { [string]: Theme } = {
 		Trim = rgb(176, 104, 255),
 		Keys = { rgb(200, 160, 255), rgb(90, 230, 255), rgb(255, 120, 220) },
 		KeyMaterial = Enum.Material.Glass,
-		Props = { GemCluster = 4, GlowShrooms = 3, Crystal = 2, MineCart = 1, Boulder = 1 },
+		Props = { Crystal = 5, Mushroom = 4, Boulder = 2 },
 		PropCount = 30,
 		Weather = "Sparkle",
 		ClockTime = 0,

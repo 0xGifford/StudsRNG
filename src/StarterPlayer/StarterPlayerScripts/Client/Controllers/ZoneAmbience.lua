@@ -9,22 +9,23 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- Knows which zone the local player stands in (workspace.Zones.<Id>: the
--- Center/ZoneSize attributes MapBuilder sets, or the model's bounding box
--- for hand-built zones) and makes it feel different: lighting, fog and
+-- Knows which zone the local player stands in (Zone-tagged instances: their
+-- Center/ZoneSize attributes, or their bounding box, see Shared/Tags) and
+-- makes it feel different: lighting, fog and
 -- atmosphere blend to Shared/MapThemes, gravity changes locally (Heaven is
 -- floaty) and a title card announces the zone.
 
+local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local MapThemes = require(Shared.MapThemes)
 local Signal = require(Shared.Util.Signal)
+local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
@@ -41,37 +42,30 @@ local BLEND = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut
 
 local player = Players.LocalPlayer
 local current: string? = nil
-local boxes: { [string]: { cframe: CFrame, size: Vector3 } } = {}
 
-local function boxOf(zone: Instance): { cframe: CFrame, size: Vector3 }?
-	local cached = boxes[zone.Name]
+type Box = { cframe: CFrame, size: Vector3 }
+-- Cached per Zone instance; dropped when its attributes change.
+local boxes: { [Instance]: Box } = {}
+
+local function boxOf(zone: Instance): Box?
+	local cached = boxes[zone]
 	if cached then return cached end
-	local center = zone:GetAttribute("Center")
-	local size = zone:GetAttribute("ZoneSize")
-	local box: { cframe: CFrame, size: Vector3 }
-	if typeof(center) == "Vector3" and typeof(size) == "Vector3" then
-		box = { cframe = CFrame.new(center + Vector3.new(0, size.Y / 2 - 10, 0)), size = size }
-	elseif zone:IsA("Model") then
-		local cframe, extents = zone:GetBoundingBox()
-		box = { cframe = cframe, size = extents + Vector3.new(0, 40, 0) }
-	else
-		return nil
-	end
-	boxes[zone.Name] = box
+	local cframe, size = Tags.zoneBox(zone)
+	if not (cframe and size) then return nil end
+	local box = { cframe = cframe, size = size }
+	boxes[zone] = box
 	return box
 end
 
 local function zoneAt(position: Vector3): string?
-	local folder = workspace:FindFirstChild(Config.ZoneFolder)
-	if not folder then return nil end
-	for _, def in Zones.List do
-		local zone = folder:FindFirstChild(def.Id)
-		local box = zone and boxOf(zone)
+	for _, zone in CollectionService:GetTagged(Tags.Zone) do
+		local id = Tags.idOfZone(zone)
+		local box = if Zones.ById[id] then boxOf(zone) else nil
 		if box then
 			local localPoint = box.cframe:PointToObjectSpace(position)
 			local half = box.size / 2
 			if math.abs(localPoint.X) <= half.X and math.abs(localPoint.Y) <= half.Y and math.abs(localPoint.Z) <= half.Z then
-				return def.Id
+				return id
 			end
 		end
 	end
@@ -110,6 +104,19 @@ function ZoneAmbience.current(): string?
 end
 
 function ZoneAmbience.start()
+	local function watch(zone: Instance)
+		zone.AttributeChanged:Connect(function()
+			boxes[zone] = nil
+		end)
+	end
+	for _, zone in CollectionService:GetTagged(Tags.Zone) do
+		watch(zone)
+	end
+	CollectionService:GetInstanceAddedSignal(Tags.Zone):Connect(watch)
+	CollectionService:GetInstanceRemovedSignal(Tags.Zone):Connect(function(zone)
+		boxes[zone] = nil
+	end)
+
 	while true do
 		task.wait(0.4)
 		local character = player.Character

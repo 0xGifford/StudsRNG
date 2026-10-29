@@ -25,6 +25,7 @@ local Net = require(Shared.Net)
 local Zones = require(Shared.Zones)
 local MapThemes = require(Shared.MapThemes)
 local Signal = require(Shared.Util.Signal)
+local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
@@ -73,19 +74,16 @@ local function text(parent: Instance, value: string, size: UDim2, position: UDim
 end
 
 local function zoneCenter(def: Zones.ZoneDef): Vector3?
-	local folder = workspace:FindFirstChild(Config.ZoneFolder)
-	local zone = folder and folder:FindFirstChild(def.Id)
+	local zone = Tags.forZone(Tags.Zone, def.Id)[1]
 	if not zone then
 		-- Not streamed in yet: where MapBuilder puts it.
 		if not Config.Map.Enabled then return nil end
 		return Config.Map.Origin + Vector3.new(0, 0, (def.Order - 1) * (Config.Map.ZoneDepth + Config.Map.Bridge))
 	end
-	local center = zone:GetAttribute("Center")
+	local center = zone:GetAttribute(Tags.Attr.Center)
 	if typeof(center) == "Vector3" then return center end
-	if zone:IsA("Model") then
-		return zone:GetBoundingBox().Position
-	end
-	return nil
+	local cframe = Tags.zoneBox(zone)
+	return if cframe then cframe.Position else nil
 end
 
 local function finish()

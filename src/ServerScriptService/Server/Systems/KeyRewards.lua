@@ -76,8 +76,8 @@ local function spawnTile()
 	for _ = 1, 12 do
 		local hitbox = hitboxes[rng:NextInteger(1, #hitboxes)]
 		local model = modelOf(hitbox)
-		local world = model and model:GetAttribute(Config.Press.AttrWorld)
-		local claimable = typeof(world) ~= "string" or unlocked[world] == true
+		local world = PressTracker.zoneOf(hitbox)
+		local claimable = PressTracker.isEnabled(hitbox) and (world == nil or unlocked[world] == true)
 		if model and claimable and not active[hitbox] and hitbox:IsDescendantOf(workspace) then
 			active[hitbox] = os.clock() + Settings.Lifetime
 			model:SetAttribute(Settings.Attribute, Settings.Text)

@@ -445,9 +445,10 @@ function Hud.start()
 	end)
 
 	-- Side buttons open the menu of the same name (Upgrades is the
-	-- full-screen tree, registered by UpgradeTree as a custom menu).
+	-- full-screen tree, registered by UpgradeTree as a custom menu). One
+	-- with a Menu attribute is wired by Interface instead (Shared/Tags).
 	for _, frame in sideButtons:GetChildren() do
-		if frame:IsA("Frame") and frame:FindFirstChild("Button") then
+		if frame:IsA("Frame") and frame:FindFirstChild("Button") and frame:GetAttribute("Menu") == nil then
 			local name = frame.Name
 			Interface.bindButton(frame, function()
 				Interface.toggle(name)

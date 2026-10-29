@@ -12,16 +12,17 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Zones are bought with Clacks in order (Shared/Zones). Owning a zone adds
 -- its studs to the roll pool and lets its keys pay out (Economy.ownsZone).
 -- Barriers open on the client; the server only decides ownership and
--- teleports to workspace.Zones.<Id>.Spawn.
+-- teleports to the zone's ZoneSpawn-tagged part (Shared/Tags).
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 local Zones = require(Shared.Zones)
+local Tags = require(Shared.Tags)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -36,13 +37,6 @@ local ZoneShop = {}
 local TELEPORT_COOLDOWN = 2
 local lastTeleport: { [Player]: number } = {}
 
-local function spawnFor(zoneId: string): BasePart?
-	local folder = workspace:FindFirstChild(Config.ZoneFolder)
-	local zone = folder and folder:FindFirstChild(zoneId)
-	local part = zone and zone:FindFirstChild("Spawn")
-	return if part and part:IsA("BasePart") then part else nil
-end
-
 function ZoneShop.teleport(player: Player, zoneId: string): Response
 	local data = PlayerData.get(player)
 	if not data then return { Ok = false, Error = "NotLoaded" } end
@@ -53,7 +47,7 @@ function ZoneShop.teleport(player: Player, zoneId: string): Response
 		return { Ok = false, Error = "Cooldown" }
 	end
 
-	local spawnPart = spawnFor(zoneId)
+	local spawnPart = Tags.spawnOf(zoneId)
 	local character = player.Character
 	if not spawnPart then return { Ok = false, Error = "NoSpawn" } end
 	if not character or not character:FindFirstChild("HumanoidRootPart") then
@@ -102,7 +96,7 @@ function ZoneShop.resetZones(player: Player)
 	lastTeleport[player] = nil
 	task.defer(function()
 		local result = ZoneShop.teleport(player, Zones.Default)
-		local hasZones = workspace:FindFirstChild(Config.ZoneFolder) ~= nil
+		local hasZones = #CollectionService:GetTagged(Tags.ZoneSpawn) > 0
 		if not result.Ok and result.Error == "NoSpawn" and hasZones and player.Parent == Players then
 			player:LoadCharacter()
 		end

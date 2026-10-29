@@ -16,6 +16,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Menus are the windows under Menu.Canva, plus "custom" menus that draw
 -- their own ScreenGui (Interface.registerMenu, e.g. the upgrade tree). Only
 -- one menu of either kind is open at a time.
+--
+-- Menus run off attributes too (Shared/Tags): any GuiButton or kit button
+-- Frame under PlayerGui with a Menu attribute opens / toggles / closes that
+-- menu (MenuAction), and a window's Blur / HideHUD attributes decide whether
+-- the world blurs and the HUD slides away while it's open.
 
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
@@ -26,6 +31,7 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Signal = require(Shared.Util.Signal)
+local Tags = require(Shared.Tags)
 
 local UIConfig = require(script.Parent.UIConfig)
 
@@ -151,6 +157,14 @@ function Interface.setup()
 			end)
 		end
 	end
+
+	-- Menu buttons by attribute, now and whenever gui is added.
+	Interface.bindMenuAttributes(playerGui)
+	playerGui.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("GuiObject") then
+			Interface.bindMenuButton(descendant)
+		end
+	end)
 end
 
 --------------------------------------------------------------------------
@@ -386,10 +400,9 @@ function Interface.open(name: string)
 		fadeCanvas(false)
 		if previous and previous:IsA("GuiObject") then previous.Visible = false end
 		Interface.MenuClosed:Fire(previousName :: string)
-	else
-		setBlur(true)
-		slideHUD(false)
 	end
+	setBlur(Tags.read(window, Tags.Attr.Blur, true))
+	slideHUD(not Tags.read(window, Tags.Attr.HideHUD, true))
 
 	Interface.Menu.Enabled = true
 	window.Visible = true
@@ -434,6 +447,57 @@ function Interface.toggle(name: string)
 		Interface.close(name)
 	else
 		Interface.open(name)
+	end
+end
+
+-- Runs a Menu / MenuAction pair (as set on a button or a MenuTrigger).
+function Interface.runMenuAction(menu: string, action: string?)
+	if action == "Open" then
+		Interface.open(menu)
+	elseif action == "Close" then
+		Interface.close(if menu == "" then nil else menu)
+	else
+		Interface.toggle(menu)
+	end
+end
+
+-- Wires every gui object under root (and root itself) that has a Menu
+-- attribute: a GuiButton directly, a kit button Frame through its Button.
+-- The attributes are read on click, so they can change at any time.
+local menuBound: { [GuiObject]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+local function bindMenuButton(object: GuiObject)
+	if menuBound[object] or object:GetAttribute(Tags.Attr.Menu) == nil then return end
+	local function run()
+		local menu = Tags.read(object, Tags.Attr.Menu, "")
+		local action = Tags.string(object, Tags.Attr.MenuAction)
+		if menu ~= "" or action == "Close" then
+			Interface.runMenuAction(menu, action)
+		end
+	end
+	local child = object:FindFirstChild("Button")
+	if child and child:IsA("GuiButton") then
+		menuBound[object] = true
+		Interface.bindButton(object, run)
+	elseif object:IsA("GuiButton") then
+		menuBound[object] = true
+		object.Activated:Connect(function()
+			Interface.play("Click")
+			run()
+		end)
+	end
+end
+
+Interface.bindMenuButton = bindMenuButton
+
+function Interface.bindMenuAttributes(root: Instance)
+	if root:IsA("GuiObject") then
+		bindMenuButton(root)
+	end
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("GuiObject") then
+			bindMenuButton(descendant)
+		end
 	end
 end
 
