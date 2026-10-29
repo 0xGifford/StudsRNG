@@ -29,6 +29,9 @@ local entries: { Entry } = {
 			"43 new zones, from the Desert to Keyboard Kingdom: 50 in all.",
 			"Every zone is rebuilt brick by brick, with its own sky, fog and gravity.",
 			"Zones flow straight into each other: walk up to the next gate to see its price and buy it.",
+			"Enemies roam every zone: press Fight and your equipped studs go after them for Clacks.",
+			"Studs now have Strength and Health, and come in Base, Big, Huge, Jumbo, Shiny and Inverted.",
+			"A brand new Stud Index: one tab per variant, stud stats, roll counts and a reward for every completed tab.",
 		},
 	},
 	{

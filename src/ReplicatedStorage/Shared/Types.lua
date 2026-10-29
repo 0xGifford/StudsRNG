@@ -22,6 +22,8 @@ export type StudDef = {
 	Material: Enum.Material,
 	Particle: string?,
 	Light: boolean?,
+	Strength: number?, -- overrides the rarity-based default (RollLogic.statsOf)
+	Health: number?,
 }
 
 export type VariantDef = {
@@ -31,6 +33,11 @@ export type VariantDef = {
 	Effect: string?,
 	ColorOverride: Color3?,
 	MaterialOverride: Enum.Material?,
+	Label: string?, -- shown name ("Base" for Normal)
+	Stats: number?, -- Strength / Health multiplier
+	Scale: number?, -- follower size
+	Invert: boolean?, -- colour is inverted
+	Retired: boolean?, -- no longer rolled, fused or indexed
 }
 
 -- Saved profile shape (ProfileStore template lives in Systems/PlayerData).
@@ -61,6 +68,9 @@ export type PlayerData = {
 	Quests: { Day: number, List: { QuestState } },
 	LastOnline: number, -- unix time, for offline earnings
 	TilesClaimed: number,
+	IndexClaims: { [string]: boolean },
+	RollCounts: { [string]: number },
+	EnemiesDefeated: number,
 }
 
 export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }

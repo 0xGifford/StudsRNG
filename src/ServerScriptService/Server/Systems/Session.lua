@@ -49,6 +49,9 @@ local CLIENT_FIELDS = {
 	"Tutorial",
 	"Quests",
 	"TilesClaimed",
+	"IndexClaims",
+	"RollCounts",
+	"EnemiesDefeated",
 }
 
 function Session.init()

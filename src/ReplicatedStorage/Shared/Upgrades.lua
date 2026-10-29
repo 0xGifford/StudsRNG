@@ -73,7 +73,7 @@ local list: { UpgradeDef } = {
 	{ Id = "Luck4", Name = "Luck IV", Icon = "🌟", Description = "Fortune favours the clacky.",
 		Stat = "LuckPct", PerLevel = 0.5, MaxLevel = 3, BaseCost = 120_000_000, CostGrowth = 2.5,
 		Q = -4, R = 0, Requires = { "Luck3" }, Format = "Percent", Suffix = "luck" },
-	{ Id = "ShinyHunter", Name = "Shiny Hunter", Icon = "✨", Description = "Variants (Shiny, Golden, Rainbow) roll more often.",
+	{ Id = "ShinyHunter", Name = "Shiny Hunter", Icon = "✨", Description = "Variants (Big, Huge, Jumbo, Shiny, Inverted) roll more often.",
 		Stat = "VariantLuckPct", PerLevel = 0.1, MaxLevel = 5, BaseCost = 40_000, CostGrowth = 1.9,
 		Q = -2, R = 1, Requires = { "Luck1" }, Format = "Percent", Suffix = "variant luck" },
 

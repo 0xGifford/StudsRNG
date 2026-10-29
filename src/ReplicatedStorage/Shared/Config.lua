@@ -226,6 +226,29 @@ local milestones: { Milestone } = {
 }
 Config.IndexMilestones = milestones
 
+-- Completing an Index tab (every stud in one variant) lets the player claim
+-- this, once per tab. Shown in the Index; stacks with milestones.
+Config.IndexTabReward = {
+	Luck = 0.05,
+	Clacks = 0.05,
+}
+
+-- Enemies (Systems/Combat, Shared/Enemies). Equipped studs fight them: the
+-- team deals its total Strength per second and has its total Health; the
+-- enemy hits back. Defeating one pays Clacks.
+Config.Combat = {
+	PerZone = 4, -- enemies alive in each zone (when no EnemySpawn parts are placed)
+	Tick = 0.25, -- seconds per combat step
+	FightRange = 40, -- studs: how close the player must be to start a fight
+	LeashRange = 80, -- walking further than this away ends the fight
+	Respawn = 8, -- seconds before a defeated enemy comes back
+	WanderRadius = 14,
+	WakeRange = 260, -- enemies only move while a player is this close
+	RegenPerSecond = 0.15, -- share of team Health restored per second out of a fight
+	KnockoutCooldown = 4, -- seconds before a defeated team can fight again
+	FreeRollChance = 0.1, -- extra drop on each defeat
+}
+
 Config.Announce = {
 	MinOneIn = 10000, -- server-wide announcement at or rarer than this (stud × variant odds)
 }

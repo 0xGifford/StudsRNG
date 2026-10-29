@@ -166,6 +166,18 @@ function State.teleportZone(id: string): Response
 	return Net.invoke("TeleportZone", id)
 end
 
+function State.claimIndexTab(variant: string): Response
+	return Net.invoke("ClaimIndexTab", variant)
+end
+
+function State.fightEnemy(enemyId: number): Response
+	return Net.invoke("FightEnemy", enemyId)
+end
+
+function State.stopFight(): Response
+	return Net.invoke("StopFight")
+end
+
 function State.rebirth(): Response
 	return Net.invoke("Rebirth")
 end

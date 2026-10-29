@@ -93,6 +93,13 @@ local function updateCard(def: Zones.ZoneDef)
 		local short = (State.get("Clacks") or 0) < priceOf(def)
 		Kit.paint(button, if short then "Sunset" else "Orange")
 		Interface.setText(button, Format.number(priceOf(def)))
+		-- Prices are one word: never let the kit's label wrap them.
+		for _, name in { "Title", "TitleShadow" } do
+			local title = button:FindFirstChild(name, true)
+			if title and title:IsA("TextLabel") then
+				title.TextWrapped = false
+			end
+		end
 	else
 		Kit.paint(button, "Purple")
 		Interface.setText(button, "Locked")
@@ -286,13 +293,22 @@ local function makePrompt(): Prompt
 	icon.LayoutOrder = 1
 	icon.Parent = priceRow
 	Kit.setIcon(icon, UIConfig.Icons.Clacks)
-	local price = Kit.label("")
+	-- Its own label, never wrapping: the kit's labels wrap, which can break a
+	-- short price like "400K" across lines and show only part of it.
+	local price = Instance.new("TextLabel")
 	price.Name = "Amount"
-	price.AnchorPoint = Vector2.zero
-	price.Position = UDim2.new()
-	price.Size = UDim2.fromScale(0.5, 1)
+	price.BackgroundTransparency = 1
+	price.Size = UDim2.fromScale(0.6, 1)
+	price.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
+	price.TextScaled = true
+	price.TextWrapped = false
 	price.TextXAlignment = Enum.TextXAlignment.Left
+	price.TextColor3 = Color3.new(1, 1, 1)
 	price.LayoutOrder = 2
+	local priceStroke = Instance.new("UIStroke")
+	priceStroke.Thickness = 2.5
+	priceStroke.Color = Color3.fromRGB(12, 12, 16)
+	priceStroke.Parent = price
 	price.Parent = priceRow
 
 	local button = Kit.button("Green", "BUY")

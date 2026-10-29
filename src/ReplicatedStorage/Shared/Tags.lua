@@ -47,6 +47,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                   Value    number   Clacks per press (on the key Model)
 --                   World    string   zone id (on the key Model; default: its Keyboard / Zone)
 --                   Enabled  boolean  false: this key never pays (default true)
+--   EnemySpawn    BasePart where an enemy lives (wanders around it).
+--                   ZoneId    string   default: the Zone it sits in
+--                 Zones without any get Config.Combat.PerZone spots of their own.
+--   Enemy         set by the server on each enemy Model (EnemyId, ZoneId,
+--                 Health, MaxHealth attributes); don't place these yourself.
 --   MenuTrigger   BasePart that opens a menu.
 --                   Menu        string   menu name (a Menu.Canva window, or Upgrades)
 --                   MenuAction  string   Open (default) | Toggle | Close
@@ -70,6 +75,8 @@ local Tags = {
 	ZoneGate = "ZoneGate",
 	Keyboard = "Keyboard",
 	MenuTrigger = "MenuTrigger",
+	EnemySpawn = "EnemySpawn",
+	Enemy = "Enemy",
 
 	Attr = {
 		ZoneId = "ZoneId",

@@ -56,12 +56,12 @@ function Format.multiplier(value: number): string
 	return "x" .. text
 end
 
--- "Ember", "Shiny Ember", "Rainbow Void"
+-- "Ember", "Huge Ember", "Inverted Void"
 function Format.studName(def: StudDef, variant: VariantDef): string
 	if variant.Name == "Normal" then
 		return def.Name
 	end
-	return `{variant.Name} {def.Name}`
+	return `{variant.Label or variant.Name} {def.Name}`
 end
 
 function Format.hex(color: Color3): string
