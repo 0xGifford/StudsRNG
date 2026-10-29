@@ -371,7 +371,8 @@ local function updatePrompt()
 	local nextZone = Zones.nextFor(State.get("UnlockedWorlds") or {})
 	local isNext = nextZone ~= nil and nextZone.Id == def.Id
 	local price = priceOf(def)
-	local short = (State.get("Clacks") or 0) < price
+	local clacks = State.get("Clacks") or 0
+	local short = clacks < price
 	p.title.Text = Tags.string(blocker.root, Tags.Attr.Title) or `{def.Emoji} {def.Name}`
 	p.title.TextColor3 = def.Color
 	local outline = p.gui:FindFirstChild("Outline", true)
@@ -379,10 +380,13 @@ local function updatePrompt()
 		outline.Color = def.Color
 	end
 	p.price.Text = Format.number(price)
+	-- Red price and "NEED 297K" when short, so it's clear what's missing.
+	p.price.TextColor3 = if short and isNext then Color3.fromRGB(255, 120, 120) else Color3.new(1, 1, 1)
 	p.button.Visible = isNext
 	p.note.Visible = not isNext
 	if isNext then
 		Kit.paint(p.button, if short then "Sunset" else "Green")
+		Interface.setText(p.button, if short then `NEED {Format.number(price - clacks)}` else "BUY")
 	else
 		local previous = previousOf(def)
 		p.note.Text = `Unlock {if previous then previous.Name else "the previous zone"} first`
