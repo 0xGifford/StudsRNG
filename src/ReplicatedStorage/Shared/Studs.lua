@@ -16,6 +16,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Multiplier: Clacks multiplier when equipped (Normal variant).
 -- World: which pool it rolls from. A player only rolls studs from worlds they
 --        have unlocked (PlayerData.UnlockedWorlds).
+-- Drop:  never rolled; only dropped by Mini Bosses and Zone Bosses
+--        (Systems/Drops). Their OneIn is the drop's base odds.
 --
 -- Ids are saved in player data: never rename an Id once the game is live.
 
@@ -131,6 +133,18 @@ local list: { StudDef } = {
 		Color = Color3.fromRGB(255, 200, 230), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
 	{ Id = "Singularity", Name = "Divine", Rarity = "Secret", OneIn = 2500000, Multiplier = 100, World = "Space",
 		Color = Color3.fromRGB(255, 250, 210), Material = Enum.Material.ForceField, Particle = "Stars", Light = true },
+
+	-- Boss drops (never rolled: Systems/Drops)
+	{ Id = "BossFang", Name = "Fang", Rarity = "Rare", OneIn = 300, Multiplier = 3, World = "Boss", Drop = true,
+		Color = Color3.fromRGB(240, 235, 220), Material = Enum.Material.SmoothPlastic, Particle = "Dust" },
+	{ Id = "BossCrown", Name = "Crown", Rarity = "Epic", OneIn = 2500, Multiplier = 7, World = "Boss", Drop = true,
+		Color = Color3.fromRGB(255, 200, 50), Material = Enum.Material.Foil, Particle = "Sparkle", Light = true },
+	{ Id = "BossWarlord", Name = "Warlord", Rarity = "Legendary", OneIn = 20000, Multiplier = 16, World = "Boss", Drop = true,
+		Color = Color3.fromRGB(200, 30, 40), Material = Enum.Material.Neon, Particle = "Embers", Light = true },
+	{ Id = "BossTyrant", Name = "Tyrant", Rarity = "Mythic", OneIn = 150000, Multiplier = 38, World = "Boss", Drop = true,
+		Color = Color3.fromRGB(60, 0, 80), Material = Enum.Material.ForceField, Particle = "Void", Light = true },
+	{ Id = "BossOverlord", Name = "Overlord", Rarity = "Secret", OneIn = 1500000, Multiplier = 95, World = "Boss", Drop = true,
+		Color = Color3.fromRGB(255, 60, 30), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
 }
 
 local byId: { [string]: StudDef } = {}

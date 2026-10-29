@@ -56,6 +56,7 @@ local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
 local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
+local Drops = require(Systems.Drops)
 
 local Combat = {}
 
@@ -624,6 +625,9 @@ local function defeat(enemy: Enemy)
 				end
 			end
 			StateSync.push(player, "StudXP", data.StudXP)
+			if enemy.boss then
+				Drops.roll(player, Config.Drops.MiniBossLuck, enemy.def.Level)
+			end
 			local streakText = if streak.count > 1 then ` (Streak x{streak.count})` else ""
 			notify(player, `Defeated {enemy.name}! +{shortNumber(amount)} Clacks{extra}{streakText}`, Color3.fromRGB(255, 215, 90))
 			Combat.Defeated:Fire(player, enemy.boss)

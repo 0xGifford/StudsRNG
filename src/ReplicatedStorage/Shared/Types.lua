@@ -24,6 +24,7 @@ export type StudDef = {
 	Light: boolean?,
 	Strength: number?, -- overrides the rarity-based default (RollLogic.statsOf)
 	Health: number?,
+	Drop: boolean?, -- never rolled: only dropped by bosses (Systems/Drops)
 }
 
 export type VariantDef = {

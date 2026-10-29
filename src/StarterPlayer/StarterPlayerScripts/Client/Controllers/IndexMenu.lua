@@ -122,6 +122,7 @@ local function text(parent: Instance, value: string, color: Color3, size: UDim2,
 end
 
 local function oddsText(def: StudDef): string
+	if def.Drop then return "Boss drop" end
 	local variant = Variants.ById[activeVariant]
 	local oneIn = RollLogic.displayOneIn(def.OneIn * variant.OneIn, State.stats().Luck)
 	return (string.gsub(Format.oneIn(oneIn), "^1 in ", "1/"))

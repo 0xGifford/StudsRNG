@@ -941,7 +941,7 @@ local function announce(payload: any)
 	-- Secret's colour is near-black: unreadable in chat.
 	local rarityColor = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 	local message = string.format(
-		'<font color="%s"><b>%s just rolled %s (%s)!</b></font>',
+		if payload.Drop then '<font color="%s"><b>%s got a boss drop: %s (%s)!</b></font>' else '<font color="%s"><b>%s just rolled %s (%s)!</b></font>',
 		Format.hex(rarityColor),
 		tostring(payload.Player),
 		Format.studName(def, variant),

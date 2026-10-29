@@ -300,6 +300,15 @@ Config.Levels = {
 	BossXp = 5, -- Mini Boss multiplier
 }
 
+-- Boss drops (Studs with Drop = true). Each kill tries the drop studs
+-- rarest first, each hitting with chance Luck / OneIn; Luck grows with the
+-- enemy's level (+PerEnemyLevel per level).
+Config.Drops = {
+	MiniBossLuck = 30,
+	ZoneBossLuck = 600,
+	PerEnemyLevel = 0.04,
+}
+
 Config.Announce = {
 	Channel = "Rolls", -- chat channel (tab) every announced roll goes to
 	ChannelMinOneIn = 100, -- announced in the Rolls channel at or rarer than this (stud × variant odds)

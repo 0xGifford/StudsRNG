@@ -57,6 +57,7 @@ local EVENTS = {
 	"StatePatch",
 	"Announce",
 	"Notify", -- { Text: string, Color: Color3?, Results: { RollResult }? }
+	"Drop", -- { RollResult }: a boss dropped a stud for you (Systems/Drops)
 }
 
 local Net = {}

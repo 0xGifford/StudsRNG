@@ -18,6 +18,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- studs' Health and Strength, RETREAT) shows the kill streak and pulses red
 -- when your studs are low. Fights start on their own when an enemy reaches
 -- you; the server decides everything, this only shows it (UI/CombatFx).
+-- Boss drops ("Drop" event, Systems/Drops) get a banner and the roll reel.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -26,11 +27,14 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Net = require(Shared.Net)
+local Studs = require(Shared.Studs)
 local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
+local RollReveal = require(Controllers.RollReveal)
 local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
@@ -477,6 +481,18 @@ function Enemies.start()
 		task.spawn(track, model)
 	end)
 	CollectionService:GetInstanceRemovedSignal(Tags.Enemy):Connect(untrack)
+
+	-- Boss drop: banner, then the roll reel lands on it.
+	Net.on("Drop", function(results)
+		if typeof(results) ~= "table" or #results == 0 then return end
+		local def = Studs.ById[results[1].Id]
+		local color = if def then Config.Rarities.Colors[def.Rarity] or BOSS_GOLD else BOSS_GOLD
+		Juice.banner("BOSS DROP!", if def then `A {def.Rarity} stud dropped!` else "", if def and def.Rarity ~= "Secret" then color else BOSS_GOLD, 1.2)
+		Juice.confetti(40)
+		task.delay(1.1, function()
+			RollReveal.showResults(results)
+		end)
+	end)
 
 	player:GetAttributeChangedSignal("FightTarget"):Connect(onFightTarget)
 	player:GetAttributeChangedSignal("KillStreak"):Connect(refreshStreak)

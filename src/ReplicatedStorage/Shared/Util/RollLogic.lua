@@ -87,7 +87,7 @@ end
 function RollLogic.rollStud(rng: Random, luck: number, unlockedWorlds: { [string]: boolean }): StudDef?
 	local fallback: StudDef? = nil
 	for _, def in studsRarestFirst do
-		if unlockedWorlds[def.World] then
+		if unlockedWorlds[def.World] and not def.Drop then
 			fallback = def
 			if rng:NextNumber() * def.OneIn < luck then
 				return def
@@ -95,6 +95,17 @@ function RollLogic.rollStud(rng: Random, luck: number, unlockedWorlds: { [string
 		end
 	end
 	return fallback
+end
+
+-- A boss drop: drop studs rarest first, each with chance luck / OneIn.
+-- Nil when nothing drops.
+function RollLogic.rollDrop(rng: Random, luck: number): StudDef?
+	for _, def in studsRarestFirst do
+		if def.Drop and rng:NextNumber() * def.OneIn < luck then
+			return def
+		end
+	end
+	return nil
 end
 
 function RollLogic.rollVariant(rng: Random, luck: number): VariantDef
