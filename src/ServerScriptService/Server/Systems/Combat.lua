@@ -27,10 +27,15 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- A team that falls is knocked out for a few seconds; RETREAT (StopFight)
 -- keeps the studs home for RetreatCooldown. Out of a fight the team heals.
 --
+-- Crits (CritChance) hit for CritMultiplier; defeats in quick succession
+-- build a kill streak (StreakWindow) worth StreakBonus more Clacks a link.
+--
 -- Clients see: enemy Models tagged Enemy (EnemyId, ZoneId, Health,
--- MaxHealth, Level, Boss attributes), each player's FightTarget attribute
--- (so everyone's studs fly at the right enemy) and the "Team" state field
--- { Hp, MaxHp, Strength, Fighting }.
+-- MaxHealth, Level, Boss attributes; Crits counts crits taken, Hunting is
+-- the UserId it's chasing), each player's FightTarget and KillStreak
+-- attributes (so everyone's studs fly at the right enemy) and the "Team"
+-- state field { Hp, MaxHp, Strength, Fighting }. Combat.Defeated fires
+-- (player, boss) for every fighter of a defeated enemy (QuestService).
 
 local CollectionService = game:GetService("CollectionService")
 local PathfindingService = game:GetService("PathfindingService")
@@ -41,6 +46,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Net = require(Shared.Net)
+local Signal = require(Shared.Util.Signal)
 local Tags = require(Shared.Tags)
 local Zones = require(Shared.Zones)
 local Enemies = require(Shared.Enemies)
@@ -52,6 +58,9 @@ local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
 
 local Combat = {}
+
+-- (player, boss) once per fighter of each defeated enemy
+Combat.Defeated = Signal.new() :: Signal.Signal<Player, boolean>
 
 local Settings = Config.Combat
 
@@ -100,6 +109,8 @@ local teams: { [Player]: Team } = {}
 local folder: Folder
 local nextId = 0
 local rng = Random.new()
+type Streak = { count: number, last: number }
+local streaks: { [Player]: Streak } = {}
 
 --------------------------------------------------------------------------
 -- Helpers
@@ -487,6 +498,9 @@ local function move(dt: number)
 		local leash = if enemy.chasing then Settings.HomeRadius else Settings.HomeRadius * 0.6
 		if prey and root and (flat(here - enemy.home)).Magnitude < leash then
 			-- Chase: re-path when the player has moved on.
+			if enemy.chasing ~= prey and enemy.model then
+				enemy.model:SetAttribute("Hunting", prey.UserId)
+			end
 			enemy.chasing = prey
 			local stop = enemy.size / 2 + 4
 			local goal = root.Position - Vector3.new(0, 3, 0)
@@ -500,6 +514,9 @@ local function move(dt: number)
 			-- Too far from home or nobody about: go home, then wander.
 			if enemy.chasing then
 				enemy.chasing = nil
+				if enemy.model then
+					enemy.model:SetAttribute("Hunting", nil)
+				end
 				requestPath(enemy, enemy.home)
 			end
 			if walk(enemy, dt, Settings.WanderSpeed, 1.5) and now >= enemy.nextWander then
@@ -574,7 +591,19 @@ local function defeat(enemy: Enemy)
 		local data = PlayerData.get(player)
 		if data then
 			local rebirths = if typeof(data.Rebirths) == "number" then data.Rebirths else 0
-			local amount = math.floor(enemy.reward * (1 + rebirths * Config.Rebirth.ClacksPerRebirth))
+			-- Kill streak: chain defeats inside the window.
+			local now = os.clock()
+			local streak = streaks[player]
+			if streak and now - streak.last <= Settings.StreakWindow then
+				streak.count = math.min(streak.count + 1, Settings.StreakMax)
+				streak.last = now
+			else
+				streak = { count = 1, last = now }
+				streaks[player] = streak
+			end
+			player:SetAttribute("KillStreak", streak.count)
+			local streakBonus = 1 + (streak.count - 1) * Settings.StreakBonus
+			local amount = math.floor(enemy.reward * (1 + rebirths * Config.Rebirth.ClacksPerRebirth) * streakBonus)
 			Economy.addClacks(player, amount)
 			local extra = ""
 			if rng:NextNumber() < Settings.FreeRollChance * (if enemy.boss then 5 else 1) then
@@ -583,7 +612,9 @@ local function defeat(enemy: Enemy)
 			end
 			data.EnemiesDefeated += 1
 			StateSync.push(player, "EnemiesDefeated", data.EnemiesDefeated)
-			notify(player, `Defeated {enemy.name}! +{shortNumber(amount)} Clacks{extra}`, Color3.fromRGB(255, 215, 90))
+			local streakText = if streak.count > 1 then ` (Streak x{streak.count})` else ""
+			notify(player, `Defeated {enemy.name}! +{shortNumber(amount)} Clacks{extra}{streakText}`, Color3.fromRGB(255, 215, 90))
+			Combat.Defeated:Fire(player, enemy.boss)
 		end
 	end
 	if enemy.model then
@@ -639,6 +670,13 @@ local function step(dt: number)
 			-- kills faster than MinFightTime (the dash animation needs it).
 			if os.clock() - (engagedAt[player] or 0) >= Settings.ArriveTime then
 				local dps = math.min(team.strength, enemy.maxHealth / Settings.MinFightTime)
+				if rng:NextNumber() < Settings.CritChance then
+					dps *= Settings.CritMultiplier
+					if enemy.model then
+						local crits = enemy.model:GetAttribute("Crits")
+						enemy.model:SetAttribute("Crits", (if typeof(crits) == "number" then crits else 0) + 1)
+					end
+				end
 				enemy.health -= dps * dt
 				team.hp -= enemy.damage * dt
 				if team.hp <= 0 then
@@ -649,6 +687,13 @@ local function step(dt: number)
 			team.hp = math.min(team.maxHp, team.hp + team.maxHp * Settings.RegenPerSecond * dt)
 		end
 		pushTeam(player, team)
+
+		-- Streaks run out.
+		local streak = streaks[player]
+		if streak and os.clock() - streak.last > Settings.StreakWindow then
+			streaks[player] = nil
+			player:SetAttribute("KillStreak", nil)
+		end
 	end
 
 	for _, enemy in enemies do
@@ -685,6 +730,7 @@ function Combat.init()
 		setFight(player, nil)
 		teams[player] = nil
 		engagedAt[player] = nil
+		streaks[player] = nil
 	end)
 end
 

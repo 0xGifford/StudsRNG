@@ -262,6 +262,24 @@ Config.Combat = {
 	-- over, and even a strong team takes a moment, so every stud gets a dash.
 	ArriveTime = 0.7, -- seconds after a fight starts before damage lands
 	MinFightTime = 1.5, -- seconds: the fastest any enemy can go down
+	-- Crits: each combat step can land a crit for CritMultiplier damage.
+	CritChance = 0.12,
+	CritMultiplier = 2.5,
+	-- Kill streaks: defeats within StreakWindow of each other chain up, each
+	-- link adding StreakBonus Clacks on a defeat, up to StreakMax links.
+	StreakWindow = 15,
+	StreakBonus = 0.1,
+	StreakMax = 20,
+	-- Client sounds (built-in Roblox sounds; swap for your own asset ids).
+	-- Played in the SFX SoundGroup, so the Options slider controls them.
+	Sounds = {
+		Dash = "rbxasset://sounds/swordlunge.wav",
+		Hit = "rbxasset://sounds/swordslash.wav",
+		Crit = "rbxasset://sounds/snap.wav",
+		Explode = "rbxasset://sounds/collide.wav",
+		Coin = "rbxasset://sounds/electronicpingshort.wav",
+		Aggro = "rbxasset://sounds/button.wav",
+	},
 	-- Mini bosses: any spawn can be one.
 	BossChance = 1 / 12,
 	BossHealth = 8,
