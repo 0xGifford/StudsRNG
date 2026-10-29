@@ -258,6 +258,10 @@ Config.Combat = {
 	KnockoutCooldown = 4, -- seconds before a defeated team can fight again
 	RetreatCooldown = 6, -- seconds RETREAT keeps the studs out of fights
 	FreeRollChance = 0.1, -- extra drop on each defeat
+	-- Fights are paced to the studs' animation: no damage until they've flown
+	-- over, and even a strong team takes a moment, so every stud gets a dash.
+	ArriveTime = 0.7, -- seconds after a fight starts before damage lands
+	MinFightTime = 1.5, -- seconds: the fastest any enemy can go down
 	-- Mini bosses: any spawn can be one.
 	BossChance = 1 / 12,
 	BossHealth = 8,

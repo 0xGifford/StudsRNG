@@ -95,6 +95,7 @@ type Team = {
 local enemies: { [number]: Enemy } = {}
 local zoneStates: { [Instance]: ZoneState } = {}
 local fights: { [Player]: Enemy? } = {}
+local engagedAt: { [Player]: number } = {} -- when the current fight started
 local teams: { [Player]: Team } = {}
 local folder: Folder
 local nextId = 0
@@ -533,6 +534,7 @@ local function setFight(player: Player, enemy: Enemy?)
 	fights[player] = enemy
 	if enemy then
 		enemy.fighters[player] = true
+		engagedAt[player] = os.clock()
 		player:SetAttribute("FightTarget", enemy.id)
 	else
 		player:SetAttribute("FightTarget", nil)
@@ -592,8 +594,8 @@ local function defeat(enemy: Enemy)
 	enemy.body = nil
 	table.clear(enemy.fighters)
 	-- The studs move on to the next enemy nearby, or come home.
+	-- (setFight clears FightTarget when there's nobody left to fight.)
 	for player in fighters do
-		fights[player] = nil
 		local nextEnemy = if canFight(player, teams[player]) then nearestEnemy(player, Settings.RetargetRange, enemy) else nil
 		setFight(player, nextEnemy)
 	end
@@ -633,10 +635,15 @@ local function step(dt: number)
 		end
 
 		if enemy then
-			enemy.health -= team.strength * dt
-			team.hp -= enemy.damage * dt
-			if team.hp <= 0 then
-				knockout(player, team)
+			-- Nothing lands until the studs have flown over, and no team
+			-- kills faster than MinFightTime (the dash animation needs it).
+			if os.clock() - (engagedAt[player] or 0) >= Settings.ArriveTime then
+				local dps = math.min(team.strength, enemy.maxHealth / Settings.MinFightTime)
+				enemy.health -= dps * dt
+				team.hp -= enemy.damage * dt
+				if team.hp <= 0 then
+					knockout(player, team)
+				end
 			end
 		elseif team.hp < team.maxHp then
 			team.hp = math.min(team.maxHp, team.hp + team.maxHp * Settings.RegenPerSecond * dt)
@@ -677,6 +684,7 @@ function Combat.init()
 	Players.PlayerRemoving:Connect(function(player)
 		setFight(player, nil)
 		teams[player] = nil
+		engagedAt[player] = nil
 	end)
 end
 

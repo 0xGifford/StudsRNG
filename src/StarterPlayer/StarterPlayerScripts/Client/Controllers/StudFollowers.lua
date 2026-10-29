@@ -34,6 +34,23 @@ local FollowConfig = Config.Followers
 -- One attack cycle per stud: hover, wind up, dash in, recoil.
 local ATTACK_PERIOD = 1.5
 local HOVER_END, WINDUP_END, DASH_END = 0.55, 0.72, 0.8
+-- Further than this from where it should be, a stud flies there at FLY_SPEED
+-- (so leaving for an enemy and coming back read as a flight, not a snap).
+local FLY_DISTANCE = 5
+local FLY_SPEED = 50 -- studs per second
+
+-- Moves `from` towards `goal`: a steady flight when far, an eased settle
+-- when close.
+local function approach(from: Vector3, goal: Vector3, dt: number, ease: number): Vector3
+	local offset = goal - from
+	local distance = offset.Magnitude
+	if distance > FollowConfig.RenderDistance then
+		return goal -- teleported: no cross-map flight
+	elseif distance > FLY_DISTANCE then
+		return from + offset.Unit * math.min(distance - FLY_DISTANCE * 0.5, FLY_SPEED * dt)
+	end
+	return from:Lerp(goal, 1 - math.exp(-ease * dt))
+end
 local localPlayer = Players.LocalPlayer
 
 local StudFollowers = {}
@@ -136,8 +153,10 @@ end
 local function fightTarget(player: Player): BasePart?
 	local id = player:GetAttribute("FightTarget")
 	local model = if typeof(id) == "number" then enemyModels[id] else nil
-	local body = model and model.PrimaryPart
-	return if body and body.Parent then body else nil
+	if not model then return nil end
+	-- PrimaryPart can lag behind the model under streaming; Body is the same part.
+	local body = model.PrimaryPart or model:FindFirstChild("Body")
+	return if body and body:IsA("BasePart") and body.Parent then body else nil
 end
 
 local function setVisible(entry: Entry, visible: boolean)
@@ -152,7 +171,6 @@ local function update(dt: number)
 	local t = os.clock()
 	local camera = workspace.CurrentCamera
 	local cameraPos = camera and camera.CFrame.Position or Vector3.zero
-	local alpha = 1 - math.exp(-FollowConfig.FollowSpeed * dt)
 
 	for player, entry in entries do
 		local character = player.Character
@@ -215,14 +233,14 @@ local function update(dt: number)
 					tilt = (1 - k) * 0.8
 				end
 				local goal = enemy.Position + outward * radius + Vector3.new(0, follower.size / 2 - enemy.Size.Y * 0.1 + lift, 0)
-				position = part.Position:Lerp(goal, 1 - math.exp(-FollowConfig.FollowSpeed * speed * dt))
+				position = approach(part.Position, goal, dt, FollowConfig.FollowSpeed * speed)
 				-- Face the enemy, tipping forward into the dash.
 				local facing = CFrame.lookAt(Vector3.zero, -outward)
 				spin = facing.Rotation * CFrame.Angles(-tilt, 0, 0) * CFrame.Angles(0, t * 2 + follower.phase, 0)
 			else
 				local bob = math.sin(t * FollowConfig.BobSpeed + follower.phase) * FollowConfig.BobHeight
 				local target = basis * CFrame.new((offsets :: { Vector3 })[i] + Vector3.new(0, bob, 0))
-				position = part.Position:Lerp(target.Position, alpha)
+				position = approach(part.Position, target.Position, dt, FollowConfig.FollowSpeed)
 				spin = CFrame.Angles(0, t * 0.8 + follower.phase, 0)
 			end
 			part.CFrame = CFrame.new(position) * spin
