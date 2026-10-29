@@ -35,6 +35,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local RollReveal = require(Controllers.RollReveal)
+local EnemyVisuals = require(Controllers.EnemyVisuals)
 local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
@@ -83,6 +84,7 @@ local teamText: TextLabel
 local strengthText: TextLabel
 local streakText: TextLabel
 local lowPulse: Tween? = nil
+local lastTeamHp: number? = nil
 
 local function label(parent: Instance, text: string, color: Color3, size: UDim2, position: UDim2): TextLabel
 	local l = Instance.new("TextLabel")
@@ -168,7 +170,8 @@ end
 
 -- Bright white flash over the enemy you're fighting.
 local function hitFlash(model: Model, strength: number)
-	flash.Adornee = model
+	-- The server's proxy is invisible: flash the drawn monster.
+	flash.Adornee = EnemyVisuals.modelOf(model) or model
 	flash.FillTransparency = 1 - strength
 	TweenService:Create(flash, TweenInfo.new(0.18), { FillTransparency = 1 }):Play()
 end
@@ -272,8 +275,10 @@ end
 local function track(instance: Instance)
 	if not instance:IsA("Model") or tracked[instance] then return end
 	local model = instance
-	local body = model.PrimaryPart or model:WaitForChild("Body", 5)
-	if not (body and body:IsA("BasePart")) or not model.Parent then return end
+	local proxy = model.PrimaryPart or model:WaitForChild("Body", 5)
+	if not (proxy and proxy:IsA("BasePart")) or not model.Parent then return end
+	-- Bars and popups ride the drawn monster (smooth), not the proxy.
+	local body = EnemyVisuals.rootOf(model) or proxy
 
 	local boss = model:GetAttribute("Boss") == true
 	local gui = Instance.new("BillboardGui")
@@ -411,12 +416,19 @@ end
 local function refreshTeam()
 	local team = State.get("Team")
 	if typeof(team) ~= "table" or not team.Fighting then
+		lastTeamHp = nil
 		teamGui.Enabled = false
 		return
 	end
 	teamGui.Enabled = true
 	local share = if team.MaxHp > 0 then team.Hp / team.MaxHp else 0
 	TweenService:Create(teamFill, TweenInfo.new(0.15), { Size = UDim2.fromScale(math.clamp(share, 0, 1), 1), BackgroundColor3 = hpColor(share) }):Play()
+	-- A big chunk of team Health gone at once: a red damage flash.
+	if lastTeamHp and team.MaxHp > 0 and lastTeamHp - team.Hp >= team.MaxHp * 0.08 then
+		Juice.flash(HP_RED, 0.12, 0.25)
+		Juice.pop(teamFill.Parent :: GuiObject, 1.06)
+	end
+	lastTeamHp = team.Hp
 	teamText.Text = `❤ {Format.number(team.Hp)} / {Format.number(team.MaxHp)}`
 	strengthText.Text = `💪 {Format.number(team.Strength)} / sec`
 
