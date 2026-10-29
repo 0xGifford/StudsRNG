@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Types = require(Shared.Types)
+local RollLogic = require(Shared.Util.RollLogic)
 
 type StudDef = Types.StudDef
 type VariantDef = Types.VariantDef
@@ -104,6 +105,9 @@ function Format.reward(reward: { [string]: any }): string
 		return `+{amount} Permanent Luck`
 	elseif kind == "MegaRoll" then
 		return `JACKPOT! x{Format.number(amount)} Luck Roll`
+	elseif kind == "Stud" then
+		local def, variant = RollLogic.decodeKey(reward.Stud)
+		return if def and variant then `{Format.studName(def, variant)} stud` else "A stud"
 	elseif kind == "Bundle" then
 		local parts = {}
 		for _, item in reward.Items or {} do

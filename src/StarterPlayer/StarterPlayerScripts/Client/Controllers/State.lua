@@ -178,6 +178,10 @@ function State.setTitle(id: string): Response
 	return Net.invoke("SetTitle", id)
 end
 
+function State.claimPass(tier: number, premium: boolean): Response
+	return Net.invoke("ClaimPass", tier, premium)
+end
+
 function State.rebirth(): Response
 	return Net.invoke("Rebirth")
 end

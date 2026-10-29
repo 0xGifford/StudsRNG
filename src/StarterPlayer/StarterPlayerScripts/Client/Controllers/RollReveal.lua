@@ -995,7 +995,20 @@ end
 -- Announcements → chat
 --------------------------------------------------------------------------
 
+local function postToRolls(message: string)
+	-- Only ever the Rolls tab (Systems/ChatChannels), never the main chat.
+	local channels = TextChatService:FindFirstChild("TextChannels")
+	local rolls = channels and channels:FindFirstChild(Config.Announce.Channel)
+	if rolls and rolls:IsA("TextChannel") then
+		rolls:DisplaySystemMessage(message)
+	end
+end
+
 local function announce(payload: any)
+	if payload.Summon then
+		postToRolls(`<font color="#FFCD3C"><b>{tostring(payload.Player)} summoned a {tostring(payload.Name)}!</b></font>`)
+		return
+	end
 	local def = Studs.ById[payload.Id]
 	local variant = Variants.ById[payload.Variant]
 	if not def or not variant then return end
@@ -1008,24 +1021,18 @@ local function announce(payload: any)
 		Format.studName(def, variant),
 		Format.oneIn(payload.OneIn)
 	)
-	-- Every announced roll goes to the Rolls tab (Systems/ChatChannels);
-	-- the rarest ones to the main chat too.
-	local channels = TextChatService:FindFirstChild("TextChannels")
-	local rolls = channels and channels:FindFirstChild(Config.Announce.Channel)
-	if rolls and rolls:IsA("TextChannel") then
-		rolls:DisplaySystemMessage(message)
-	end
-	if (payload.OneIn or 0) >= Config.Announce.MinOneIn then
-		local system = channels and channels:FindFirstChild("RBXSystem")
-		if system and system:IsA("TextChannel") then
-			system:DisplaySystemMessage(message)
-		end
-	end
+	postToRolls(message)
 end
 
 function RollReveal.start()
 	Interface.setup()
 	buildGui()
+	-- Chat tabs on, so the Rolls channel is its own tab instead of mixing
+	-- into the main chat window.
+	local tabs = TextChatService:FindFirstChildOfClass("ChannelTabsConfiguration")
+	if tabs then
+		tabs.Enabled = true
+	end
 	State.Announced:Connect(announce)
 end
 

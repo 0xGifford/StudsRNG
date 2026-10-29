@@ -65,6 +65,7 @@ local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
 local Drops = require(Systems.Drops)
 local RewardService = require(Systems.RewardService)
+local Products = require(Systems.Products)
 
 local Combat = {}
 
@@ -72,6 +73,7 @@ local Combat = {}
 Combat.Defeated = Signal.new() :: Signal.Signal<Player, boolean, boolean>
 
 local Settings = Config.Combat
+local MOVE_STEP = 1 / 20 -- seconds between server movement steps
 
 type Enemy = {
 	id: number,
@@ -91,6 +93,8 @@ type Enemy = {
 	fighters: { [Player]: boolean },
 	-- Zone Bosses
 	zoneBoss: boolean,
+	forceBoss: boolean, -- always a Mini Boss (summoned)
+	summoned: boolean, -- bought (Summon Mini Boss): gone for good once defeated
 	damageBy: { [Player]: number },
 	expiresAt: number,
 	-- Movement
@@ -100,6 +104,7 @@ type Enemy = {
 	waypoint: number,
 	pathing: boolean, -- a path is being computed
 	lastPath: number,
+	blocked: RBXScriptConnection?, -- the current path's Blocked event
 	nextWander: number,
 }
 
@@ -190,32 +195,14 @@ end
 -- Enemy models
 --------------------------------------------------------------------------
 
-local function piece(model: Model, body: BasePart, size: Vector3, offset: CFrame, color: Color3, material: Enum.Material?): BasePart
-	local p = Instance.new("Part")
-	p.Size = size
-	p.CFrame = body.CFrame * offset
-	p.Color = color
-	p.Material = material or Enum.Material.SmoothPlastic
-	p.TopSurface = Enum.SurfaceType.Studs
-	p.Anchored = false
-	p.Massless = true
-	p.CanCollide = false
-	p.CanTouch = false
-	p.CanQuery = false
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = body
-	weld.Part1 = p
-	weld.Parent = p
-	p.Parent = model
-	return p
-end
-
 local function hoverHeight(enemy: Enemy): number
 	return 0.6 + enemy.size * 0.4
 end
 
--- A chunky brick monster: body, eyes, brows, mouth, feet; bosses wear a
--- gold crown. Welded to an anchored body, so moving the body moves it all.
+-- The server's enemy is an invisible proxy: one anchored Body part that
+-- moves (Controllers/EnemyVisuals builds the brick monster on each client
+-- and glides it after the proxy with its own animation). Its look travels
+-- as attributes: Color, Size, Boss, ZoneBoss.
 local function buildModel(enemy: Enemy): (Model, BasePart)
 	local s = enemy.size
 	local model = Instance.new("Model")
@@ -226,33 +213,17 @@ local function buildModel(enemy: Enemy): (Model, BasePart)
 	body.Size = Vector3.new(s, s * 0.8, s)
 	body.CFrame = CFrame.new(enemy.home + Vector3.new(0, hoverHeight(enemy), 0))
 	body.Color = enemy.def.Color:Lerp(Color3.new(0, 0, 0), if enemy.boss then 0.55 else 0.35)
-	body.Material = Enum.Material.SmoothPlastic
-	body.TopSurface = Enum.SurfaceType.Studs
+	body.Transparency = 1
 	body.Anchored = true
 	body.CanCollide = false
 	body.CanTouch = false
 	body.CanQuery = false
+	body.CastShadow = false
 	body.Parent = model
 	model.PrimaryPart = body
 
-	local white, black = Color3.fromRGB(245, 245, 245), Color3.fromRGB(20, 20, 26)
-	local eye = if enemy.boss then Color3.fromRGB(255, 70, 50) else black
-	for _, side in { -1, 1 } do
-		piece(model, body, Vector3.new(s * 0.22, s * 0.26, 0.2), CFrame.new(side * s * 0.2, s * 0.08, -s / 2 - 0.1), white)
-		piece(model, body, Vector3.new(s * 0.1, s * 0.13, 0.15), CFrame.new(side * s * 0.18, s * 0.05, -s / 2 - 0.22), eye)
-		piece(model, body, Vector3.new(s * 0.26, s * 0.06, 0.15), CFrame.new(side * s * 0.2, s * 0.26, -s / 2 - 0.12) * CFrame.Angles(0, 0, side * 0.35), black)
-		piece(model, body, Vector3.new(s * 0.3, 0.6, s * 0.4), CFrame.new(side * s * 0.25, -s * 0.4 - 0.3, -s * 0.05), body.Color:Lerp(black, 0.4))
-	end
-	piece(model, body, Vector3.new(s * 0.4, s * 0.08, 0.15), CFrame.new(0, -s * 0.18, -s / 2 - 0.1), black)
-	if enemy.boss then
-		local gold = Color3.fromRGB(255, 205, 60)
-		piece(model, body, Vector3.new(s * 0.7, s * 0.14, s * 0.7), CFrame.new(0, s * 0.47, 0), gold, Enum.Material.Foil)
-		for k = 0, 3 do
-			local a = k * math.pi / 2
-			piece(model, body, Vector3.new(s * 0.14, s * 0.22, s * 0.14), CFrame.new(math.cos(a) * s * 0.26, s * 0.62, math.sin(a) * s * 0.26), gold, Enum.Material.Foil)
-		end
-	end
-
+	model:SetAttribute("Color", body.Color)
+	model:SetAttribute("Size", s)
 	model:SetAttribute("EnemyId", enemy.id)
 	model:SetAttribute("ZoneId", enemy.zoneId)
 	model:SetAttribute("Level", enemy.def.Level)
@@ -278,7 +249,7 @@ local function spawnEnemy(enemy: Enemy)
 		enemy.size = def.Size * zoneBoss.Size
 		enemy.name = `{if zone then zone.Name else "Zone"} Titan`
 	else
-		enemy.boss = rng:NextNumber() < Settings.BossChance
+		enemy.boss = enemy.forceBoss or rng:NextNumber() < Settings.BossChance
 		enemy.maxHealth = math.floor(def.Health * (if enemy.boss then Settings.BossHealth else 1))
 		enemy.damage = def.Damage * (if enemy.boss then Settings.BossDamage else 1)
 		enemy.reward = math.floor(def.Reward * (if enemy.boss then Settings.BossReward else 1))
@@ -308,9 +279,9 @@ local function spawnEnemy(enemy: Enemy)
 	end
 end
 
-local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
+local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?, summoned: boolean?): Enemy?
 	local def = Enemies.forZone(zoneId)
-	if not def then return end
+	if not def then return nil end
 	nextId += 1
 	local enemy: Enemy = {
 		id = nextId,
@@ -329,6 +300,8 @@ local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
 		alive = false,
 		fighters = {},
 		zoneBoss = zoneBoss == true,
+		forceBoss = summoned == true,
+		summoned = summoned == true,
 		damageBy = {},
 		expiresAt = if zoneBoss then os.clock() + Config.ZoneBoss.Lifetime else math.huge,
 		chasing = nil,
@@ -337,10 +310,12 @@ local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
 		waypoint = 1,
 		pathing = false,
 		lastPath = 0,
+		blocked = nil,
 		nextWander = 0,
 	}
 	enemies[enemy.id] = enemy
 	spawnEnemy(enemy)
+	return enemy
 end
 
 --------------------------------------------------------------------------
@@ -450,6 +425,16 @@ local function requestPath(enemy: Enemy, goal: Vector3)
 			for _, waypoint in path:GetWaypoints() do
 				table.insert(points, waypoint.Position)
 			end
+			-- Something moved into the way further along: re-path next step.
+			if enemy.blocked then
+				enemy.blocked:Disconnect()
+			end
+			enemy.blocked = path.Blocked:Connect(function(index)
+				if index >= enemy.waypoint then
+					enemy.lastPath = 0
+					enemy.goal = nil
+				end
+			end)
 		end
 		if #points == 0 then
 			points = { goal } -- no path: walk straight at it
@@ -482,6 +467,18 @@ local function walk(enemy: Enemy, dt: number, speed: number, stop: number): bool
 	local distance = offset.Magnitude
 	if distance < 0.05 then return false end
 	local move = offset.Unit * math.min(distance, speed * dt)
+	-- Separation: don't walk into (or stack on) other enemies.
+	for _, other in enemies do
+		local otherBody = other.body
+		if other ~= enemy and other.alive and otherBody then
+			local away = flat(here - (otherBody.Position - Vector3.new(0, hoverHeight(other), 0)))
+			local gap = away.Magnitude
+			local room = (enemy.size + other.size) * 0.5 + 1
+			if gap < room and gap > 0.01 then
+				move += away.Unit * (room - gap) * math.min(1, dt * 6)
+			end
+		end
+	end
 	local nextPos = here + move
 	-- Follow the ground the path walks on.
 	nextPos = Vector3.new(nextPos.X, here.Y + (target.Y - here.Y) * math.clamp(speed * dt / math.max(distance, 0.1), 0, 1), nextPos.Z)
@@ -661,6 +658,10 @@ local function removeEnemy(enemy: Enemy)
 	end
 	enemy.model = nil
 	enemy.body = nil
+	if enemy.blocked then
+		enemy.blocked:Disconnect()
+		enemy.blocked = nil
+	end
 	enemies[enemy.id] = nil
 end
 
@@ -716,7 +717,10 @@ local function defeat(enemy: Enemy)
 			StateSync.push(player, "EnemiesDefeated", data.EnemiesDefeated)
 			-- Every equipped stud earns XP (once per stud, however many copies).
 			local levels = Config.Levels
-			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level) * (if enemy.boss then levels.BossXp else 1) * (if enemy.zoneBoss then 4 else 1))
+			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level)
+				* (if enemy.boss then levels.BossXp else 1)
+				* (if enemy.zoneBoss then 4 else 1)
+				* (if Products.ownsPass(player, "StudTrainer") then 2 else 1))
 			local seen: { [string]: boolean } = {}
 			for _, key in data.Equipped do
 				local def = RollLogic.decodeKey(key)
@@ -749,6 +753,10 @@ local function defeat(enemy: Enemy)
 	end
 	enemy.model = nil
 	enemy.body = nil
+	if enemy.blocked then
+		enemy.blocked:Disconnect()
+		enemy.blocked = nil
+	end
 	table.clear(enemy.fighters)
 	-- The studs move on to the next enemy nearby, or come home.
 	-- (setFight clears FightTarget when there's nobody left to fight.)
@@ -756,8 +764,8 @@ local function defeat(enemy: Enemy)
 		local nextEnemy = if canFight(player, teams[player]) then nearestEnemy(player, Settings.RetargetRange, enemy) else nil
 		setFight(player, nextEnemy)
 	end
-	if enemy.zoneBoss then
-		enemies[enemy.id] = nil -- Titans don't respawn: the next comes on the clock
+	if enemy.zoneBoss or enemy.summoned then
+		enemies[enemy.id] = nil -- Titans come on the clock; summons are one-offs
 		return
 	end
 	task.delay(Settings.Respawn, function()
@@ -770,6 +778,42 @@ end
 --------------------------------------------------------------------------
 -- Zone Bosses
 --------------------------------------------------------------------------
+
+-- The owned zone the player stands in, if any.
+local function zoneAt(player: Player, position: Vector3): string?
+	scanZones()
+	for zone, state in zoneStates do
+		local cframe, size = Tags.zoneBox(zone)
+		if cframe and size and Economy.ownsZone(player, state.id) then
+			local localPoint = cframe:PointToObjectSpace(position)
+			if math.abs(localPoint.X) <= size.X / 2 and math.abs(localPoint.Z) <= size.Z / 2 then
+				return state.id
+			end
+		end
+	end
+	return nil
+end
+
+-- Summon Mini Boss (a product): a crowned Mini Boss of the zone the player
+-- stands in, just in front of them. False when they aren't in a zone they
+-- own (the product falls back to spins).
+function Combat.summonMiniBoss(player: Player): boolean
+	local root = rootOf(player)
+	if not root then return false end
+	local zoneId = zoneAt(player, root.Position)
+	if not zoneId then return false end
+	local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local ahead = if look.Magnitude > 0.01 then look.Unit * 14 else Vector3.new(0, 0, -14)
+	local enemy = addEnemy(zoneId, root.Position - Vector3.new(0, 3, 0) + ahead, false, true)
+	if not enemy then return false end
+	Net.fireAll("Announce", {
+		Player = player.DisplayName,
+		UserId = player.UserId,
+		Summon = true,
+		Name = enemy.name,
+	})
+	return true
+end
 
 -- Spawns a Titan in every Every-th zone that's on the map and has none.
 function Combat.spawnZoneBosses(): { string }
@@ -937,6 +981,14 @@ function Combat.init()
 	folder.Name = "Enemies"
 	folder.Parent = workspace
 
+	-- Summon Mini Boss product. Never throws: no valid spot → 2 spins instead.
+	Products.registerAction("SummonBoss", function(player)
+		if not Combat.summonMiniBoss(player) then
+			RewardService.addSpins(player, 2)
+			notify(player, "Stand in a zone you own to summon a Mini Boss. Here are 2 Jackpot Spins instead!", Color3.fromRGB(255, 205, 60))
+		end
+	end)
+
 	-- RETREAT: studs come home and stay out of fights for a moment.
 	Net.handle("StopFight", { Rate = 2, Burst = 4 }, function(player)
 		local team = teams[player]
@@ -962,7 +1014,16 @@ function Combat.start()
 			task.wait(1)
 		end
 	end)
-	RunService.Heartbeat:Connect(move)
+	-- 20 updates a second: clients interpolate between them (EnemyVisuals),
+	-- so more would only cost bandwidth.
+	local pending = 0
+	RunService.Heartbeat:Connect(function(dt)
+		pending += dt
+		if pending >= MOVE_STEP then
+			move(math.min(pending, 0.25))
+			pending = 0
+		end
+	end)
 	task.spawn(zoneBossClock)
 	while true do
 		local dt = task.wait(Settings.Tick)

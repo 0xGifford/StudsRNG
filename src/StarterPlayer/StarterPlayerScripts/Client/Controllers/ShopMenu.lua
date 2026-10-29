@@ -44,8 +44,10 @@ local function entriesFor(section: string): { Entry }
 			table.insert(list, { Key = key, Def = def, IsPass = true })
 		end
 	else
+		local bought = State.get("Bought") or {}
 		for key, def in Products.Products do
-			if def.Section == section then
+			-- One-time products (Starter Pack) disappear once bought.
+			if def.Section == section and not (def.OneTime and bought[key]) then
 				table.insert(list, { Key = key, Def = def, IsPass = false })
 			end
 		end
@@ -179,6 +181,8 @@ function ShopMenu.start()
 			for key, card in passCards do
 				setPassPrice(card, key)
 			end
+		elseif field == "Bought" and Interface.isOpen(MENU) then
+			rebuild()
 		end
 	end)
 end

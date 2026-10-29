@@ -17,7 +17,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- World: which pool it rolls from. A player only rolls studs from worlds they
 --        have unlocked (PlayerData.UnlockedWorlds).
 -- Drop:  never rolled; only dropped by Mini Bosses and Zone Bosses
---        (Systems/Drops). Their OneIn is the drop's base odds.
+--        (Systems/Drops; World "Boss"), or Stud Pass rewards (World "Pass").
+--        A boss drop's OneIn is its base odds.
 --
 -- Ids are saved in player data: never rename an Id once the game is live.
 
@@ -143,6 +144,11 @@ local list: { StudDef } = {
 		Color = Color3.fromRGB(200, 30, 40), Material = Enum.Material.Neon, Particle = "Embers", Light = true },
 	{ Id = "BossTyrant", Name = "Tyrant", Rarity = "Mythic", OneIn = 150000, Multiplier = 38, World = "Boss", Drop = true,
 		Color = Color3.fromRGB(60, 0, 80), Material = Enum.Material.ForceField, Particle = "Void", Light = true },
+	-- Stud Pass exclusives (never rolled or dropped: Shared/StudPass)
+	{ Id = "PassTicket", Name = "Ticket", Rarity = "Epic", OneIn = 5000, Multiplier = 9, World = "Pass", Drop = true,
+		Color = Color3.fromRGB(80, 200, 255), Material = Enum.Material.Neon, Particle = "Sparkle", Light = true },
+	{ Id = "PassChampion", Name = "Champion", Rarity = "Legendary", OneIn = 40000, Multiplier = 20, World = "Pass", Drop = true,
+		Color = Color3.fromRGB(255, 215, 80), Material = Enum.Material.Foil, Particle = "Flare", Light = true },
 	{ Id = "BossOverlord", Name = "Overlord", Rarity = "Secret", OneIn = 1500000, Multiplier = 95, World = "Boss", Drop = true,
 		Color = Color3.fromRGB(255, 60, 30), Material = Enum.Material.Neon, Particle = "Flare", Light = true },
 }

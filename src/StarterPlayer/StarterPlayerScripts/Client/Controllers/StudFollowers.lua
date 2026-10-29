@@ -33,6 +33,7 @@ local Tags = require(Shared.Tags)
 
 local UI = script.Parent.Parent:WaitForChild("UI")
 local CombatFx = require(UI.CombatFx)
+local EnemyVisuals = require(script.Parent.EnemyVisuals)
 
 local FollowConfig = Config.Followers
 
@@ -176,7 +177,10 @@ local function fightTarget(player: Player): BasePart?
 	local id = player:GetAttribute("FightTarget")
 	local model = if typeof(id) == "number" then enemyModels[id] else nil
 	if not model then return nil end
-	-- PrimaryPart can lag behind the model under streaming; Body is the same part.
+	-- Orbit the drawn monster (smooth); the server proxy (Body; PrimaryPart
+	-- can lag behind under streaming) if it isn't drawn yet.
+	local visual = EnemyVisuals.rootOf(model)
+	if visual and visual.Parent then return visual end
 	local body = model.PrimaryPart or model:FindFirstChild("Body")
 	return if body and body:IsA("BasePart") and body.Parent then body else nil
 end

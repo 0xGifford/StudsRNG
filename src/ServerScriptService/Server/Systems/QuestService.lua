@@ -22,6 +22,7 @@ local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 local QuestDefs = require(Shared.Quests)
 local RewardDefs = require(Shared.Rewards)
+local Signal = require(Shared.Util.Signal)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -35,6 +36,9 @@ local Combat = require(Systems.Combat)
 type Response = Types.Response
 
 local QuestService = {}
+
+-- (player, questId) after each quest claim (Systems/StudPass)
+QuestService.Claimed = Signal.new() :: Signal.Signal<Player, string>
 
 local function today(): number
 	return RewardDefs.dayNumber(os.time())
@@ -88,6 +92,7 @@ local function claim(player: Player, id: string): Response
 			if quest.Progress < quest.Target then return { Ok = false, Error = "NotReady" } end
 			quest.Claimed = true
 			StateSync.push(player, "Quests", data.Quests)
+			QuestService.Claimed:Fire(player, id)
 			local def = QuestDefs.ById[id]
 			return { Ok = true, Reward = RewardService.grant(player, def.Reward) }
 		end
