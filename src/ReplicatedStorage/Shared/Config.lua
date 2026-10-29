@@ -342,9 +342,8 @@ Config.Leaderboards = {
 }
 
 Config.Announce = {
-	Channel = "Rolls", -- chat channel (tab) every announced roll goes to
-	ChannelMinOneIn = 100, -- announced in the Rolls channel at or rarer than this (stud × variant odds)
-	MinOneIn = 10000, -- also announced in the main chat at or rarer than this
+	Channel = "Rolls", -- chat channel (tab) every announced roll goes to; never the main chat
+	ChannelMinOneIn = 100, -- announced at or rarer than this (stud × variant odds)
 }
 
 Config.Sync = {
