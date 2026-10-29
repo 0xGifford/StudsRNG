@@ -28,6 +28,7 @@ local entries: { Entry } = {
 		Notes = {
 			"43 new zones, from the Desert to Keyboard Kingdom: 50 in all.",
 			"Every zone is rebuilt brick by brick, with its own sky, fog and gravity.",
+			"Zones flow straight into each other: walk up to the next gate to see its price and buy it.",
 		},
 	},
 	{

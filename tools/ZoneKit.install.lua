@@ -9,17 +9,25 @@ local source = [====[
 -- rebuilt on every run; anything else in the zone folder (a hand-built
 -- keyboard, your own props) is kept. Tags and attributes match
 -- Shared/Tags, so the game needs nothing else.
+--
+-- Zones are all the same size and sit edge to edge along +Z. Each zone
+-- builds its own entrance: a gate arch over the whole boundary, the
+-- ZoneBarrier filling it, and a stud mosaic blending the previous zone's
+-- ground, trail and cliffs (cfg.From) into its own.
+--
+-- Flat layers never share a height (no z-fighting): floor top 0, patches
+-- 0.1, mosaic 0.15, trail 0.2, trail mosaic 0.25, keyboard 0.6 / 0.8.
 
 local CollectionService = game:GetService("CollectionService")
 
 local Kit = {}
 
--- Layout: zone 1's floor centre, zones in a line along +Z.
+-- Layout: zone 1's floor centre, zones edge to edge along +Z.
 Kit.ORIGIN = Vector3.new(15, 1, -28)
 Kit.WIDTH = 170
 Kit.DEPTH = 150
-Kit.GAP = 40 -- pass between zones
-Kit.PASS = 28 -- pass / gate width
+Kit.WALL = 44 -- cliff height, the same everywhere so cliffs line up
+Kit.BLEND = 12 -- mosaic reaches this far either side of a boundary
 
 local PITCH = 3.15
 local KEY = Vector3.new(3, 1.37, 3)
@@ -53,7 +61,7 @@ local function shade(c, amount)
 end
 
 function Kit.center(index)
-	return Kit.ORIGIN + Vector3.new(0, 0, (index - 1) * (Kit.DEPTH + Kit.GAP))
+	return Kit.ORIGIN + Vector3.new(0, 0, (index - 1) * Kit.DEPTH)
 end
 
 --------------------------------------------------------------------------
@@ -189,8 +197,9 @@ end
 P.Flowers = function(m, at, cfg)
 	for _ = 1, 5 do
 		local o = at + Vector3.new(rng:NextNumber(-2.5, 2.5), 0, rng:NextNumber(-2.5, 2.5))
-		block(m, o, Vector3.new(0.4, 1.6, 0.4), color("#3E9233"))
-		block(m, o + Vector3.new(0, 1.6, 0), Vector3.new(1.2, 0.8, 1.2), pick(cfg.Palette), rng:NextNumber(0, math.pi))
+		local h = rng:NextNumber(1.3, 1.9)
+		block(m, o, Vector3.new(0.4, h, 0.4), color("#3E9233"))
+		block(m, o + Vector3.new(0, h, 0), Vector3.new(1.2, 0.8, 1.2), pick(cfg.Palette), rng:NextNumber(0, math.pi))
 	end
 end
 
@@ -215,8 +224,8 @@ P.Mushroom = function(m, at, cfg)
 	local cap = pick(cfg.Palette)
 	block(m, at + Vector3.new(0, h, 0), Vector3.new(6, 1.6, 6), cap, rng:NextNumber(0, math.pi), true)
 	block(m, at + Vector3.new(0, h + 1.6, 0), Vector3.new(3.6, 1, 3.6), cap, rng:NextNumber(0, math.pi))
-	for _ = 1, 3 do
-		block(m, at + Vector3.new(rng:NextNumber(-2, 2), h + 1.6, rng:NextNumber(-2, 2)), Vector3.new(0.8, 0.3, 0.8), WHITE)
+	for k = 1, 3 do
+		block(m, at + Vector3.new(rng:NextNumber(-2, 2), h + 1.6, rng:NextNumber(-2, 2)), Vector3.new(0.8, 0.25 + k * 0.08, 0.8), WHITE)
 	end
 end
 
@@ -226,7 +235,7 @@ P.Cactus = function(m, at, cfg)
 	block(m, at, Vector3.new(1.8, h, 1.8), green, 0, true)
 	for _, side in { -1, 1 } do
 		local y = rng:NextNumber(2, h - 3)
-		block(m, at + Vector3.new(side * 1.6, y, 0), Vector3.new(1.4, 1.2, 1.2), green)
+		block(m, at + Vector3.new(side * 1.6, y + 0.5, 0), Vector3.new(1.4, 1, 1), green)
 		block(m, at + Vector3.new(side * 2, y, 0), Vector3.new(1.2, 3, 1.2), green)
 	end
 end
@@ -246,7 +255,7 @@ P.Snowman = function(m, at, cfg)
 	block(m, at + Vector3.new(0, 6.8, -1.3), Vector3.new(0.5, 0.5, 1), color("#F08A24"))
 	block(m, at + Vector3.new(0, 8, 0), Vector3.new(2.4, 0.4, 2.4), DARK)
 	block(m, at + Vector3.new(0, 8.4, 0), Vector3.new(1.6, 1.6, 1.6), DARK)
-	block(m, at + Vector3.new(0, 5.4, 0), Vector3.new(3.2, 0.6, 3.2), color("#D63C3C"))
+	block(m, at + Vector3.new(0, 5.5, 0), Vector3.new(3.2, 0.6, 3.2), color("#D63C3C"))
 end
 
 P.DeadTree = function(m, at, cfg)
@@ -314,7 +323,7 @@ P.Gift = function(m, at, cfg)
 	local yaw = rng:NextNumber(0, math.pi)
 	block(m, at, Vector3.new(s, s, s), pick(cfg.Palette), yaw, true)
 	block(m, at, Vector3.new(s + 0.1, s + 0.1, 0.6), GOLD, yaw)
-	block(m, at, Vector3.new(0.6, s + 0.1, s + 0.1), GOLD, yaw)
+	block(m, at, Vector3.new(0.6, s + 0.16, s + 0.1), GOLD, yaw)
 end
 
 P.Pumpkin = function(m, at, cfg)
@@ -365,7 +374,7 @@ end
 P.Pipe = function(m, at, cfg)
 	local c = pick(cfg.Palette)
 	block(m, at, Vector3.new(2, 6, 2), c, 0, true)
-	block(m, at + Vector3.new(2, 4, 0), Vector3.new(4, 2, 2), c)
+	block(m, at + Vector3.new(2, 3.5, 0), Vector3.new(4, 1.8, 1.8), c)
 	block(m, at, Vector3.new(2.6, 0.6, 2.6), shade(c, -0.2))
 end
 
@@ -384,9 +393,11 @@ P.Bamboo = function(m, at, cfg)
 	for k = 1, 3 do
 		local o = at + Vector3.new(rng:NextNumber(-2, 2), 0, rng:NextNumber(-2, 2))
 		local h = rng:NextInteger(3, 5)
+		-- Each stalk its own segment length, so neighbouring stalks never end level.
+		local seg = 2.1 + k * 0.17
 		for i = 0, h - 1 do
 			-- Alternating shades read as the stalk's joints.
-			block(m, o + Vector3.new(0, i * 2.4, 0), Vector3.new(0.9, 2.4, 0.9), if (i + k) % 2 == 0 then "#6DB33F" else "#5EA034", 0, i == 0)
+			block(m, o + Vector3.new(0, i * seg, 0), Vector3.new(0.9, seg, 0.9), if (i + k) % 2 == 0 then "#6DB33F" else "#5EA034", 0, i == 0)
 		end
 	end
 end
@@ -468,45 +479,71 @@ end
 
 Kit.Props = P
 
+
 --------------------------------------------------------------------------
 -- Zone pieces
 --------------------------------------------------------------------------
 
+-- A flat tile whose top sits `top` studs above the floor.
+local function tile(parent, x, z, sx, sz, top, c, cy)
+	return part(parent, Vector3.new(sx, top, sz), CFrame.new(x, cy + top / 2, z), c)
+end
+
 local function ground(z, c, cfg)
 	local W, D = Kit.WIDTH, Kit.DEPTH
-	part(z, Vector3.new(W + 40, 4, D + 40), CFrame.new(c - Vector3.new(0, 2, 0)), cfg.Ground, true).Name = "Floor"
-	for _ = 1, 26 do
-		local size = Vector3.new(rng:NextInteger(3, 8) * 2, 0.2, rng:NextInteger(3, 8) * 2)
-		block(z, c + Vector3.new(rng:NextNumber(-W / 2 + 8, W / 2 - 8), 0, rng:NextNumber(-D / 2 + 8, D / 2 - 8)), size, pick(cfg.Ground2),
-			rng:NextInteger(0, 3) * math.pi / 2)
+	-- Exactly the zone's depth so neighbouring floors meet without overlapping.
+	part(z, Vector3.new(W + 44, 4, D), CFrame.new(c - Vector3.new(0, 2, 0)), cfg.Ground, true).Name = "Floor"
+	-- Patches: one per cell of a grid, so they never overlap each other.
+	local cell = 20
+	for gx = -W / 2 + cell / 2, W / 2 - cell / 2, cell do
+		for gz = -D / 2 + Kit.BLEND + cell / 2, D / 2 - Kit.BLEND - cell / 2, cell do
+			local open = math.abs(gx) > 10 and not (cfg.Water and gx > W / 2 - 40)
+			if open and rng:NextNumber() < 0.35 then
+				local sx, sz = rng:NextInteger(3, 8) * 2, rng:NextInteger(3, 8) * 2
+				tile(z, c.X + gx + rng:NextNumber(-(cell - sx) / 2, (cell - sx) / 2), c.Z + gz + rng:NextNumber(-(cell - sz) / 2, (cell - sz) / 2),
+					sx, sz, 0.1, pick(cfg.Ground2), c.Y)
+			end
+		end
 	end
 	-- Trail from the entrance to the exit.
-	block(z, c + Vector3.new(0, 0, 0), Vector3.new(12, 0.3, D + 40), cfg.Path)
+	tile(z, c.X, c.Z, 12, D, 0.2, cfg.Path, c.Y).Name = "Trail"
 	if cfg.Water then
-		local water = part(z, Vector3.new(600, 1, D + 600), CFrame.new(c + Vector3.new(W / 2 + 300 - 30, -0.4, 0)), cfg.Water)
-		water.Transparency = 0.2
-		water.Name = "Water"
-		block(z, c + Vector3.new(W / 2 - 30, 0, 0), Vector3.new(1.4, 0.35, D + 40), WHITE).Name = "Foam"
+		-- Shallows over the floor, then open sea, kept to this zone's depth.
+		local sea = part(z, Vector3.new(330, 1, D), CFrame.new(c + Vector3.new(W / 2 - 30 + 165, -0.4, 0)), cfg.Water)
+		sea.Transparency = 0.2
+		sea.Name = "Water"
+		tile(z, c.X + W / 2 - 30, c.Z, 1.4, D, 0.3, WHITE, c.Y).Name = "Foam"
 	end
 end
 
--- Chunky stepped rock along one edge, from a to b (ground points), facing `out`.
-local function wall(z, a, b, out, cfg)
+-- Stepped rock along one edge from a to b (ground points), facing `out`.
+-- Blocks are cut to fit exactly, so walls of neighbouring zones meet
+-- without overlapping. Near `blendAt` (a ground point on the edge) rock
+-- colours mix with cfg.From's.
+local function wall(z, a, b, out, cfg, blendAt)
 	local length = (b - a).Magnitude
 	local dir = (b - a).Unit
 	local yaw = math.atan2(-dir.Z, dir.X)
-	local h0 = cfg.WallHeight or 40
 	local x = 0
-	while x < length do
-		local w = rng:NextInteger(8, 14)
+	while x < length - 0.01 do
+		local w = math.min(rng:NextInteger(8, 14), length - x)
 		local at = a + dir * (x + w / 2)
+		local rocks = cfg.Rock
+		local caps = cfg.Cap
+		if blendAt and cfg.From then
+			local d = (at - blendAt).Magnitude
+			if d < 30 and rng:NextNumber() < (1 - d / 30) * 0.8 then
+				rocks = cfg.From.Rock
+				caps = cfg.From.Cap
+			end
+		end
 		for row = 0, 1 do
-			local h = h0 * (if row == 0 then rng:NextNumber(0.55, 0.8) else rng:NextNumber(0.85, 1.15))
+			local h = Kit.WALL * (if row == 0 then rng:NextNumber(0.55, 0.8) else rng:NextNumber(0.9, 1.15))
 			local o = at + out * (row * 10 + 5)
-			local rock = pick(cfg.Rock)
-			block(z, o, Vector3.new(w + 1, h, 11), rock, yaw, true)
-			if cfg.Cap then
-				block(z, o + Vector3.new(0, h, 0), Vector3.new(w + 1.4, 1.2, 11.4), cfg.Cap, yaw)
+			block(z, o, Vector3.new(w, h, 10), pick(rocks), yaw, true)
+			if caps then
+				-- Exactly its rock's footprint, so no cap overlaps another.
+				block(z, o + Vector3.new(0, h, 0), Vector3.new(w, 1.2, 10), caps, yaw)
 			end
 		end
 		x += w
@@ -515,85 +552,100 @@ end
 
 local function walls(z, c, cfg, first, last)
 	local W, D = Kit.WIDTH / 2, Kit.DEPTH / 2
-	local gap = Kit.PASS / 2
 	local high = 160
-	-- Edges are axis-aligned: rock outside, an invisible wall on the line.
-	local function side(a, b, out)
-		wall(z, a, b, out, cfg)
+	local entrance = if first then nil else Vector3.new(0, 0, -D)
+	local function side(a, b, out, blendAt)
+		wall(z, a, b, out, cfg, blendAt)
 		local size = Vector3.new(math.abs(b.X - a.X) + 1, high, math.abs(b.Z - a.Z) + 1)
 		invisible(z, size, CFrame.new((a + b) / 2 + Vector3.new(0, high / 2, 0)))
 	end
-	-- Sides (+X becomes open sea when Water is set).
-	side(c + Vector3.new(-W, 0, -D), c + Vector3.new(-W, 0, D), Vector3.new(-1, 0, 0))
+	-- Left cliff, and the right one unless the sea is there.
+	side(c + Vector3.new(-W, 0, -D), c + Vector3.new(-W, 0, D), Vector3.new(-1, 0, 0), entrance and c + Vector3.new(-W, 0, -D))
 	if cfg.Water then
 		invisible(z, Vector3.new(1, high, Kit.DEPTH), CFrame.new(c + Vector3.new(W, high / 2, 0)))
 	else
-		side(c + Vector3.new(W, 0, -D), c + Vector3.new(W, 0, D), Vector3.new(1, 0, 0))
+		side(c + Vector3.new(W, 0, -D), c + Vector3.new(W, 0, D), Vector3.new(1, 0, 0), entrance and c + Vector3.new(W, 0, -D))
 	end
-	-- Back (entrance) and front (exit) with a gap for the pass.
-	for _, z0 in { -D, D } do
-		local open = (z0 < 0 and not first) or (z0 > 0 and not last)
-		local out = Vector3.new(0, 0, if z0 < 0 then -1 else 1)
-		if open then
-			side(c + Vector3.new(-W, 0, z0), c + Vector3.new(-gap, 0, z0), out)
-			side(c + Vector3.new(gap, 0, z0), c + Vector3.new(W, 0, z0), out)
-		else
-			side(c + Vector3.new(-W, 0, z0), c + Vector3.new(W, 0, z0), out)
-		end
+	-- Only the ends of the line are closed: zones are open to each other.
+	if first then
+		side(c + Vector3.new(-W - 20, 0, -D), c + Vector3.new(W + 20, 0, -D), Vector3.new(0, 0, -1))
+	end
+	if last then
+		side(c + Vector3.new(-W - 20, 0, D), c + Vector3.new(W + 20, 0, D), Vector3.new(0, 0, 1))
 	end
 	if cfg.Roof then
-		part(z, Vector3.new(Kit.WIDTH + 60, 6, Kit.DEPTH + 60), CFrame.new(c + Vector3.new(0, (cfg.WallHeight or 40) + 3, 0)), shade(color(cfg.Rock[1]), -0.3), true)
+		-- Inset from the zone's ends so it never shares a face with the cliffs there.
+		part(z, Vector3.new(Kit.WIDTH + 44, 6, Kit.DEPTH - 0.4), CFrame.new(c + Vector3.new(0, Kit.WALL + 4, 0)), shade(cfg.Rock[1], -0.3), true).Name = "Roof"
 		for _ = 1, 30 do
 			local h = rng:NextNumber(5, 14)
-			block(z, c + Vector3.new(rng:NextNumber(-W + 6, W - 6), (cfg.WallHeight or 40) - h, rng:NextNumber(-D + 6, D - 6)), Vector3.new(3, h, 3), pick(cfg.Rock),
-				math.rad(45))
+			block(z, c + Vector3.new(rng:NextNumber(-W + 6, W - 6), Kit.WALL + 1 - h, rng:NextNumber(-D + 20, D - 6)), Vector3.new(3, h, 3), pick(cfg.Rock), math.rad(45))
 		end
 	end
 end
 
--- The pass from the previous zone's exit to this zone's entrance.
-local function pass(z, c, cfg)
-	local startZ = c.Z - Kit.DEPTH / 2 - Kit.GAP
-	local mid = Vector3.new(c.X, c.Y, startZ + Kit.GAP / 2)
-	part(z, Vector3.new(Kit.PASS + 40, 4, Kit.GAP + 2), CFrame.new(mid - Vector3.new(0, 2, 0)), cfg.Ground, true).Name = "PassFloor"
-	block(z, mid, Vector3.new(12, 0.3, Kit.GAP + 2), cfg.Path)
-	for _, s in { -1, 1 } do
-		local x = s * (Kit.PASS / 2 + 5)
-		local zz = startZ
-		while zz < startZ + Kit.GAP do
-			block(z, Vector3.new(c.X + x, c.Y, zz + 5), Vector3.new(11, (cfg.WallHeight or 40) * rng:NextNumber(0.7, 1), 11), pick(cfg.Rock), 0, true)
-			zz += 10
+-- Stud mosaic across the entrance boundary: tiles change from the previous
+-- zone's colours to this zone's the further in they are.
+local function transition(z, c, cfg)
+	local from = cfg.From
+	if not from then return end
+	local W = Kit.WIDTH
+	local edge = c.Z - Kit.DEPTH / 2
+	local size = 6
+	for tz = edge - Kit.BLEND + size / 2, edge + Kit.BLEND - size / 2, size do
+		local t = (tz - (edge - Kit.BLEND)) / (Kit.BLEND * 2) -- 0 = previous zone, 1 = this zone
+		-- Columns centred on the trail; every tile is laid so the seam between
+		-- the two floors is fully covered.
+		for i = -math.floor(W / 2 / size), math.floor(W / 2 / size) do
+			local tx = i * size
+			local onWater = tx > W / 2 - 32 and (cfg.Water or from.Water)
+			if not onWater then
+				local mine = rng:NextNumber() < t
+				if math.abs(tx) <= 6 then
+					tile(z, c.X + tx, tz, size, size, 0.25, if mine then cfg.Path else from.Path, c.Y)
+				else
+					tile(z, c.X + tx, tz, size, size, 0.15, if mine then pick(cfg.Ground2) else pick(from.Ground2), c.Y)
+				end
+			end
 		end
-		invisible(z, Vector3.new(1, 160, Kit.GAP), CFrame.new(c.X + s * (Kit.PASS / 2 + 0.5), c.Y + 80, mid.Z))
 	end
 end
 
+-- The arch over the entrance and the barrier filling it.
 local function gate(z, c, cfg, index)
-	local gz = c.Z - Kit.DEPTH / 2 - 1
-	local folder = Instance.new("Model")
-	folder.Name = "Gate"
-	folder:SetAttribute("ZoneId", cfg.Id)
-	folder.Parent = z
+	local W = Kit.WIDTH
+	local gz = c.Z - Kit.DEPTH / 2
+	local arch = Instance.new("Model")
+	arch.Name = "Gate"
+	arch:SetAttribute("ZoneId", cfg.Id)
+	arch.Parent = z
+	local trim = cfg.Trim
 	for _, s in { -1, 1 } do
-		local x = c.X + s * (Kit.PASS / 2 + 3)
-		block(folder, Vector3.new(x, c.Y, gz), Vector3.new(8, 2, 8), shade(cfg.Trim, -0.3), 0, true)
-		block(folder, Vector3.new(x, c.Y + 2, gz), Vector3.new(6, 26, 6), cfg.Trim, 0, true)
+		local x = c.X + s * (W / 2 + 3)
+		-- Off-grid sizes: cliff blocks end on whole studs, so a pillar face
+		-- never lines up with one. The cap stands proud of the beam.
+		block(arch, Vector3.new(x, c.Y, gz), Vector3.new(10.4, 3, 10.4), shade(trim, -0.35), 0, true)
+		block(arch, Vector3.new(x, c.Y + 3, gz), Vector3.new(8.4, 38, 8.4), trim, 0, true)
+		block(arch, Vector3.new(x, c.Y + 41, gz), Vector3.new(10.6, 3, 10.6), shade(trim, -0.35), 0, true)
 	end
-	local beam = part(folder, Vector3.new(Kit.PASS + 14, 6, 3), CFrame.new(c.X, c.Y + 31, gz), shade(cfg.Trim, -0.3), true)
+	-- Ends inside the pillars, never flush with their faces.
+	local beam = part(arch, Vector3.new(W + 10, 6, 4), CFrame.new(c.X, c.Y + 40, gz), shade(trim, -0.35), true)
 	beam.Name = "GateSign"
 	local text = index .. "  " .. string.upper(cfg.Name)
 	label(beam, Enum.NormalId.Front, text, WHITE)
 	label(beam, Enum.NormalId.Back, text, WHITE)
-	CollectionService:AddTag(folder, "ZoneGate")
+	CollectionService:AddTag(arch, "ZoneGate")
 
+	-- One dark, half-see-through part across the whole opening.
 	local barrier = Instance.new("Part")
 	barrier.Name = "Barrier"
 	barrier.Anchored = true
-	barrier.Size = Vector3.new(Kit.PASS, 26, 1)
-	barrier.CFrame = CFrame.new(c.X, c.Y + 13, gz)
-	barrier.Color = cfg.Trim
+	barrier.Size = Vector3.new(W, 37, 1)
+	barrier.CFrame = CFrame.new(c.X, c.Y + 18.5, gz)
+	barrier.Color = shade(trim, -0.8)
 	barrier.Material = Enum.Material.SmoothPlastic
-	barrier.Transparency = 0.45
+	barrier.TopSurface = Enum.SurfaceType.Smooth
+	barrier.BottomSurface = Enum.SurfaceType.Smooth
+	barrier.Transparency = 0.5
 	barrier.CastShadow = false
 	barrier.CanQuery = false
 	barrier:SetAttribute("ZoneId", cfg.Id)
@@ -602,7 +654,7 @@ local function gate(z, c, cfg, index)
 end
 
 local function spawnPad(z, c, cfg, first)
-	local at = c + Vector3.new(0, 0.5, -Kit.DEPTH / 2 + 14)
+	local at = c + Vector3.new(0, 0.5, -Kit.DEPTH / 2 + Kit.BLEND + 10)
 	local pad
 	if first then
 		pad = Instance.new("SpawnLocation")
@@ -678,10 +730,10 @@ local function propSpots(c, cfg, count, board)
 	while #spots < count and tries < count * 40 do
 		tries += 1
 		local x = rng:NextNumber(-W + 10, W - 10)
-		local zz = rng:NextNumber(-D + 10, D - 10)
+		local zz = rng:NextNumber(-D + Kit.BLEND + 6, D - Kit.BLEND - 6)
 		local ok = math.abs(x) > 10
 			and not (x > board[1].X - 8 and x < board[2].X + 8 and zz > board[1].Z - 8 and zz < board[2].Z + 8)
-			and not (math.abs(x) < 10 and zz < -D + 26)
+			and not (math.abs(x) < 10 and zz < -D + Kit.BLEND + 20)
 			and not (cfg.Water and x > W - 36)
 		if ok then
 			for _, s in ipairs(spots) do
@@ -708,45 +760,47 @@ local function weighted(weights)
 	return names[#names]
 end
 
--- Big scenery outside the walls.
+-- Big scenery outside the walls, kept within this zone's depth so it never
+-- runs into the neighbours'.
 local function features(z, c, cfg)
+	local D = Kit.DEPTH
 	for _, f in ipairs(cfg.Features or {}) do
 		local kind = f[1]
 		local fc = color(f[2] or cfg.Rock[1])
 		if kind == "Mountain" then
-			local base = c + Vector3.new(Kit.WIDTH / 2 + 110, -2, 20)
+			local base = c + Vector3.new(Kit.WIDTH / 2 + 100, -2, 0)
 			for tier = 0, 6 do
-				local w = 170 - tier * 22
+				local w = D - 10 - tier * 19
 				block(z, base + Vector3.new(0, tier * 16, 0), Vector3.new(w, 16, w), shade(fc, -0.04 * tier), math.rad(tier * 7))
 			end
-			if f[3] then block(z, base + Vector3.new(0, 112, 0), Vector3.new(16, 2, 16), f[3]) end
+			if f[3] then block(z, base + Vector3.new(0, 112, 0), Vector3.new(14, 2, 14), f[3]) end
 		elseif kind == "Planet" then
-			ball(z, c + Vector3.new(-120, 140, 160), 70, fc)
+			ball(z, c + Vector3.new(-120, 140, 0), 70, fc)
 		elseif kind == "Rainbow" then
 			local bands = { "#E8413C", "#F28C28", "#F5D428", "#4CB84A", "#3C8FE0", "#7A4CC8" }
 			for i, band in ipairs(bands) do
-				local r = 90 - i * 4
+				local r = 100 - i * 4
 				for k = 0, 18 do
 					local a = math.pi * k / 18
-					part(z, Vector3.new(4, 4, 16), CFrame.new(c + Vector3.new(math.cos(a) * r, math.sin(a) * r, Kit.DEPTH / 2 + 40)) * CFrame.Angles(0, 0, a), band)
+					part(z, Vector3.new(4, 4, 6), CFrame.new(c + Vector3.new(math.cos(a) * r, math.sin(a) * r, D / 2 - 30)) * CFrame.Angles(0, 0, a), band)
 				end
 			end
 		elseif kind == "Pyramid" then
-			local base = c + Vector3.new(-Kit.WIDTH / 2 - 110, -2, 0)
+			local base = c + Vector3.new(-Kit.WIDTH / 2 - 100, -2, 0)
 			for tier = 0, 9 do
-				local w = 150 - tier * 15
+				local w = D - 10 - tier * 14
 				block(z, base + Vector3.new(0, tier * 9, 0), Vector3.new(w, 9, w), shade(fc, (tier % 2) * 0.06))
 			end
 		elseif kind == "Towers" then
 			for k = 1, 8 do
 				local h = rng:NextInteger(60, 140)
-				local s = rng:NextInteger(16, 28)
+				local s = rng:NextInteger(16, 26)
 				local side = if k % 2 == 0 then 1 else -1
-				block(z, c + Vector3.new(side * (Kit.WIDTH / 2 + 30 + rng:NextInteger(0, 60)), -2, rng:NextNumber(-Kit.DEPTH / 2, Kit.DEPTH / 2)), Vector3.new(s, h, s),
-					shade(fc, rng:NextNumber(-0.15, 0.15)))
+				local zz = -D / 2 + 20 + (k - 1) * (D - 40) / 7
+				block(z, c + Vector3.new(side * (Kit.WIDTH / 2 + 34 + rng:NextInteger(0, 50)), -2, zz), Vector3.new(s, h, s), shade(fc, rng:NextNumber(-0.15, 0.15)))
 			end
 		elseif kind == "Sun" then
-			ball(z, c + Vector3.new(80, 160, 200), 50, fc)
+			ball(z, c + Vector3.new(80, 160, 0), 50, fc)
 		end
 	end
 end
@@ -754,10 +808,11 @@ end
 local function skyClouds(z, c, cfg)
 	if cfg.Roof or cfg.Clouds == false then return end
 	local cloud = cfg.CloudColor or WHITE
-	for _ = 1, 8 do
-		local at = c + Vector3.new(rng:NextNumber(-160, 160), rng:NextNumber(85, 120), rng:NextNumber(-120, 120))
-		block(z, at, Vector3.new(rng:NextInteger(16, 30), 6, rng:NextInteger(10, 18)), cloud)
-		block(z, at + Vector3.new(rng:NextNumber(-4, 4), 5, rng:NextNumber(-3, 3)), Vector3.new(rng:NextInteger(8, 14), 5, rng:NextInteger(6, 10)), cloud)
+	for k = 1, 6 do
+		local zz = -Kit.DEPTH / 2 + k * Kit.DEPTH / 7
+		local at = c + Vector3.new(rng:NextNumber(-150, 150), 80 + k * 6, zz)
+		block(z, at, Vector3.new(rng:NextInteger(16, 30), 6, rng:NextInteger(10, 16)), cloud)
+		block(z, at + Vector3.new(rng:NextNumber(-4, 4), 6, 0), Vector3.new(rng:NextInteger(8, 14), 5, rng:NextInteger(6, 9)), cloud)
 	end
 end
 
@@ -786,6 +841,16 @@ function Kit.build(cfg)
 	cfg.Stone = cfg.Stone and color(cfg.Stone)
 	cfg.Water = cfg.Water and color(cfg.Water)
 	cfg.CloudColor = cfg.CloudColor and color(cfg.CloudColor)
+	if cfg.From then
+		local from = cfg.From
+		cfg.From = {
+			Ground2 = colors(from.Ground2 or { from.Ground }),
+			Path = color(from.Path),
+			Rock = colors(from.Rock),
+			Cap = from.Cap and color(from.Cap),
+			Water = from.Water == true,
+		}
+	end
 
 	local zones = workspace:FindFirstChild("Zones")
 	if not zones then
@@ -829,7 +894,7 @@ function Kit.build(cfg)
 	ground(z, c, cfg)
 	walls(z, c, cfg, first, last)
 	if not first then
-		pass(z, c, cfg)
+		transition(z, c, cfg)
 		gate(z, c, cfg, cfg.Index)
 	end
 	spawnPad(z, c, cfg, first)

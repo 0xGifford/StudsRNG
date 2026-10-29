@@ -55,11 +55,11 @@ Config.Map = {
 	Enabled = false,
 	-- Players below Origin.Y - 70 are put back at the nearest zone they own.
 	FallRescue = true,
-	-- Zone 1's floor centre; must match ZoneKit's ORIGIN / WIDTH / DEPTH / GAP.
+	-- Zone 1's floor centre; must match ZoneKit's ORIGIN / WIDTH / DEPTH.
 	Origin = Vector3.new(15, 1, -28),
 	ZoneWidth = 170, -- X (inside the cliffs)
 	ZoneDepth = 150, -- Z
-	Bridge = 40, -- canyon pass between zones
+	Bridge = 0, -- gap between zones (ZoneKit builds them edge to edge)
 	KeyCols = 22,
 	KeyRows = 8,
 	-- Disable SpawnLocations outside the generated map so players spawn in
