@@ -302,6 +302,14 @@ Config.Visuals = {
 	Size = Vector3.new(1, 1, 1),
 }
 
+-- Background music, looped in the "Music" SoundGroup (Options → Music
+-- slider sets that group's volume).
+Config.Music = {
+	SoundId = "rbxassetid://96708360520100",
+	Volume = 0.5, -- at a full slider
+	FadeIn = 3,
+}
+
 Config.Data = {
 	StoreName = "Mosswake_Players_v1",
 	UseMockInStudio = false, -- true = Studio sessions never touch real data
