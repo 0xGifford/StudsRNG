@@ -22,6 +22,18 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.7",
+		Date = "Oct 30, 2026",
+		Title = "Bigger & Better",
+		Notes = {
+			"Rebalanced: zones are much quicker to unlock, and fights in your own zone are fast and winnable.",
+			"Big, Huge and Jumbo studs are MUCH bigger; Shiny and Inverted studs glow with an outline.",
+			"Rare drops: enemies can drop Big Roll and Shiny Roll boosts.",
+			"A brand new Backpack, a new HUD layout, and names over your equipped studs.",
+			"New combat upgrades: Sharp Studs, Tough Studs and Loot Luck.",
+		},
+	},
+	{
 		Version = "1.6",
 		Date = "Oct 29, 2026",
 		Title = "Season 1: Titans",

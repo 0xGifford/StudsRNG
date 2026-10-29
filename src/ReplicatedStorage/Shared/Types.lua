@@ -113,6 +113,9 @@ export type Stats = {
 	ExtraRollChance: number,
 	VariantLuck: number,
 	VariantBoosts: { [string]: number }, -- active boosts' per-variant chance multipliers
+	TeamStrength: number, -- multiplies the equipped studs' Strength (upgrades)
+	TeamHealth: number, -- multiplies their Health
+	DropLuck: number, -- multiplies boss drop luck and rare drop chances
 	PressesPerFreeRoll: number,
 	MaxBankedFreeRolls: number,
 	CritChance: number,

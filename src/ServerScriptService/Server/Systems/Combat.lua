@@ -169,6 +169,9 @@ local function teamOf(player: Player): Team?
 	local data = PlayerData.get(player)
 	if not data then return nil end
 	local strength, health = RollLogic.teamStats(data.Equipped or {}, data.StudXP)
+	local stats = Modifiers.get(player)
+	strength = math.floor(strength * stats.TeamStrength)
+	health = math.floor(health * stats.TeamHealth)
 	local team = teams[player]
 	if not team then
 		team = { hp = health, maxHp = health, strength = strength, knockedUntil = 0, retreatUntil = 0, sent = "" }
@@ -739,7 +742,7 @@ local function defeat(enemy: Enemy)
 			-- Rare drops: variant boosts (Big Roll, Shiny Roll).
 			local dropBonus = if enemy.zoneBoss then Settings.TitanDropBonus elseif enemy.boss then Settings.BossDropBonus else 1
 			for _, drop in Settings.RareDrops do
-				if rng:NextNumber() < drop.Chance * dropBonus then
+				if rng:NextNumber() < drop.Chance * dropBonus * Modifiers.get(player).DropLuck then
 					local boost = Config.Boosts[drop.Boost]
 					if boost and Boosts.add(player, drop.Boost, boost.Duration) then
 						Net.fire(player, "Notify", {

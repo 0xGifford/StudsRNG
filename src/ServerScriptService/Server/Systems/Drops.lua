@@ -38,6 +38,7 @@ local rng = Random.new()
 function Drops.roll(player: Player, baseLuck: number, enemyLevel: number): RollResult?
 	local luck = baseLuck * (1 + enemyLevel * Config.Drops.PerEnemyLevel)
 		* (if Products.ownsPass(player, "LuckyDrops") then 2 else 1)
+		* Modifiers.get(player).DropLuck
 	local def = RollLogic.rollDrop(rng, luck)
 	if not def then return nil end
 	local stats = Modifiers.get(player)

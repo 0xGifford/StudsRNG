@@ -315,7 +315,7 @@ local function render()
 	if not gui then return end
 	local stats = State.stats()
 	local equipped = equippedList()
-	local strength = RollLogic.teamStats(equipped, State.get("StudXP"))
+	local strength = RollLogic.teamStats(equipped, State.get("StudXP")) * (stats.TeamStrength or 1)
 	header.Text = `{#equipped}/{stats.Slots} Equipped  •  {Format.number(strength)} DMG  •  {Format.multiplier(stats.ClackMultiplier)} Clacks`
 
 	clear(equippedRow)
