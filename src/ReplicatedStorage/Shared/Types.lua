@@ -71,6 +71,7 @@ export type PlayerData = {
 	IndexClaims: { [string]: boolean },
 	RollCounts: { [string]: number },
 	EnemiesDefeated: number,
+	StudXP: { [string]: number }, -- stud id → XP; all variants share a level
 }
 
 export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }

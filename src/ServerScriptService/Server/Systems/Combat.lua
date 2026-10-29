@@ -148,7 +148,7 @@ end
 local function teamOf(player: Player): Team?
 	local data = PlayerData.get(player)
 	if not data then return nil end
-	local strength, health = RollLogic.teamStats(data.Equipped or {})
+	local strength, health = RollLogic.teamStats(data.Equipped or {}, data.StudXP)
 	local team = teams[player]
 	if not team then
 		team = { hp = health, maxHp = health, strength = strength, knockedUntil = 0, retreatUntil = 0, sent = "" }
@@ -612,6 +612,18 @@ local function defeat(enemy: Enemy)
 			end
 			data.EnemiesDefeated += 1
 			StateSync.push(player, "EnemiesDefeated", data.EnemiesDefeated)
+			-- Every equipped stud earns XP (once per stud, however many copies).
+			local levels = Config.Levels
+			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level) * (if enemy.boss then levels.BossXp else 1))
+			local seen: { [string]: boolean } = {}
+			for _, key in data.Equipped do
+				local def = RollLogic.decodeKey(key)
+				if def and not seen[def.Id] then
+					seen[def.Id] = true
+					data.StudXP[def.Id] = (data.StudXP[def.Id] or 0) + xp
+				end
+			end
+			StateSync.push(player, "StudXP", data.StudXP)
 			local streakText = if streak.count > 1 then ` (Streak x{streak.count})` else ""
 			notify(player, `Defeated {enemy.name}! +{shortNumber(amount)} Clacks{extra}{streakText}`, Color3.fromRGB(255, 215, 90))
 			Combat.Defeated:Fire(player, enemy.boss)

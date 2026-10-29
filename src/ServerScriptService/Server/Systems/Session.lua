@@ -52,6 +52,7 @@ local CLIENT_FIELDS = {
 	"IndexClaims",
 	"RollCounts",
 	"EnemiesDefeated",
+	"StudXP",
 }
 
 function Session.init()

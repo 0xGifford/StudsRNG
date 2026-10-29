@@ -60,6 +60,7 @@ local TEMPLATE: PlayerData = {
 	IndexClaims = {}, -- [variant] = true: Index tab rewards claimed
 	RollCounts = {}, -- [stud key] = times rolled
 	EnemiesDefeated = 0,
+	StudXP = {}, -- stud id → XP (Config.Levels)
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.

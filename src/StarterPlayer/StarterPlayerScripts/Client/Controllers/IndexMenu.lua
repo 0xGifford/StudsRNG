@@ -148,11 +148,12 @@ local function renderDetail()
 	detail.odds.Text = (string.gsub(oddsText(def), "/", " / "))
 	detail.rarity.Text = def.Rarity
 	detail.rarity.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.35)
-	local strength, health = RollLogic.statsOf(def, variant)
+	local level = RollLogic.levelOf((State.get("StudXP") or {})[def.Id])
+	local strength, health = RollLogic.statsOf(def, variant, level)
 	detail.strength.Text = `💪 {Format.number(strength)}`
 	detail.health.Text = `❤️ {Format.number(health)}`
 	local counts = State.get("RollCounts") or {}
-	detail.rolls.Text = `🎲 Rolls: {Format.number(counts[RollLogic.encodeKey(def.Id, activeVariant)] or 0)}`
+	detail.rolls.Text = `🎲 Rolls: {Format.number(counts[RollLogic.encodeKey(def.Id, activeVariant)] or 0)} · ⭐ Lv {level}`
 	for _, cell in cells do
 		cell.stroke.Color = if cell.def == def then Color3.new(1, 1, 1) else Color3.fromRGB(12, 12, 16)
 		cell.stroke.Thickness = if cell.def == def then 3 else 2
@@ -449,7 +450,7 @@ function IndexMenu.start()
 		if not IndexMenu.isOpen() then return end
 		if field == "Index" or field == "UnlockedWorlds" or field == "Stats" then
 			renderGrid()
-		elseif field == "RollCounts" then
+		elseif field == "RollCounts" or field == "StudXP" then
 			renderDetail()
 		elseif field == "IndexClaims" then
 			renderReward()

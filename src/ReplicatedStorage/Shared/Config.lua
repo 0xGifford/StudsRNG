@@ -288,6 +288,18 @@ Config.Combat = {
 	BossSize = 1.7,
 }
 
+-- Stud levels: every stud (all variants of it share one level) earns XP when
+-- it's equipped and its team defeats an enemy. Each level adds StatsPerLevel
+-- to its Strength and Health. XP for level L: XpBase × (L - 1)².
+Config.Levels = {
+	Max = 50,
+	XpBase = 25,
+	StatsPerLevel = 0.05, -- +5% per level → +245% at Lv 50
+	XpPerDefeat = 5, -- + XpPerEnemyLevel × the enemy's level
+	XpPerEnemyLevel = 3,
+	BossXp = 5, -- Mini Boss multiplier
+}
+
 Config.Announce = {
 	Channel = "Rolls", -- chat channel (tab) every announced roll goes to
 	ChannelMinOneIn = 100, -- announced in the Rolls channel at or rarer than this (stud × variant odds)

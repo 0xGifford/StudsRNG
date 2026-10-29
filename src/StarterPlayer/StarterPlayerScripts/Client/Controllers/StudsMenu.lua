@@ -94,7 +94,14 @@ local function selectedInfo(key: string)
 	local def, variant = RollLogic.decodeKey(key)
 	if not def or not variant then return end
 	local mult = Format.multiplier(RollLogic.multiplierOf(def, variant))
-	setInfo(`{Format.studName(def, variant)} · {def.Rarity} · {mult} · {owned(key)} owned, {equippedCount(key)} equipped`)
+	-- Level: earned in fights, shared by every variant of this stud.
+	local xp = (State.get("StudXP") or {})[def.Id] or 0
+	local level = RollLogic.levelOf(xp)
+	local levelText = if level >= Config.Levels.Max
+		then `⭐ Lv {level} (MAX)`
+		else `⭐ Lv {level} ({Format.number(xp - RollLogic.xpForLevel(level))}/{Format.number(RollLogic.xpForLevel(level + 1) - RollLogic.xpForLevel(level))} XP)`
+	local strength, health = RollLogic.statsOf(def, variant, level)
+	setInfo(`{Format.studName(def, variant)} · {def.Rarity} · {mult} · 💪{Format.number(strength)} ❤️{Format.number(health)} · {levelText} · {owned(key)} owned, {equippedCount(key)} equipped`)
 end
 
 local function updateActions()
@@ -342,6 +349,8 @@ function StudsMenu.start()
 		if not Interface.isOpen(MENU) then return end
 		if field == "Studs" or field == "Equipped" or field == "Stats" then
 			queueRebuild()
+		elseif field == "StudXP" and selected then
+			selectedInfo(selected)
 		elseif field == "AutoDelete" then
 			updateActions()
 		end
