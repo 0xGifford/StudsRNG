@@ -110,6 +110,18 @@ local function rebuild(player: Player)
 			trail.FaceCamera = true
 			trail.Enabled = false
 			trail.Parent = part
+			-- Your own Shiny / Inverted studs glow through the world with a
+			-- Highlight (Roblox draws ~31 at once, so only yours: at most 12).
+			if player == localPlayer and variant.Outline then
+				local highlight = Instance.new("Highlight")
+				highlight.Name = "VariantHighlight"
+				highlight.FillColor = variant.Outline
+				highlight.FillTransparency = 0.8
+				highlight.OutlineColor = variant.Outline
+				highlight.OutlineTransparency = 0
+				highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+				highlight.Parent = part
+			end
 			table.insert(entry.followers, { part = part, phase = math.random() * math.pi * 2, size = part.Size.Y, trail = trail, lastU = 0 })
 		end
 	end

@@ -29,11 +29,13 @@ local order = { "Normal", "Big", "Huge", "Jumbo", "Shiny", "Inverted" }
 
 local defs: { [string]: VariantDef } = {
 	Normal = { Name = "Normal", Label = "Base", OneIn = 1, Multiplier = 1, Stats = 1, Scale = 1 },
-	Big = { Name = "Big", Label = "Big", OneIn = 8, Multiplier = 1.5, Stats = 1.5, Scale = 1.35 },
-	Huge = { Name = "Huge", Label = "Huge", OneIn = 40, Multiplier = 2.5, Stats = 2.5, Scale = 1.8 },
-	Jumbo = { Name = "Jumbo", Label = "Jumbo", OneIn = 200, Multiplier = 5, Stats = 5, Scale = 2.5 },
-	Shiny = { Name = "Shiny", Label = "Shiny", OneIn = 500, Multiplier = 8, Stats = 8, Scale = 1, Effect = "Shine" },
-	Inverted = { Name = "Inverted", Label = "Inverted", OneIn = 2500, Multiplier = 15, Stats = 15, Scale = 1, Effect = "Invert", Invert = true },
+	Big = { Name = "Big", Label = "Big", OneIn = 8, Multiplier = 1.5, Stats = 1.5, Scale = 1.7 },
+	Huge = { Name = "Huge", Label = "Huge", OneIn = 40, Multiplier = 2.5, Stats = 2.5, Scale = 2.6 },
+	Jumbo = { Name = "Jumbo", Label = "Jumbo", OneIn = 200, Multiplier = 5, Stats = 5, Scale = 3.6 },
+	Shiny = { Name = "Shiny", Label = "Shiny", OneIn = 500, Multiplier = 8, Stats = 8, Scale = 1, Effect = "Shine",
+		Outline = Color3.fromRGB(255, 220, 90) },
+	Inverted = { Name = "Inverted", Label = "Inverted", OneIn = 2500, Multiplier = 15, Stats = 15, Scale = 1, Effect = "Invert", Invert = true,
+		Outline = Color3.new(1, 1, 1) },
 
 	-- Retired
 	Golden = {

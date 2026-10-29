@@ -38,6 +38,7 @@ export type VariantDef = {
 	Stats: number?, -- Strength / Health multiplier
 	Scale: number?, -- follower size
 	Invert: boolean?, -- colour is inverted
+	Outline: Color3?, -- outline colour (SelectionBox; a Highlight on your own followers)
 	Retired: boolean?, -- no longer rolled, fused or indexed
 }
 

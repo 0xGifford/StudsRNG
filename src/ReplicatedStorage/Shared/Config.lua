@@ -383,9 +383,13 @@ Config.Followers = {
 }
 
 Config.Visuals = {
-	-- Optional template: a 1×1×1 Part carrying your inset-stud texture
-	-- (Texture/Decal/SurfaceAppearance). If missing, a plain part is built
-	-- and FallbackTextureId (if set) is applied to all six faces.
+	-- Optional template: a 1×1×1 Part or MeshPart (your own stud model, with
+	-- any Texture / Decal / SurfaceAppearance). Put it in ServerStorage (the
+	-- server copies it to ReplicatedStorage.Assets at boot, where clients
+	-- can see it) or straight in ReplicatedStorage.Assets, named
+	-- TemplateName. The game sets its colour, material, size per variant,
+	-- particles, light and outline. Without one, studs are classic bricks
+	-- with the studs surface on every face (plus FallbackTextureId, if set).
 	TemplateFolder = "Assets",
 	TemplateName = "StudTemplate",
 	FallbackTextureId = "",
