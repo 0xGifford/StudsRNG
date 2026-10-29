@@ -73,6 +73,7 @@ export type PlayerData = {
 	RollCounts: { [string]: number },
 	EnemiesDefeated: number,
 	StudXP: { [string]: number }, -- stud id → XP; all variants share a level
+	BestRoll: number, -- rarest roll's odds (1 in X)
 }
 
 export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }

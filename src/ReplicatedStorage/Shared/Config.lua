@@ -330,6 +330,17 @@ Config.Drops = {
 	PerEnemyLevel = 0.04,
 }
 
+-- Global leaderboards (Systems/Leaderboards → Leaderboard-tagged parts).
+Config.Leaderboards = {
+	Refresh = 120, -- seconds between saving scores and reading the top lists
+	Size = 50, -- entries kept per board (parts show the top 10)
+	Stores = { -- OrderedDataStore names; bump the version to reset a board
+		Clacks = "LB_Clacks_v1",
+		Enemies = "LB_Enemies_v1",
+		Rarest = "LB_Rarest_v1",
+	},
+}
+
 Config.Announce = {
 	Channel = "Rolls", -- chat channel (tab) every announced roll goes to
 	ChannelMinOneIn = 100, -- announced in the Rolls channel at or rarer than this (stud × variant odds)

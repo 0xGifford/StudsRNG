@@ -61,6 +61,7 @@ local TEMPLATE: PlayerData = {
 	RollCounts = {}, -- [stud key] = times rolled
 	EnemiesDefeated = 0,
 	StudXP = {}, -- stud id → XP (Config.Levels)
+	BestRoll = 0, -- rarest roll's odds (1 in X), for the Rarest leaderboard
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.
