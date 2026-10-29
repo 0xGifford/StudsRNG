@@ -19,10 +19,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- the end of the previous sample. Movement faster than the player's server-side
 -- WalkSpeed allows is treated as a teleport and earns nothing.
 --
--- Each key belongs to a zone: its model's World attribute, or the
--- workspace.Zones.<ZoneId> folder it sits under. Its Value is multiplied by
--- that zone's KeyMultiplier, and the filter set by Economy drops keys in
--- zones the player doesn't own.
+-- Each key belongs to a zone (Shared/Tags.keyZone: the key Model's World,
+-- else its Keyboard's or Zone's ZoneId). Its Value (else its Keyboard's
+-- KeyValue) is multiplied by the Keyboard's Multiplier and the zone's
+-- KeyMultiplier, and the filter set by Economy drops keys in zones the
+-- player doesn't own. A key or Keyboard with Enabled = false never pays.
+-- Attribute changes on keys, Keyboards and Zones are picked up live.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -32,6 +34,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local Signal = require(Shared.Util.Signal)
+local Tags = require(Shared.Tags)
 
 local PressConfig = Config.Press
 
@@ -42,7 +45,7 @@ PressTracker.Pressed = Signal.new() :: Signal.Signal<Player, number, number>
 -- (player, hitboxes pressed this sample) — only keys that paid out
 PressTracker.KeysPressed = Signal.new() :: Signal.Signal<Player, { BasePart }>
 
-type KeyInfo = { value: number, world: string? }
+type KeyInfo = { value: number, world: string?, enabled: boolean }
 type Tracked = { lastFeet: Vector3?, touching: { [BasePart]: boolean } }
 
 local LEG_PARTS = { "LeftFoot", "RightFoot", "Left Leg", "Right Leg" }
@@ -50,6 +53,8 @@ local LEG_PARTS = { "LeftFoot", "RightFoot", "Left Leg", "Right Leg" }
 local hitboxes: { [BasePart]: KeyInfo } = {}
 local hitboxList: { Instance } = {}
 local listDirty = true
+local infoDirty = false
+local keyConnections: { [BasePart]: RBXScriptConnection } = {}
 local tracked: { [Player]: Tracked } = {}
 local overlapParams = OverlapParams.new()
 overlapParams.FilterType = Enum.RaycastFilterType.Include
@@ -57,40 +62,40 @@ overlapParams.FilterType = Enum.RaycastFilterType.Include
 -- (player, zoneId?) -> may this player earn from a key in that zone?
 local filter: ((Player, string?) -> boolean)? = nil
 
-local function resolveWorld(model: Instance?): string?
-	if not model then return nil end
-	local attr = model:GetAttribute(PressConfig.AttrWorld)
-	if typeof(attr) == "string" and attr ~= "" then
-		return attr
-	end
-	local zones = workspace:FindFirstChild(Config.ZoneFolder)
-	if not zones then return nil end
-	local node: Instance? = model
-	while node and node.Parent and node.Parent ~= zones do
-		node = node.Parent
-	end
-	if node and node.Parent == zones then
-		return node.Name
-	end
-	return nil
-end
-
 local function readKeyInfo(hitbox: BasePart): KeyInfo
 	local model = hitbox.Parent
-	local value = model and model:GetAttribute(PressConfig.AttrValue)
-	local world = resolveWorld(model)
+	if not model then
+		return { value = 0, world = nil, enabled = false }
+	end
+	local keyboard = Tags.ancestorWith(model, Tags.Keyboard)
+	local world = Tags.keyZone(hitbox)
 	local zone = if world then Zones.ById[world] else nil
-	local base = if typeof(value) == "number" and value > 0 then value else PressConfig.DefaultKeyValue
+
+	local value = model:GetAttribute(PressConfig.AttrValue)
+	if not (typeof(value) == "number" and value > 0) then
+		value = if keyboard then Tags.read(keyboard, Tags.Attr.KeyValue, PressConfig.DefaultKeyValue) else PressConfig.DefaultKeyValue
+	end
+	local multiplier = if keyboard then Tags.read(keyboard, Tags.Attr.Multiplier, 1) else 1
+	local enabled = Tags.read(model, Tags.Attr.Enabled, true) and (keyboard == nil or Tags.read(keyboard, Tags.Attr.Enabled, true))
 	return {
-		value = base * (if zone then zone.KeyMultiplier else 1),
+		value = (value :: number) * multiplier * (if zone then zone.KeyMultiplier else 1),
 		world = world,
+		enabled = enabled,
 	}
 end
 
 local function addHitbox(instance: Instance)
-	if not instance:IsA("BasePart") then return end
+	if not instance:IsA("BasePart") or hitboxes[instance] then return end
 	hitboxes[instance] = readKeyInfo(instance)
 	listDirty = true
+	local model = instance.Parent
+	if model then
+		keyConnections[instance] = model.AttributeChanged:Connect(function()
+			if hitboxes[instance] then
+				hitboxes[instance] = readKeyInfo(instance)
+			end
+		end)
+	end
 end
 
 local function removeHitbox(instance: Instance)
@@ -98,6 +103,36 @@ local function removeHitbox(instance: Instance)
 		hitboxes[instance :: BasePart] = nil
 		listDirty = true
 	end
+	local connection = keyConnections[instance :: BasePart]
+	if connection then
+		connection:Disconnect()
+		keyConnections[instance :: BasePart] = nil
+	end
+end
+
+-- A Keyboard or Zone changed: every key may have a new zone or value.
+local function refreshInfo()
+	if not infoDirty then return end
+	infoDirty = false
+	for part in hitboxes do
+		hitboxes[part] = readKeyInfo(part)
+	end
+end
+
+local function watchContainer(tag: string)
+	local function watch(instance: Instance)
+		infoDirty = true
+		instance.AttributeChanged:Connect(function()
+			infoDirty = true
+		end)
+	end
+	for _, instance in CollectionService:GetTagged(tag) do
+		watch(instance)
+	end
+	CollectionService:GetInstanceAddedSignal(tag):Connect(watch)
+	CollectionService:GetInstanceRemovedSignal(tag):Connect(function()
+		infoDirty = true
+	end)
 end
 
 local function refreshFilter()
@@ -192,7 +227,7 @@ local function sample(player: Player, state: Tracked, dt: number)
 	for _, part in sweepHits do
 		if not state.touching[part] then
 			local info = hitboxes[part]
-			if info and (filter == nil or filter(player, info.world)) then
+			if info and info.enabled and (filter == nil or filter(player, info.world)) then
 				count += 1
 				valueSum += info.value
 				table.insert(pressed, part)
@@ -220,6 +255,18 @@ function PressTracker.getHitboxes(): { BasePart }
 	return list
 end
 
+-- A key's zone, or nil when it pays everywhere / isn't a key.
+function PressTracker.zoneOf(hitbox: BasePart): string?
+	local info = hitboxes[hitbox]
+	return info and info.world
+end
+
+-- Whether a key currently pays at all (Enabled on it and its Keyboard).
+function PressTracker.isEnabled(hitbox: BasePart): boolean
+	local info = hitboxes[hitbox]
+	return info ~= nil and info.enabled
+end
+
 -- Economy sets this so keys in unowned zones never pay.
 function PressTracker.setFilter(fn: (Player, string?) -> boolean)
 	filter = fn
@@ -231,6 +278,8 @@ function PressTracker.init()
 	end
 	CollectionService:GetInstanceAddedSignal(PressConfig.HitboxTag):Connect(addHitbox)
 	CollectionService:GetInstanceRemovedSignal(PressConfig.HitboxTag):Connect(removeHitbox)
+	watchContainer(Tags.Keyboard)
+	watchContainer(Tags.Zone)
 
 	Players.PlayerAdded:Connect(function(player)
 		tracked[player] = { lastFeet = nil, touching = {} }
@@ -253,6 +302,7 @@ function PressTracker.start()
 		lastTime = now
 
 		refreshFilter()
+		refreshInfo()
 		if #hitboxList > 0 then
 			for player, state in tracked do
 				sample(player, state, dt)

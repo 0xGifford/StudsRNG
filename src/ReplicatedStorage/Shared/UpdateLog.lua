@@ -30,6 +30,7 @@ local entries: { Entry } = {
 			"Zones are now Grasslands, Beach, Polar, Volcano, Islands, Cave and Heaven. Your unlocks carry over.",
 			"Two new zones, Islands and Cave, each with four new zone studs.",
 			"The Teleporter: numbered zone list with one-tap teleports.",
+			"Zone gates show the next zone's price with a Buy button right on the gate.",
 		},
 	},
 	{

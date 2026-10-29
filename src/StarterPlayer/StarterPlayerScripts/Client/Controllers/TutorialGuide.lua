@@ -27,6 +27,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local TutorialDefs = require(Shared.Tutorial)
+local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
@@ -221,8 +222,9 @@ local function nearestKey(root: Vector3, wantTile: boolean): Vector3?
 		if hitbox:IsA("BasePart") then
 			local model = hitbox.Parent
 			local isTile = model ~= nil and model:GetAttribute(Config.KeyRewards.Attribute) ~= nil
-			local world = model and model:GetAttribute(Config.Press.AttrWorld)
-			local owned = typeof(world) ~= "string" or unlocked[world] == true
+			local world = Tags.keyZone(hitbox)
+			local enabled = model ~= nil and Tags.read(model, Tags.Attr.Enabled, true)
+			local owned = enabled and (world == nil or unlocked[world] == true)
 			if owned and (not wantTile or isTile) then
 				local distance = (hitbox.Position - root).Magnitude
 				if distance < bestDistance then

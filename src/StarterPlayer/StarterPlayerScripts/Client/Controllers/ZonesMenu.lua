@@ -10,19 +10,23 @@ Copyright © 2026. Mosswake, all rights reserved.
 
 --!strict
 -- The Teleporter window (numbered zone rows, Slime RNG style: teleport to
--- owned zones, buy the next one with Clacks) and the zones in the world:
---   workspace.Zones.<Id>.Barrier  opens (locally) once the zone is owned,
---                                 shows a price sign, and opens this menu
---                                 when the player bumps into it.
+-- owned zones, buy the next one with Clacks) and the zone barriers in the
+-- world (Shared/Tags):
+--   ZoneBarrier  opens (locally) once its zone is owned. Until then it shows
+--                a sign: the zone's title, its price in Clacks and a Buy
+--                button; bumping into it opens the Teleporter. Attributes:
+--                ZoneId, SignFace, ShowSign, Title, OpenOnTouch.
+--   ZoneGate     hidden (locally) once owned when HideWhenOwned is set.
 -- The server decides ownership (Systems/ZoneShop); barriers are cosmetic,
 -- keys in unowned zones never pay anyway.
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
+local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
@@ -30,6 +34,7 @@ local State = require(Controllers.State)
 local Interface = require(UI.Interface)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
+local UIConfig = require(UI.UIConfig)
 
 local ZonesMenu = {}
 
@@ -42,10 +47,17 @@ local items: ScrollingFrame
 local cards: { [string]: Frame } = {}
 local pending = false
 
--- Barrier parts we've changed, with their original look.
+-- Tagged barriers and gates we manage, with their parts' original look.
 type Saved = { Transparency: number, CanCollide: boolean }
-local barrierParts: { [BasePart]: { zone: string, saved: Saved } } = {}
-local signs: { [string]: BillboardGui } = {}
+type Sign = { gui: SurfaceGui, title: TextLabel, price: TextLabel, button: Frame }
+type Blocker = {
+	root: Instance,
+	tag: string,
+	parts: { [BasePart]: Saved },
+	signs: { [Enum.NormalId]: Sign },
+	connections: { RBXScriptConnection },
+}
+local blockers: { [Instance]: Blocker } = {}
 local lastTouch = 0
 
 local function owned(id: string): boolean
@@ -190,61 +202,20 @@ local function refreshCards()
 end
 
 --------------------------------------------------------------------------
--- World barriers
+-- World barriers and gates
 --------------------------------------------------------------------------
 
-local function applyBarrier(part: BasePart, zone: string)
-	local entry = barrierParts[part]
-	if not entry then
-		entry = { zone = zone, saved = { Transparency = part.Transparency, CanCollide = part.CanCollide } }
-		barrierParts[part] = entry
-	end
-	local open = owned(zone)
-	part.CanCollide = if open then false else entry.saved.CanCollide
-	part.Transparency = if open then 1 else entry.saved.Transparency
-end
+local SIGN_FACES: { [string]: { Enum.NormalId } } = {
+	Front = { Enum.NormalId.Front },
+	Back = { Enum.NormalId.Back },
+	Both = { Enum.NormalId.Front, Enum.NormalId.Back },
+}
 
-local function signText(def: Zones.ZoneDef): string
-	return `🔒 {def.Name}\n{Format.number(priceOf(def))} Clacks`
-end
-
-local function ensureSign(def: Zones.ZoneDef, part: BasePart)
-	if signs[def.Id] then return end
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "ZoneSign"
-	gui.Size = UDim2.fromScale(8, 3)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, part.Size.Y / 2 + 2, 0)
-	gui.AlwaysOnTop = false
-	gui.MaxDistance = 120
-	gui.Adornee = part
-	local label = Kit.label(signText(def))
-	label.TextColor3 = def.Color
-	label.Parent = gui
-	gui.Parent = player:WaitForChild("PlayerGui")
-	signs[def.Id] = gui
-end
-
-local function refreshWorld()
-	for part, entry in barrierParts do
-		if part.Parent then
-			applyBarrier(part, entry.zone)
-		else
-			barrierParts[part] = nil
-		end
-	end
-	for id, gui in signs do
-		local def = Zones.ById[id]
-		gui.Enabled = def ~= nil and not owned(id)
-		local label = gui:FindFirstChild("Label")
-		if def and label and label:IsA("TextLabel") then
-			label.Text = signText(def)
-		end
-	end
-end
-
-local function onBarrierTouched(zone: string, hit: BasePart)
+local function onBarrierTouched(blocker: Blocker, hit: BasePart)
+	local zone = Tags.zoneOf(blocker.root)
 	local character = player.Character
-	if not character or not hit:IsDescendantOf(character) or owned(zone) then return end
+	if not zone or not character or not hit:IsDescendantOf(character) or owned(zone) then return end
+	if not Tags.read(blocker.root, Tags.Attr.OpenOnTouch, true) then return end
 	if os.clock() - lastTouch < TOUCH_COOLDOWN then return end
 	lastTouch = os.clock()
 	if not Interface.isOpen(MENU) then
@@ -252,57 +223,244 @@ local function onBarrierTouched(zone: string, hit: BasePart)
 	end
 end
 
-local function trackBarrier(zoneFolder: Instance, barrier: Instance)
-	local def = Zones.ById[zoneFolder.Name]
-	if not def then return end
-	local parts: { BasePart } = {}
-	if barrier:IsA("BasePart") then
-		table.insert(parts, barrier)
+-- The part a sign goes on: the barrier itself, or its biggest part.
+local function signPart(blocker: Blocker): BasePart?
+	local best: BasePart? = nil
+	for part in blocker.parts do
+		if not best or part.Size.Magnitude > best.Size.Magnitude then
+			best = part
+		end
 	end
-	for _, descendant in barrier:GetDescendants() do
+	return best
+end
+
+-- Title, Clack icon + price and a Buy button, drawn on one face.
+local function makeSign(part: BasePart, face: Enum.NormalId, def: Zones.ZoneDef): Sign
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = `ZoneSign_{def.Id}_{face.Name}`
+	gui.Face = face
+	gui.Adornee = part
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 20
+	gui.LightInfluence = 0
+	gui.MaxDistance = 160
+	gui.ResetOnSpawn = false
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.fromScale(0.5, 0.5)
+	panel.Size = UDim2.fromScale(0.86, 0.62)
+	panel.BackgroundColor3 = ROW_COLOR
+	panel.BackgroundTransparency = 0.1
+	panel.BorderSizePixel = 0
+	panel.Parent = gui
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 1.35
+	aspect.Parent = panel
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.08, 0)
+	corner.Parent = panel
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = def.Color
+	stroke.Thickness = 6
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = panel
+
+	local title = Kit.label("")
+	title.Name = "Title"
+	title.Position = UDim2.fromScale(0.5, 0.2)
+	title.Size = UDim2.fromScale(0.9, 0.26)
+	title.TextColor3 = def.Color
+	title.Parent = panel
+
+	local priceRow = Instance.new("Frame")
+	priceRow.Name = "Price"
+	priceRow.BackgroundTransparency = 1
+	priceRow.AnchorPoint = Vector2.new(0.5, 0.5)
+	priceRow.Position = UDim2.fromScale(0.5, 0.48)
+	priceRow.Size = UDim2.fromScale(0.9, 0.2)
+	priceRow.Parent = panel
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0.02, 0)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = priceRow
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "Icon"
+	icon.BackgroundTransparency = 1
+	icon.Size = UDim2.fromScale(1, 1)
+	icon.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.LayoutOrder = 1
+	icon.Parent = priceRow
+	Kit.setIcon(icon, UIConfig.Icons.Clacks)
+	local price = Kit.label("")
+	price.Name = "Amount"
+	price.AnchorPoint = Vector2.zero
+	price.Position = UDim2.new()
+	price.Size = UDim2.fromScale(0.6, 1)
+	price.TextXAlignment = Enum.TextXAlignment.Left
+	price.LayoutOrder = 2
+	price.Parent = priceRow
+
+	local button = Kit.button("Green", "BUY")
+	button.Name = "Buy"
+	button.AnchorPoint = Vector2.new(0.5, 0.5)
+	button.Position = UDim2.fromScale(0.5, 0.78)
+	button.Size = UDim2.fromScale(0.5, 0.24)
+	button.Parent = panel
+	Interface.bindButton(button, function()
+		onZone(def)
+	end)
+
+	gui.Parent = player:WaitForChild("PlayerGui")
+	return { gui = gui, title = title, price = price, button = button }
+end
+
+local function clearSigns(blocker: Blocker)
+	for _, sign in blocker.signs do
+		sign.gui:Destroy()
+	end
+	table.clear(blocker.signs)
+end
+
+local function updateSigns(blocker: Blocker, def: Zones.ZoneDef, open: boolean)
+	local part = signPart(blocker)
+	local faces = SIGN_FACES[Tags.read(blocker.root, Tags.Attr.SignFace, "Both")] or SIGN_FACES.Both
+	local show = not open and part ~= nil and Tags.read(blocker.root, Tags.Attr.ShowSign, true)
+	-- Rebuild when the zone, part or faces changed.
+	local wanted: { [Enum.NormalId]: boolean } = {}
+	for _, face in faces do
+		wanted[face] = true
+	end
+	for face, sign in blocker.signs do
+		if not wanted[face] or sign.gui.Adornee ~= part or not string.find(sign.gui.Name, `_{def.Id}_`, 1, true) then
+			clearSigns(blocker)
+			break
+		end
+	end
+	if not show or not part then
+		for _, sign in blocker.signs do
+			sign.gui.Enabled = false
+		end
+		return
+	end
+
+	local nextZone = Zones.nextFor(State.get("UnlockedWorlds") or {})
+	local isNext = nextZone ~= nil and nextZone.Id == def.Id
+	local price = priceOf(def)
+	local short = (State.get("Clacks") or 0) < price
+	local title = Tags.string(blocker.root, Tags.Attr.Title) or `{def.Emoji} {def.Name}`
+	for face in wanted do
+		local sign = blocker.signs[face] or makeSign(part, face, def)
+		blocker.signs[face] = sign
+		sign.gui.Enabled = true
+		sign.title.Text = title
+		sign.price.Text = Format.number(price)
+		if not isNext then
+			Kit.paint(sign.button, "Purple")
+			Interface.setText(sign.button, "LOCKED")
+		else
+			Kit.paint(sign.button, if short then "Sunset" else "Green")
+			Interface.setText(sign.button, "BUY")
+		end
+	end
+end
+
+local function partsOf(root: Instance): { BasePart }
+	local parts: { BasePart } = {}
+	if root:IsA("BasePart") then
+		table.insert(parts, root)
+	end
+	for _, descendant in root:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			table.insert(parts, descendant)
 		end
 	end
-	for _, part in parts do
-		if not barrierParts[part] then
-			applyBarrier(part, def.Id)
-			part.Touched:Connect(function(hit)
-				onBarrierTouched(def.Id, hit)
-			end)
-		end
-	end
-	if parts[1] then
-		ensureSign(def, parts[1])
-	end
-	refreshWorld()
+	return parts
 end
 
-local function watchZones(folder: Instance)
-	local function scan(zone: Instance)
-		local barrier = zone:FindFirstChild("Barrier")
-		if barrier then
-			trackBarrier(zone, barrier)
-		end
-	end
-	for _, zone in folder:GetChildren() do
-		scan(zone)
-	end
-	-- StreamingEnabled: barriers can arrive later.
-	folder.DescendantAdded:Connect(function(descendant)
-		if descendant.Name == "Barrier" and descendant.Parent and descendant.Parent.Parent == folder then
-			trackBarrier(descendant.Parent, descendant)
-		elseif descendant:IsA("BasePart") then
-			local node: Instance? = descendant
-			while node and node.Parent ~= folder do
-				if node.Name == "Barrier" and node.Parent and node.Parent.Parent == folder then
-					trackBarrier(node.Parent, node)
-					return
-				end
-				node = node.Parent
+local function refreshBlocker(blocker: Blocker)
+	local zone = Tags.zoneOf(blocker.root)
+	local def = if zone then Zones.ById[zone] else nil
+	local barrier = blocker.tag == Tags.ZoneBarrier
+
+	for _, part in partsOf(blocker.root) do
+		if not blocker.parts[part] then
+			blocker.parts[part] = { Transparency = part.Transparency, CanCollide = part.CanCollide }
+			if barrier then
+				table.insert(blocker.connections, part.Touched:Connect(function(hit)
+					onBarrierTouched(blocker, hit)
+				end))
 			end
 		end
+	end
+
+	local open = def ~= nil and owned(def.Id)
+	local hide = open and (barrier or Tags.read(blocker.root, Tags.Attr.HideWhenOwned, false))
+	for part, saved in blocker.parts do
+		if part.Parent then
+			part.CanCollide = if hide then false else saved.CanCollide
+			part.Transparency = if hide then 1 else saved.Transparency
+		else
+			blocker.parts[part] = nil
+		end
+	end
+
+	if barrier and def then
+		updateSigns(blocker, def, open)
+	elseif barrier then
+		clearSigns(blocker)
+	end
+end
+
+local function refreshWorld()
+	for _, blocker in blockers do
+		refreshBlocker(blocker)
+	end
+end
+
+local function track(root: Instance, tag: string)
+	if blockers[root] then return end
+	local blocker: Blocker = { root = root, tag = tag, parts = {}, signs = {}, connections = {} }
+	blockers[root] = blocker
+	-- Attributes are live; parts can stream in later.
+	table.insert(blocker.connections, root.AttributeChanged:Connect(function()
+		refreshBlocker(blocker)
+	end))
+	table.insert(blocker.connections, root.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("BasePart") then
+			refreshBlocker(blocker)
+		end
+	end))
+	refreshBlocker(blocker)
+end
+
+local function untrack(root: Instance)
+	local blocker = blockers[root]
+	if not blocker then return end
+	blockers[root] = nil
+	for _, connection in blocker.connections do
+		connection:Disconnect()
+	end
+	for part, saved in blocker.parts do
+		part.CanCollide = saved.CanCollide
+		part.Transparency = saved.Transparency
+	end
+	clearSigns(blocker)
+end
+
+local function watchTag(tag: string)
+	for _, root in CollectionService:GetTagged(tag) do
+		track(root, tag)
+	end
+	CollectionService:GetInstanceAddedSignal(tag):Connect(function(root)
+		track(root, tag)
 	end)
+	CollectionService:GetInstanceRemovedSignal(tag):Connect(untrack)
 end
 
 --------------------------------------------------------------------------
@@ -327,21 +485,14 @@ function ZonesMenu.start()
 		elseif field == "Stats" then
 			refreshWorld()
 			if Interface.isOpen(MENU) then refreshCards() end
-		elseif field == "Clacks" and Interface.isOpen(MENU) then
-			refreshCards()
+		elseif field == "Clacks" then
+			refreshWorld()
+			if Interface.isOpen(MENU) then refreshCards() end
 		end
 	end)
 
-	local folder = workspace:FindFirstChild(Config.ZoneFolder)
-	if folder then
-		watchZones(folder)
-	else
-		workspace.ChildAdded:Connect(function(child)
-			if child.Name == Config.ZoneFolder then
-				watchZones(child)
-			end
-		end)
-	end
+	watchTag(Tags.ZoneBarrier)
+	watchTag(Tags.ZoneGate)
 end
 
 return ZonesMenu

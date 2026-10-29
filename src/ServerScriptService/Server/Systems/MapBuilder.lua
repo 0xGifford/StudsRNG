@@ -14,22 +14,29 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- the next zone (along +Z) by a canyon pass with a gate. Everything is
 -- plain Parts; the look of each biome comes from Shared/MapThemes.
 --
--- workspace.Zones.<ZoneId> (Model, attributes Center/ZoneSize) contains
+-- Everything it builds carries the same tags and attributes as a hand-built
+-- map (Shared/Tags), and the rest of the game only ever looks things up by
+-- tag. workspace.Zones.<ZoneId> (Model, tagged Zone, attributes
+-- ZoneId/Center/ZoneSize) contains
 --   Ground                  floor, patches, trail, sea (Beach / Islands)
 --   Cliffs                  the valley walls (rock chunks or cloud banks)
 --   Walls                   invisible walls behind the cliffs
---   Keyboard                KeyCapper keys: Model{Hitbox (tagged), Cap}
---                           with World / Value / Group attributes, so the
---                           KeyCapper runtime animates them and PressTracker
---                           pays them exactly like hand-placed keys
---   Spawn                   teleport target (a SpawnLocation in the first zone)
---   Gate, Barrier           entrance arch and force field (opens locally
---                           when owned, see ZonesMenu)
+--   Keyboard                tagged Keyboard; KeyCapper keys: Model{Hitbox
+--                           (tagged), Cap} with World / Value / Group
+--                           attributes, so the KeyCapper runtime animates
+--                           them and PressTracker pays them exactly like
+--                           hand-placed keys
+--   Spawn                   tagged ZoneSpawn (a SpawnLocation in the first zone)
+--   Gate, Barrier           tagged ZoneGate / ZoneBarrier: entrance arch and
+--                           force field (opens locally when owned, see
+--                           ZonesMenu)
 --   Props                   trees, rocks, crystals... and the biome set pieces
 --
--- A zone that already exists under workspace.Zones is skipped, so any zone
--- can be replaced by a hand-built one. Players who fall out of the map are
--- put back at the nearest zone they own.
+-- A zone that already exists (a Zone-tagged instance with its id, or
+-- workspace.Zones.<ZoneId>) is skipped, so any zone can be replaced by a
+-- hand-built one; untagged hand-built zones under workspace.Zones get the
+-- Zone / ZoneSpawn / ZoneBarrier tags from their names. Players who fall
+-- out of the map are put back at the nearest zone they own.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -39,6 +46,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local MapThemes = require(Shared.MapThemes)
+local Tags = require(Shared.Tags)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -265,6 +273,8 @@ end
 local function buildKeyboard(zone: Model, center: Vector3, def: Zones.ZoneDef, theme: Theme)
 	local folder = Instance.new("Folder")
 	folder.Name = "Keyboard"
+	folder:SetAttribute(Tags.Attr.ZoneId, def.Id)
+	CollectionService:AddTag(folder, Tags.Keyboard)
 	folder.Parent = zone
 
 	local cols, rows = MapConfig.KeyCols, MapConfig.KeyRows
@@ -971,6 +981,8 @@ local function buildGate(zone: Model, def: Zones.ZoneDef, center: Vector3, theme
 	local pillarMaterial = if heavenly then Enum.Material.Foil else theme.RockMaterial
 	local gate = Instance.new("Folder")
 	gate.Name = "Gate"
+	gate:SetAttribute(Tags.Attr.ZoneId, def.Id)
+	CollectionService:AddTag(gate, Tags.ZoneGate)
 	gate.Parent = zone
 	for _, side in { -1, 1 } do
 		local x = center.X + side * (PASS_WIDTH / 2 + 3)
@@ -998,6 +1010,8 @@ local function buildGate(zone: Model, def: Zones.ZoneDef, center: Vector3, theme
 		CastShadow = false,
 	})
 	barrier.CanQuery = false
+	barrier:SetAttribute(Tags.Attr.ZoneId, def.Id)
+	CollectionService:AddTag(barrier, Tags.ZoneBarrier)
 end
 
 local function buildSpawn(zone: Model, center: Vector3, theme: Theme, first: boolean)
@@ -1018,8 +1032,10 @@ local function buildSpawn(zone: Model, center: Vector3, theme: Theme, first: boo
 		local decal = spawnLocation:FindFirstChildOfClass("Decal")
 		if decal then decal:Destroy() end
 		spawnLocation.Parent = zone
+		CollectionService:AddTag(spawnLocation, Tags.ZoneSpawn)
 	else
-		deco(zone, { Name = "Spawn", Size = Vector3.new(10, 1, 10), CFrame = cframe, Color = theme.Trim, Material = Enum.Material.Neon, Transparency = 0.6 })
+		local pad = deco(zone, { Name = "Spawn", Size = Vector3.new(10, 1, 10), CFrame = cframe, Color = theme.Trim, Material = Enum.Material.Neon, Transparency = 0.6 })
+		CollectionService:AddTag(pad, Tags.ZoneSpawn)
 	end
 	-- A stone ring around the pad.
 	for k = 1, 10 do
@@ -1038,8 +1054,10 @@ local function buildZone(zonesFolder: Instance, def: Zones.ZoneDef, index: numbe
 
 	local zone = Instance.new("Model")
 	zone.Name = def.Id
-	zone:SetAttribute("Center", center)
-	zone:SetAttribute("ZoneSize", Vector3.new(MapConfig.ZoneWidth, 90, MapConfig.ZoneDepth))
+	zone:SetAttribute(Tags.Attr.ZoneId, def.Id)
+	zone:SetAttribute(Tags.Attr.Center, center)
+	zone:SetAttribute(Tags.Attr.ZoneSize, Vector3.new(MapConfig.ZoneWidth, 90, MapConfig.ZoneDepth))
+	CollectionService:AddTag(zone, Tags.Zone)
 
 	zone.PrimaryPart = buildGround(zone, center, theme)
 	buildCliffs(zone, center, theme, hasEntrance, hasExit)
@@ -1108,15 +1126,12 @@ end
 
 local function nearestOwnedSpawn(player: Player, position: Vector3): BasePart?
 	local data = PlayerData.get(player)
-	local zonesFolder = workspace:FindFirstChild(Config.ZoneFolder)
-	if not zonesFolder then return nil end
 	local best: BasePart? = nil
 	local bestDistance = math.huge
 	for _, def in Zones.List do
 		local owned = def.Id == Zones.Default or (data ~= nil and data.UnlockedWorlds[def.Id] == true)
-		local zone = zonesFolder:FindFirstChild(def.Id)
-		local spawnPart = zone and zone:FindFirstChild("Spawn")
-		if owned and spawnPart and spawnPart:IsA("BasePart") then
+		local spawnPart = if owned then Tags.spawnOf(def.Id) else nil
+		if spawnPart then
 			local distance = math.abs(spawnPart.Position.Z - position.Z)
 			if distance < bestDistance then
 				bestDistance = distance
@@ -1143,9 +1158,25 @@ function MapBuilder.init()
 	mapFolder.Name = "StudsMap"
 	mapFolder.Parent = workspace
 
+	-- Hand-built zones named the old way: tag them so the game can find them.
+	for _, zone in (zonesFolder :: Instance):GetChildren() do
+		if Zones.ById[zone.Name] and not CollectionService:HasTag(zone, Tags.Zone) then
+			CollectionService:AddTag(zone, Tags.Zone)
+			local spawnPart = zone:FindFirstChild("Spawn")
+			if spawnPart and spawnPart:IsA("BasePart") then
+				CollectionService:AddTag(spawnPart, Tags.ZoneSpawn)
+			end
+			local barrier = zone:FindFirstChild("Barrier")
+			if barrier then
+				CollectionService:AddTag(barrier, Tags.ZoneBarrier)
+			end
+		end
+	end
+
 	local started = os.clock()
 	for index, def in Zones.List do
-		if not (zonesFolder :: Instance):FindFirstChild(def.Id) then
+		local exists = (zonesFolder :: Instance):FindFirstChild(def.Id) ~= nil or #Tags.forZone(Tags.Zone, def.Id) > 0
+		if not exists then
 			local zone = buildZone(zonesFolder :: Instance, def, index)
 			table.insert(built, { def = def, center = zoneCenter(index), model = zone })
 		end
