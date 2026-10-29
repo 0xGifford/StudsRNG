@@ -84,6 +84,17 @@ function RewardService.grant(player: Player, reward: Reward): { [string]: any }
 		RewardService.addLuck(player, reward.Amount)
 	elseif reward.Kind == "MegaRoll" then
 		given.Results = Rolls.rollFor(player, 1, reward.Amount)
+	elseif reward.Kind == "Bundle" then
+		local items: { { [string]: any } } = {}
+		local bundle: { Reward } = reward.Items or {}
+		for _, item in bundle do
+			local itemGiven = RewardService.grant(player, item)
+			table.insert(items, itemGiven)
+			if itemGiven.Results then
+				given.Results = itemGiven.Results
+			end
+		end
+		given.Items = items
 	else
 		warn(`[RewardService] unknown reward kind {reward.Kind}`)
 	end
@@ -101,10 +112,11 @@ local function claimDaily(player: Player): Response
 	local canClaim, day = RewardDefs.dailyState(data.Daily, today)
 	if not canClaim then return { Ok = false, Error = "AlreadyClaimed" } end
 
-	data.Daily = { Streak = day, LastDay = today }
+	local weeks = RewardDefs.weeksAfterClaim(data.Daily, today, day)
+	data.Daily = { Streak = day, LastDay = today, Weeks = weeks }
 	StateSync.push(player, "Daily", data.Daily)
-	local given = RewardService.grant(player, RewardDefs.Daily[day])
-	return { Ok = true, Day = day, Reward = given }
+	local given = RewardService.grant(player, RewardDefs.dailyReward(day, weeks))
+	return { Ok = true, Day = day, Weeks = weeks, Reward = given }
 end
 
 --------------------------------------------------------------------------

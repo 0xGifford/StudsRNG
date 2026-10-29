@@ -61,7 +61,7 @@ export type PlayerData = {
 	LuckyRolls: number, -- +1 permanent luck each
 	Boosts: { [string]: number }, -- boost id → seconds remaining
 	Spins: number, -- jackpot wheel spins
-	Daily: { Streak: number, LastDay: number }, -- LastDay = UTC day number of the last claim
+	Daily: { Streak: number, LastDay: number, Weeks: number? }, -- LastDay = UTC day number of the last claim; Weeks = full weeks kept
 	SeenUpdate: string, -- newest update log version the player has opened
 	PurchaseIds: { string }, -- recent receipt ids (server only, never sent to the client)
 	SeenIntro: boolean, -- watched the first-join cinematic
@@ -127,10 +127,11 @@ export type Stats = {
 
 -- A daily / playtime / wheel prize (see Shared/Rewards).
 export type Reward = {
-	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll"
+	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll" | "Bundle"
 	Amount: number, -- Clacks (before scaling), rolls, spins, luck, or the MegaRoll luck multiplier
 	Boost: string?, -- Kind == "Boost": boost id
 	Minutes: number?, -- Kind == "Boost": duration
+	Items: { Reward }?, -- Kind == "Bundle": every one of these
 }
 
 export type RollResult = {

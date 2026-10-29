@@ -63,6 +63,7 @@ return {
 		Spins = "rbxassetid://72974128962815",
 		Luck = "🍀",
 		MegaRoll = "🎰",
+		Bundle = "🎁",
 		Boost = "rbxassetid://131975246594329",
 		Event = "rbxassetid://119611914627070",
 		ServerLuck = "rbxassetid://119611914627070",
