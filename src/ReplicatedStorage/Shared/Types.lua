@@ -78,6 +78,7 @@ export type PlayerData = {
 	TitansDefeated: number,
 	Achievements: { [string]: boolean },
 	Title: string, -- achievement id whose title is worn ("" = none)
+	Pass: { Season: string, Points: number, Free: { [string]: boolean }, Premium: { [string]: boolean } }, -- Stud Pass (claimed tiers by tostring(tier))
 }
 
 export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }
@@ -127,11 +128,12 @@ export type Stats = {
 
 -- A daily / playtime / wheel prize (see Shared/Rewards).
 export type Reward = {
-	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll" | "Bundle"
+	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll" | "Bundle" | "Stud"
 	Amount: number, -- Clacks (before scaling), rolls, spins, luck, or the MegaRoll luck multiplier
 	Boost: string?, -- Kind == "Boost": boost id
 	Minutes: number?, -- Kind == "Boost": duration
 	Items: { Reward }?, -- Kind == "Bundle": every one of these
+	Stud: string?, -- Kind == "Stud": "StudId:Variant"
 }
 
 export type RollResult = {

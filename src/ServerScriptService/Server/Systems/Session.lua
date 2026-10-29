@@ -58,6 +58,7 @@ local CLIENT_FIELDS = {
 	"TitansDefeated",
 	"Achievements",
 	"Title",
+	"Pass",
 }
 
 function Session.init()

@@ -55,6 +55,7 @@ local FUNCTIONS = {
 	"ClaimIndexTab",
 	"StopFight",
 	"SetTitle",
+	"ClaimPass",
 }
 
 -- Server → client (RemoteEvent).

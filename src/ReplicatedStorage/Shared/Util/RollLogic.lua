@@ -101,7 +101,7 @@ end
 -- Nil when nothing drops.
 function RollLogic.rollDrop(rng: Random, luck: number): StudDef?
 	for _, def in studsRarestFirst do
-		if def.Drop and rng:NextNumber() * def.OneIn < luck then
+		if def.Drop and def.World == "Boss" and rng:NextNumber() * def.OneIn < luck then
 			return def
 		end
 	end

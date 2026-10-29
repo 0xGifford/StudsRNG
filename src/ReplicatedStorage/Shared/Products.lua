@@ -52,6 +52,8 @@ local passes: { [string]: PassDef } = {
 		Description = "Roll twice as fast." },
 	ExtraEquip = { Id = 0, Name = "+1 Equip", Order = 4, Color = "Green", Icon = "➕",
 		Description = "Equip an extra stud." },
+	StudPass = { Id = 0, Name = "Stud Pass Premium", Order = 5, Color = "Orange", Icon = "🎟️",
+		Description = "Unlocks the premium track of this season's Stud Pass: every premium reward, back to tier 1, plus the Champion stud." },
 }
 
 local products: { [string]: ProductDef } = {

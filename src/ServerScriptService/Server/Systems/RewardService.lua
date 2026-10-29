@@ -23,6 +23,8 @@ local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 local RewardDefs = require(Shared.Rewards)
+local Signal = require(Shared.Util.Signal)
+local RollLogic = require(Shared.Util.RollLogic)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -31,11 +33,15 @@ local Modifiers = require(Systems.Modifiers)
 local Economy = require(Systems.Economy)
 local Boosts = require(Systems.Boosts)
 local Rolls = require(Systems.Rolls)
+local Inventory = require(Systems.Inventory)
 
 type Response = Types.Response
 type Reward = Types.Reward
 
 local RewardService = {}
+
+-- (player) after each daily reward claim (Systems/StudPass)
+RewardService.DailyClaimed = Signal.new() :: Signal.Signal<Player>
 
 type Session = { Start: number, Claimed: { [number]: boolean } }
 local sessions: { [Player]: Session } = {}
@@ -84,6 +90,19 @@ function RewardService.grant(player: Player, reward: Reward): { [string]: any }
 		RewardService.addLuck(player, reward.Amount)
 	elseif reward.Kind == "MegaRoll" then
 		given.Results = Rolls.rollFor(player, 1, reward.Amount)
+	elseif reward.Kind == "Stud" then
+		local def, variant = RollLogic.decodeKey(reward.Stud)
+		assert(def and variant, `bad stud reward {reward.Stud}`)
+		local grant = Inventory.grant(player, def.Id, variant.Name)
+		given.Results = if grant then { {
+			Id = def.Id,
+			Variant = variant.Name,
+			Key = grant.Key,
+			OneIn = def.OneIn * variant.OneIn,
+			New = grant.New,
+			Kept = grant.Kept,
+			Reason = grant.Reason,
+		} } else nil
 	elseif reward.Kind == "Bundle" then
 		local items: { { [string]: any } } = {}
 		local bundle: { Reward } = reward.Items or {}
@@ -116,6 +135,7 @@ local function claimDaily(player: Player): Response
 	data.Daily = { Streak = day, LastDay = today, Weeks = weeks }
 	StateSync.push(player, "Daily", data.Daily)
 	local given = RewardService.grant(player, RewardDefs.dailyReward(day, weeks))
+	RewardService.DailyClaimed:Fire(player)
 	return { Ok = true, Day = day, Weeks = weeks, Reward = given }
 end
 

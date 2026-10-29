@@ -107,5 +107,7 @@ return {
 		KnockedOut = "Your studs are still recovering",
 		TooFar = "Get closer to fight",
 		TitleLocked = "Unlock that achievement first",
+		NothingToClaim = "Nothing to claim yet",
+		PassLocked = "Unlock the premium track first",
 	} :: { [string]: string },
 }

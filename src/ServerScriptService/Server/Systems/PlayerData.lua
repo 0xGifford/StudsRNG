@@ -66,6 +66,7 @@ local TEMPLATE: PlayerData = {
 	TitansDefeated = 0, -- Zone Boss Titans (helped defeat)
 	Achievements = {}, -- [id] = true (Shared/Achievements)
 	Title = "", -- achievement id whose title is worn ("" = none)
+	Pass = { Season = "", Points = 0, Free = {}, Premium = {} }, -- Stud Pass (Systems/StudPass)
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.
