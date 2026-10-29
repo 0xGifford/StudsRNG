@@ -11,8 +11,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Zones are bought with Clacks in order (Shared/Zones). Owning a zone adds
 -- its studs to the roll pool and lets its keys pay out (Economy.ownsZone).
--- Barriers open on the client; the server only decides ownership and
--- teleports to the zone's ZoneSpawn-tagged part (Shared/Tags).
+-- Barriers open on the client; the server only decides ownership and, from
+-- the Teleporter menu, teleports to the zone's ZoneSpawn-tagged part
+-- (Shared/Tags). Buying a zone never teleports.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -77,9 +78,8 @@ function ZoneShop.buy(player: Player, zoneId: string): Response
 	data.UnlockedWorlds[zoneId] = true
 	StateSync.push(player, "UnlockedWorlds", data.UnlockedWorlds)
 	Modifiers.invalidate(player)
-
-	lastTeleport[player] = nil
-	task.defer(ZoneShop.teleport, player, zoneId)
+	-- No teleport: the barrier opens and the player walks in. Spawns are
+	-- only for the Teleporter menu.
 	return { Ok = true }
 end
 
