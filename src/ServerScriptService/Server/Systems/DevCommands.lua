@@ -15,6 +15,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Commands: "Clacks" n | "FreeRolls" n | "Stud" "Id:Variant" | "Roll" n | "Reset"
 --           "Rebirth" | "Zones" | "Upgrades" | "Boost" id | "Spins" n | "Luck" n
 --           "ServerLuck" | "Event" id | "Intro" | "Tutorial" | "Quests"
+--           "ZoneBoss" (spawn the Titans now)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -36,6 +37,7 @@ local UpgradeShop = require(Systems.UpgradeShop)
 local ZoneShop = require(Systems.ZoneShop)
 local Rebirth = require(Systems.Rebirth)
 local RewardService = require(Systems.RewardService)
+local Combat = require(Systems.Combat)
 
 local DevCommands = {}
 
@@ -92,6 +94,8 @@ local function run(player: Player, command: unknown, arg: unknown): any
 		RewardService.addLuck(player, amount)
 	elseif command == "ServerLuck" then
 		ServerEffects.addServerLuck(player)
+	elseif command == "ZoneBoss" then
+		return Combat.spawnZoneBosses()
 	elseif command == "Intro" or command == "Tutorial" or command == "Quests" then
 		-- Replay the first-join flow / reroll quests (takes effect on rejoin).
 		local data = PlayerData.get(player)

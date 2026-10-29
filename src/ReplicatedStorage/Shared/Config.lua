@@ -300,6 +300,27 @@ Config.Levels = {
 	BossXp = 5, -- Mini Boss multiplier
 }
 
+-- Zone Bosses (Systems/Combat): every Interval seconds (on the clock, the
+-- same for every server) a Titan spawns in every Every-th zone (10, 20, ...)
+-- for Lifetime seconds. Everyone who damages it is paid by damage rank.
+-- Stats multiply that zone's normal enemy.
+Config.ZoneBoss = {
+	Every = 10,
+	Interval = 20 * 60,
+	Warning = 60, -- seconds of warning before they spawn
+	Lifetime = 5 * 60, -- then it escapes
+	Health = 25,
+	Damage = 3,
+	Reward = 30,
+	Size = 3.2,
+	-- By damage rank: Clacks multiplier and extras.
+	Ranks = {
+		{ Top = 1, Clacks = 3, FreeRolls = 10, Spins = 2 },
+		{ Top = 3, Clacks = 2, FreeRolls = 5, Spins = 1 },
+		{ Top = math.huge, Clacks = 1, FreeRolls = 3, Spins = 0 },
+	},
+}
+
 -- Boss drops (Studs with Drop = true). Each kill tries the drop studs
 -- rarest first, each hitting with chance Luck / OneIn; Luck grows with the
 -- enemy's level (+PerEnemyLevel per level).

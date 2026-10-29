@@ -217,7 +217,7 @@ local function defeated(model: Model, entry: Tracked)
 	if entry.boss then
 		Juice.flash(BOSS_GOLD, 0.35, 0.5)
 		Juice.fov(8, 0.6)
-		Juice.banner("MINI BOSS DEFEATED!", model.Name, BOSS_GOLD, 1.4)
+		Juice.banner(if model:GetAttribute("ZoneBoss") == true then "TITAN DEFEATED!" else "MINI BOSS DEFEATED!", model.Name, BOSS_GOLD, 1.4)
 		local camera = workspace.CurrentCamera
 		if camera then
 			local point = camera:WorldToViewportPoint(cframe.Position)
@@ -287,7 +287,7 @@ local function track(instance: Instance)
 	local levelText = `Lv.{if typeof(level) == "number" then level else 1}`
 	local fill: Frame
 	if boss then
-		local tag = label(gui, "👑 MINI BOSS", BOSS_GOLD, UDim2.fromScale(1, 0.3), UDim2.fromScale(0.5, 0.15))
+		local tag = label(gui, if model:GetAttribute("ZoneBoss") == true then "👹 ZONE BOSS" else "👑 MINI BOSS", BOSS_GOLD, UDim2.fromScale(1, 0.3), UDim2.fromScale(0.5, 0.15))
 		local gradient = Instance.new("UIGradient")
 		gradient.Color = ColorSequence.new(Color3.fromRGB(255, 240, 150), BOSS_GOLD)
 		gradient.Rotation = 90
@@ -325,7 +325,9 @@ local function track(instance: Instance)
 	-- A Mini Boss spawning near you gets an entrance.
 	local health, max = model:GetAttribute("Health"), model:GetAttribute("MaxHealth")
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if boss and health == max and root and root:IsA("BasePart") and (root.Position - body.Position).Magnitude < BOSS_ALERT_RANGE then
+	-- (Zone Boss Titans get theirs from Controllers/ZoneBossHud.)
+	local zoneBoss = model:GetAttribute("ZoneBoss") == true
+	if boss and not zoneBoss and health == max and root and root:IsA("BasePart") and (root.Position - body.Position).Magnitude < BOSS_ALERT_RANGE then
 		Juice.banner("A MINI BOSS APPEARS!", model.Name, AGGRO_RED, 1.2)
 		Juice.shake(0.5, 0.35)
 		CombatFx.shockwave(body.Position, BOSS_GOLD, body.Size.X)

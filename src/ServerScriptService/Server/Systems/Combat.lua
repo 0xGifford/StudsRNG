@@ -35,7 +35,14 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- the UserId it's chasing), each player's FightTarget and KillStreak
 -- attributes (so everyone's studs fly at the right enemy) and the "Team"
 -- state field { Hp, MaxHp, Strength, Fighting }. Combat.Defeated fires
--- (player, boss) for every fighter of a defeated enemy (QuestService).
+-- (player, boss, zoneBoss) for everyone paid for a defeat (QuestService).
+--
+-- Zone Bosses (Config.ZoneBoss): on a fixed clock a Titan spawns in every
+-- 10th zone. It's an enemy like any other (ZoneBoss attribute) but tracks
+-- damage per player; on defeat everyone who hit it is paid by rank, and it
+-- escapes when its Lifetime runs out. The "ZoneBoss" event tells clients:
+-- Warning, Spawn, Board (live damage ranks), Result (yours), Defeated,
+-- Escaped.
 
 local CollectionService = game:GetService("CollectionService")
 local PathfindingService = game:GetService("PathfindingService")
@@ -57,11 +64,12 @@ local PlayerData = require(Systems.PlayerData)
 local StateSync = require(Systems.StateSync)
 local Economy = require(Systems.Economy)
 local Drops = require(Systems.Drops)
+local RewardService = require(Systems.RewardService)
 
 local Combat = {}
 
--- (player, boss) once per fighter of each defeated enemy
-Combat.Defeated = Signal.new() :: Signal.Signal<Player, boolean>
+-- (player, boss, zoneBoss) once per player paid for each defeated enemy
+Combat.Defeated = Signal.new() :: Signal.Signal<Player, boolean, boolean>
 
 local Settings = Config.Combat
 
@@ -81,6 +89,10 @@ type Enemy = {
 	health: number,
 	alive: boolean,
 	fighters: { [Player]: boolean },
+	-- Zone Bosses
+	zoneBoss: boolean,
+	damageBy: { [Player]: number },
+	expiresAt: number,
 	-- Movement
 	chasing: Player?,
 	goal: Vector3?, -- where the current path leads
@@ -245,6 +257,7 @@ local function buildModel(enemy: Enemy): (Model, BasePart)
 	model:SetAttribute("ZoneId", enemy.zoneId)
 	model:SetAttribute("Level", enemy.def.Level)
 	model:SetAttribute("Boss", enemy.boss)
+	model:SetAttribute("ZoneBoss", if enemy.zoneBoss then true else nil)
 	model:SetAttribute("MaxHealth", enemy.maxHealth)
 	model:SetAttribute("Health", enemy.maxHealth)
 	CollectionService:AddTag(model, Tags.Enemy)
@@ -255,12 +268,24 @@ end
 -- (Re)spawns at home, rolling whether this one is a Mini Boss.
 local function spawnEnemy(enemy: Enemy)
 	local def = enemy.def
-	enemy.boss = rng:NextNumber() < Settings.BossChance
-	enemy.maxHealth = math.floor(def.Health * (if enemy.boss then Settings.BossHealth else 1))
-	enemy.damage = def.Damage * (if enemy.boss then Settings.BossDamage else 1)
-	enemy.reward = math.floor(def.Reward * (if enemy.boss then Settings.BossReward else 1))
-	enemy.size = def.Size * (if enemy.boss then Settings.BossSize else 1)
-	enemy.name = if enemy.boss then `Mini Boss {def.Name}` else def.Name
+	if enemy.zoneBoss then
+		local zoneBoss = Config.ZoneBoss
+		local zone = Zones.ById[enemy.zoneId]
+		enemy.boss = true
+		enemy.maxHealth = math.floor(def.Health * zoneBoss.Health)
+		enemy.damage = def.Damage * zoneBoss.Damage
+		enemy.reward = math.floor(def.Reward * zoneBoss.Reward)
+		enemy.size = def.Size * zoneBoss.Size
+		enemy.name = `{if zone then zone.Name else "Zone"} Titan`
+	else
+		enemy.boss = rng:NextNumber() < Settings.BossChance
+		enemy.maxHealth = math.floor(def.Health * (if enemy.boss then Settings.BossHealth else 1))
+		enemy.damage = def.Damage * (if enemy.boss then Settings.BossDamage else 1)
+		enemy.reward = math.floor(def.Reward * (if enemy.boss then Settings.BossReward else 1))
+		enemy.size = def.Size * (if enemy.boss then Settings.BossSize else 1)
+		enemy.name = if enemy.boss then `Mini Boss {def.Name}` else def.Name
+	end
+	table.clear(enemy.damageBy)
 	enemy.health = enemy.maxHealth
 	enemy.alive = true
 	enemy.chasing = nil
@@ -273,7 +298,7 @@ local function spawnEnemy(enemy: Enemy)
 	enemy.model = model
 	enemy.body = body
 
-	if enemy.boss then
+	if enemy.boss and not enemy.zoneBoss then
 		for _, player in Players:GetPlayers() do
 			local root = rootOf(player)
 			if root and (root.Position - enemy.home).Magnitude < Settings.WakeRange then
@@ -283,7 +308,7 @@ local function spawnEnemy(enemy: Enemy)
 	end
 end
 
-local function addEnemy(zoneId: string, home: Vector3)
+local function addEnemy(zoneId: string, home: Vector3, zoneBoss: boolean?)
 	local def = Enemies.forZone(zoneId)
 	if not def then return end
 	nextId += 1
@@ -303,6 +328,9 @@ local function addEnemy(zoneId: string, home: Vector3)
 		health = def.Health,
 		alive = false,
 		fighters = {},
+		zoneBoss = zoneBoss == true,
+		damageBy = {},
+		expiresAt = if zoneBoss then os.clock() + Config.ZoneBoss.Lifetime else math.huge,
 		chasing = nil,
 		goal = nil,
 		waypoints = {},
@@ -319,6 +347,14 @@ end
 -- Zones: where enemies live, and which zones are awake
 --------------------------------------------------------------------------
 
+-- The zone's Center attribute, else the middle of its bounding box.
+local function zoneCenter(zone: Instance): Vector3?
+	local center = zone:GetAttribute(Tags.Attr.Center)
+	if typeof(center) == "Vector3" then return center end
+	local cframe = Tags.zoneBox(zone)
+	return if cframe then cframe.Position else nil
+end
+
 -- The zone's EnemySpawn parts, or default spots either side of the keyboard.
 local function spotsFor(zone: Instance, zoneId: string): { Vector3 }
 	local spots: { Vector3 } = {}
@@ -328,12 +364,8 @@ local function spotsFor(zone: Instance, zoneId: string): { Vector3 }
 		end
 	end
 	if #spots > 0 then return spots end
-	local center = zone:GetAttribute(Tags.Attr.Center)
-	if typeof(center) ~= "Vector3" then
-		local cframe = Tags.zoneBox(zone)
-		if not cframe then return spots end
-		center = cframe.Position
-	end
+	local center = zoneCenter(zone)
+	if not center then return spots end
 	local offsets = { Vector3.new(-48, 0, -38), Vector3.new(48, 0, -38), Vector3.new(-48, 0, 44), Vector3.new(48, 0, 44) }
 	for i = 1, math.min(Settings.PerZone, #offsets) do
 		table.insert(spots, (center :: Vector3) + offsets[i])
@@ -541,8 +573,8 @@ local function setFight(player: Player, enemy: Enemy?)
 	if current == enemy then return end
 	if current then
 		current.fighters[player] = nil
-		-- Left alone, it shakes the fight off.
-		if next(current.fighters) == nil and current.alive then
+		-- Left alone, it shakes the fight off (Titans don't: it's a raid).
+		if next(current.fighters) == nil and current.alive and not current.zoneBoss then
 			current.health = current.maxHealth
 			if current.model then
 				current.model:SetAttribute("Health", current.health)
@@ -585,29 +617,98 @@ local function canFight(player: Player, team: Team?): boolean
 	return team ~= nil and team.strength > 0 and now >= team.knockedUntil and now >= team.retreatUntil
 end
 
+-- Zone Boss damage ranks, best first.
+local function rankings(enemy: Enemy): { { player: Player, damage: number } }
+	local list: { { player: Player, damage: number } } = {}
+	for player, damage in enemy.damageBy do
+		if player.Parent == Players and damage > 0 then
+			table.insert(list, { player = player, damage = damage })
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.damage > b.damage
+	end)
+	return list
+end
+
+local function topBoard(list: { { player: Player, damage: number } }): { { Name: string, Damage: number } }
+	local board = {}
+	for i = 1, math.min(5, #list) do
+		table.insert(board, { Name = list[i].player.DisplayName, Damage = math.floor(list[i].damage) })
+	end
+	return board
+end
+
+local function rankRewards(rank: number): { Top: number, Clacks: number, FreeRolls: number, Spins: number }
+	for _, tier in Config.ZoneBoss.Ranks do
+		if rank <= tier.Top then
+			return tier
+		end
+	end
+	return Config.ZoneBoss.Ranks[#Config.ZoneBoss.Ranks]
+end
+
+-- Gone without a defeat (a Zone Boss that escaped): no rewards.
+local function removeEnemy(enemy: Enemy)
+	enemy.alive = false
+	local fighters = table.clone(enemy.fighters)
+	table.clear(enemy.fighters)
+	for player in fighters do
+		setFight(player, nil)
+	end
+	if enemy.model then
+		enemy.model:Destroy()
+	end
+	enemy.model = nil
+	enemy.body = nil
+	enemies[enemy.id] = nil
+end
+
 local function defeat(enemy: Enemy)
 	enemy.alive = false
 	local fighters = table.clone(enemy.fighters)
-	for player in fighters do
+
+	-- Who gets paid: the fighters, or for a Zone Boss everyone who hit it.
+	local ranks: { [Player]: number } = {}
+	local paid: { [Player]: boolean } = fighters
+	local ranking: { { player: Player, damage: number } } = {}
+	if enemy.zoneBoss then
+		ranking = rankings(enemy)
+		paid = {}
+		for rank, row in ranking do
+			ranks[row.player] = rank
+			paid[row.player] = true
+		end
+	end
+
+	for player in paid do
 		local data = PlayerData.get(player)
 		if data then
 			local rebirths = if typeof(data.Rebirths) == "number" then data.Rebirths else 0
 			-- Kill streak: chain defeats inside the window.
 			local now = os.clock()
-			local streak = streaks[player]
-			if streak and now - streak.last <= Settings.StreakWindow then
-				streak.count = math.min(streak.count + 1, Settings.StreakMax)
-				streak.last = now
-			else
-				streak = { count = 1, last = now }
-				streaks[player] = streak
-			end
+			local existing = streaks[player]
+			local streak: Streak = if existing and now - existing.last <= Settings.StreakWindow then existing else { count = 0, last = now }
+			streak.count = math.min(streak.count + 1, Settings.StreakMax)
+			streak.last = now
+			streaks[player] = streak
 			player:SetAttribute("KillStreak", streak.count)
 			local streakBonus = 1 + (streak.count - 1) * Settings.StreakBonus
-			local amount = math.floor(enemy.reward * (1 + rebirths * Config.Rebirth.ClacksPerRebirth) * streakBonus)
+			local rank = ranks[player]
+			local tier = if rank then rankRewards(rank) else nil
+			local amount = math.floor(enemy.reward * (1 + rebirths * Config.Rebirth.ClacksPerRebirth) * streakBonus * (if tier then tier.Clacks else 1))
 			Economy.addClacks(player, amount)
 			local extra = ""
-			if rng:NextNumber() < Settings.FreeRollChance * (if enemy.boss then 5 else 1) then
+			if tier then
+				if tier.FreeRolls > 0 then
+					Economy.addFreeRolls(player, tier.FreeRolls, true)
+					extra ..= ` +{tier.FreeRolls} Rolls`
+				end
+				if tier.Spins > 0 then
+					RewardService.addSpins(player, tier.Spins)
+					extra ..= ` +{tier.Spins} Spin{if tier.Spins > 1 then "s" else ""}`
+				end
+			elseif rng:NextNumber() < Settings.FreeRollChance * (if enemy.boss then 5 else 1) then
 				Economy.addFreeRolls(player, if enemy.boss then 3 else 1, true)
 				extra = if enemy.boss then " +3 Rolls" else " +1 Roll"
 			end
@@ -615,7 +716,7 @@ local function defeat(enemy: Enemy)
 			StateSync.push(player, "EnemiesDefeated", data.EnemiesDefeated)
 			-- Every equipped stud earns XP (once per stud, however many copies).
 			local levels = Config.Levels
-			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level) * (if enemy.boss then levels.BossXp else 1))
+			local xp = math.floor((levels.XpPerDefeat + levels.XpPerEnemyLevel * enemy.def.Level) * (if enemy.boss then levels.BossXp else 1) * (if enemy.zoneBoss then 4 else 1))
 			local seen: { [string]: boolean } = {}
 			for _, key in data.Equipped do
 				local def = RollLogic.decodeKey(key)
@@ -626,13 +727,22 @@ local function defeat(enemy: Enemy)
 			end
 			StateSync.push(player, "StudXP", data.StudXP)
 			if enemy.boss then
-				Drops.roll(player, Config.Drops.MiniBossLuck, enemy.def.Level)
+				Drops.roll(player, if enemy.zoneBoss then Config.Drops.ZoneBossLuck else Config.Drops.MiniBossLuck, enemy.def.Level)
 			end
-			local streakText = if streak.count > 1 then ` (Streak x{streak.count})` else ""
-			notify(player, `Defeated {enemy.name}! +{shortNumber(amount)} Clacks{extra}{streakText}`, Color3.fromRGB(255, 215, 90))
-			Combat.Defeated:Fire(player, enemy.boss)
+			if rank then
+				notify(player, `{enemy.name} defeated! You placed #{rank} · +{shortNumber(amount)} Clacks{extra}`, Color3.fromRGB(255, 205, 60))
+				Net.fire(player, "ZoneBoss", { Phase = "Result", Name = enemy.name, Rank = rank, Amount = amount, Of = #ranking })
+			else
+				local streakText = if streak.count > 1 then ` (Streak x{streak.count})` else ""
+				notify(player, `Defeated {enemy.name}! +{shortNumber(amount)} Clacks{extra}{streakText}`, Color3.fromRGB(255, 215, 90))
+			end
+			Combat.Defeated:Fire(player, enemy.boss, enemy.zoneBoss)
 		end
 	end
+	if enemy.zoneBoss then
+		Net.fireAll("ZoneBoss", { Phase = "Defeated", Name = enemy.name, ZoneId = enemy.zoneId, Board = topBoard(ranking) })
+	end
+
 	if enemy.model then
 		enemy.model:SetAttribute("Health", 0)
 		enemy.model:Destroy()
@@ -646,11 +756,103 @@ local function defeat(enemy: Enemy)
 		local nextEnemy = if canFight(player, teams[player]) then nearestEnemy(player, Settings.RetargetRange, enemy) else nil
 		setFight(player, nextEnemy)
 	end
+	if enemy.zoneBoss then
+		enemies[enemy.id] = nil -- Titans don't respawn: the next comes on the clock
+		return
+	end
 	task.delay(Settings.Respawn, function()
 		if enemies[enemy.id] == enemy and not enemy.alive then
 			spawnEnemy(enemy)
 		end
 	end)
+end
+
+--------------------------------------------------------------------------
+-- Zone Bosses
+--------------------------------------------------------------------------
+
+-- Spawns a Titan in every Every-th zone that's on the map and has none.
+function Combat.spawnZoneBosses(): { string }
+	scanZones()
+	local spawned: { string } = {}
+	for zone, state in zoneStates do
+		local def = Zones.ById[state.id]
+		if not (def and zone.Parent and def.Order % Config.ZoneBoss.Every == 0) then continue end
+		local exists = false
+		for _, enemy in enemies do
+			if enemy.zoneBoss and enemy.zoneId == state.id and enemy.alive then
+				exists = true
+			end
+		end
+		local center = zoneCenter(zone)
+		if not exists and center then
+			addEnemy(state.id, center, true)
+			table.insert(spawned, def.Name)
+		end
+	end
+	if #spawned > 0 then
+		table.sort(spawned)
+		Net.fireAll("ZoneBoss", { Phase = "Spawn", Zones = spawned, Lifetime = Config.ZoneBoss.Lifetime })
+	end
+	return spawned
+end
+
+-- Live damage ranks to everyone near each Titan; escapes when time's up.
+local function updateZoneBosses()
+	for _, enemy in enemies do
+		if not (enemy.zoneBoss and enemy.alive) then continue end
+		if os.clock() > enemy.expiresAt then
+			Net.fireAll("ZoneBoss", { Phase = "Escaped", Name = enemy.name, ZoneId = enemy.zoneId })
+			removeEnemy(enemy)
+			continue
+		end
+		local body = enemy.body
+		if not body then continue end
+		local ranking = rankings(enemy)
+		local board = topBoard(ranking)
+		for _, player in Players:GetPlayers() do
+			local root = rootOf(player)
+			if root and (root.Position - body.Position).Magnitude < Settings.WakeRange then
+				local mine, rank = 0, nil
+				for i, row in ranking do
+					if row.player == player then
+						mine, rank = math.floor(row.damage), i
+					end
+				end
+				Net.fire(player, "ZoneBoss", {
+					Phase = "Board",
+					Id = enemy.id,
+					Name = enemy.name,
+					Board = board,
+					Mine = mine,
+					Rank = rank,
+					Left = math.max(0, math.floor(enemy.expiresAt - os.clock())),
+				})
+			end
+		end
+	end
+end
+
+-- The clock: Warning, then Spawn, at the same times on every server.
+local function zoneBossClock()
+	local interval = Config.ZoneBoss.Interval
+	local lastSlot = math.floor(os.time() / interval)
+	local warned = -1
+	while true do
+		task.wait(1)
+		local now = os.time()
+		local slot = math.floor(now / interval)
+		local nextAt = (slot + 1) * interval
+		if nextAt - now <= Config.ZoneBoss.Warning and warned ~= slot then
+			warned = slot
+			Net.fireAll("ZoneBoss", { Phase = "Warning", In = nextAt - now })
+		end
+		if slot ~= lastSlot then
+			lastSlot = slot
+			Combat.spawnZoneBosses()
+		end
+		updateZoneBosses()
+	end
 end
 
 local function knockout(player: Player, team: Team)
@@ -694,6 +896,9 @@ local function step(dt: number)
 					end
 				end
 				enemy.health -= dps * dt
+				if enemy.zoneBoss then
+					enemy.damageBy[player] = (enemy.damageBy[player] or 0) + dps * dt
+				end
 				team.hp -= enemy.damage * dt
 				if team.hp <= 0 then
 					knockout(player, team)
@@ -758,6 +963,7 @@ function Combat.start()
 		end
 	end)
 	RunService.Heartbeat:Connect(move)
+	task.spawn(zoneBossClock)
 	while true do
 		local dt = task.wait(Settings.Tick)
 		step(dt)
