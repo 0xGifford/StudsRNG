@@ -289,7 +289,9 @@ Config.Combat = {
 }
 
 Config.Announce = {
-	MinOneIn = 10000, -- server-wide announcement at or rarer than this (stud × variant odds)
+	Channel = "Rolls", -- chat channel (tab) every announced roll goes to
+	ChannelMinOneIn = 100, -- announced in the Rolls channel at or rarer than this (stud × variant odds)
+	MinOneIn = 10000, -- also announced in the main chat at or rarer than this
 }
 
 Config.Sync = {

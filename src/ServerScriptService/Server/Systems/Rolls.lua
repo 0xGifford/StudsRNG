@@ -78,7 +78,7 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 				Reason = grant.Reason,
 			})
 
-			if oneIn >= Config.Announce.MinOneIn then
+			if oneIn >= Config.Announce.ChannelMinOneIn then
 				Net.fireAll("Announce", {
 					Player = player.DisplayName,
 					UserId = player.UserId,

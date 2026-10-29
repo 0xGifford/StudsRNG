@@ -938,18 +938,27 @@ local function announce(payload: any)
 	local def = Studs.ById[payload.Id]
 	local variant = Variants.ById[payload.Variant]
 	if not def or not variant then return end
-	local color = Format.hex(Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1))
+	-- Secret's colour is near-black: unreadable in chat.
+	local rarityColor = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 	local message = string.format(
-		'<font color="%s"><b>%s rolled %s (%s)!</b></font>',
-		color,
+		'<font color="%s"><b>%s just rolled %s (%s)!</b></font>',
+		Format.hex(rarityColor),
 		tostring(payload.Player),
 		Format.studName(def, variant),
 		Format.oneIn(payload.OneIn)
 	)
+	-- Every announced roll goes to the Rolls tab (Systems/ChatChannels);
+	-- the rarest ones to the main chat too.
 	local channels = TextChatService:FindFirstChild("TextChannels")
-	local system = channels and channels:FindFirstChild("RBXSystem")
-	if system and system:IsA("TextChannel") then
-		system:DisplaySystemMessage(message)
+	local rolls = channels and channels:FindFirstChild(Config.Announce.Channel)
+	if rolls and rolls:IsA("TextChannel") then
+		rolls:DisplaySystemMessage(message)
+	end
+	if (payload.OneIn or 0) >= Config.Announce.MinOneIn then
+		local system = channels and channels:FindFirstChild("RBXSystem")
+		if system and system:IsA("TextChannel") then
+			system:DisplaySystemMessage(message)
+		end
 	end
 end
 
