@@ -114,26 +114,33 @@ local function text(parent: Instance, value: string, color: Color3, size: UDim2,
 	return label
 end
 
-local function pill(parent: Instance, value: string, position: UDim2): TextButton
+-- A round icon button with its label underneath (Slime RNG style).
+local function pill(parent: Instance, value: string, position: UDim2, icon: string): TextButton
 	local button = Instance.new("TextButton")
 	button.AutoButtonColor = false
-	button.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-	button.BackgroundTransparency = 0.15
+	button.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+	button.BackgroundTransparency = 0.1
 	button.AnchorPoint = Vector2.new(0.5, 0.5)
 	button.Position = position
-	button.Size = UDim2.fromScale(0.42, 0.8)
+	button.Size = UDim2.fromScale(1, 0.68)
 	button.Text = ""
 	button.Parent = parent
+	local square = Instance.new("UIAspectRatioConstraint")
+	square.AspectRatio = 1
+	square.DominantAxis = Enum.DominantAxis.Height
+	square.Parent = button
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.35, 0)
+	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = button
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.new(1, 1, 1)
-	stroke.Transparency = 0.6
+	stroke.Transparency = 0.5
 	stroke.Thickness = 2
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = button
-	local label = text(button, value, Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.7), UDim2.fromScale(0.5, 0.5), 2)
+	local glyph = text(button, icon, Color3.new(1, 1, 1), UDim2.fromScale(0.62, 0.62), UDim2.fromScale(0.5, 0.48), 2)
+	glyph.Name = "Icon"
+	local label = text(button, value, Color3.new(1, 1, 1), UDim2.fromScale(2.4, 0.42), UDim2.fromScale(0.5, 1.25), 2)
 	label.Name = "Label"
 	button.MouseButton1Down:Connect(function()
 		Interface.play("Click")
@@ -177,15 +184,15 @@ local function buildGui()
 	controls.BackgroundTransparency = 1
 	controls.AnchorPoint = Vector2.new(0.5, 1)
 	controls.Position = UDim2.fromScale(0.5, 0.97)
-	controls.Size = UDim2.fromScale(0.3, 0.07)
+	controls.Size = UDim2.fromScale(0.45, 0.13)
 	controls.Visible = false
 	controls.Parent = gui
 	local ratio = Instance.new("UIAspectRatioConstraint")
-	ratio.AspectRatio = 6
+	ratio.AspectRatio = 4
 	ratio.Parent = controls
 
-	autoButton = pill(controls, "AUTO - OFF", UDim2.fromScale(0.27, 0.5))
-	hideButton = pill(controls, "HIDE - OFF", UDim2.fromScale(0.73, 0.5))
+	autoButton = pill(controls, "AUTO - OFF", UDim2.fromScale(0.27, 0.4), "🔁")
+	hideButton = pill(controls, "HIDE - OFF", UDim2.fromScale(0.73, 0.4), "👁")
 	autoButton.Activated:Connect(function()
 		RollReveal.setAuto(not auto)
 	end)
@@ -240,15 +247,15 @@ end
 -- the small display at the top; otherwise at the bottom.
 local function layoutControls()
 	hideButton.Visible = auto
-	autoButton.Position = UDim2.fromScale(if auto then 0.27 else 0.5, 0.5)
+	autoButton.Position = UDim2.fromScale(if auto then 0.27 else 0.5, 0.4)
 	if auto and hidden then
 		controls.AnchorPoint = Vector2.new(0.5, 0)
 		controls.Position = UDim2.new(0.5, 0, 0, MINI_TOP + mini.AbsoluteSize.Y + 6)
-		controls.Size = UDim2.fromScale(0.22, 0.05)
+		controls.Size = UDim2.fromScale(0.26, 0.08)
 	else
 		controls.AnchorPoint = Vector2.new(0.5, 1)
 		controls.Position = UDim2.fromScale(0.5, 0.97)
-		controls.Size = UDim2.fromScale(0.3, 0.07)
+		controls.Size = UDim2.fromScale(0.45, 0.13)
 	end
 end
 

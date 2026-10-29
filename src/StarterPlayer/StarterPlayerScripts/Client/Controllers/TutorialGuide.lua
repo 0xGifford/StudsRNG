@@ -207,9 +207,8 @@ local function hudTarget(name: string): GuiObject?
 		return if target and target:IsA("GuiObject") then target else nil
 	end
 	if Interface.isOpen(name) then return nil end
-	local side = Interface.HUD:FindFirstChild("Side")
-	local buttons = side and side:FindFirstChild("Buttons")
-	local target = buttons and buttons:FindFirstChild(name)
+	-- Side buttons can sit in either column or the bottom bar (HudLayout).
+	local target = Interface.HUD:FindFirstChild(name, true)
 	return if target and target:IsA("GuiObject") then target else nil
 end
 
