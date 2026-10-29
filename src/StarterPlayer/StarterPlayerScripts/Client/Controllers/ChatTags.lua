@@ -9,9 +9,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- The [VIP] chat tag. The server sets the player attribute "VIP" (from the
--- VIP game pass); every client prefixes that player's messages. Works with
--- TextChatService (the default chat).
+-- Chat tags: [VIP] (the server sets the "VIP" player attribute from the VIP
+-- game pass) and the player's worn achievement title ("Title" / "TitleColor"
+-- attributes, Systems/Achievements). Every client prefixes that player's
+-- messages. Works with TextChatService (the default chat).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -34,8 +35,18 @@ function ChatTags.start()
 		local source = message.TextSource
 		if source then
 			local speaker = Players:GetPlayerByUserId(source.UserId)
+			local prefix = message.PrefixText
+			local title = speaker and speaker:GetAttribute("Title")
+			if speaker and typeof(title) == "string" and title ~= "" then
+				local color = speaker:GetAttribute("TitleColor")
+				local hex = Format.hex(if typeof(color) == "Color3" then color else Color3.new(1, 1, 1))
+				prefix = `<font color="{hex}"><b>[{title}]</b></font> {prefix}`
+			end
 			if speaker and speaker:GetAttribute("VIP") == true then
-				properties.PrefixText = `{tag} {message.PrefixText}`
+				prefix = `{tag} {prefix}`
+			end
+			if prefix ~= message.PrefixText then
+				properties.PrefixText = prefix
 			end
 		end
 		return properties

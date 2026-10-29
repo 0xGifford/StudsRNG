@@ -16,7 +16,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                  KeyCapper's KeyPressed event)
 --   celebrations   zone unlocks, rebirths, Lucky Rolls, welcome back,
 --                  server-wide banners for very rare rolls, stud level-ups
---                  ("⭐ EMBER LV 5" rising off the player)
+--                  ("⭐ EMBER LV 5" rising off the player), achievements
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -36,6 +36,7 @@ local Format = require(UI.Format)
 local Juice = require(UI.Juice)
 local CombatFx = require(UI.CombatFx)
 local RollLogic = require(Shared.Util.RollLogic)
+local AchievementDefs = require(Shared.Achievements)
 
 local GameFeel = {}
 
@@ -229,6 +230,7 @@ end
 local function watchMilestones()
 	local zones = countTrue(State.get("UnlockedWorlds"))
 	local studLevels = levelsOf(State.get("StudXP"))
+	local achieved = table.clone(State.get("Achievements") or {})
 	local rebirths = State.get("Rebirths") or 0
 	local luck = State.get("LuckyRolls") or 0
 
@@ -261,6 +263,20 @@ local function watchMilestones()
 			luck = value or 0
 		elseif field == "Combo" then
 			onCombo(value)
+		elseif field == "Achievements" then
+			for id, on in value or {} do
+				local def = AchievementDefs.ById[id]
+				if on and not achieved[id] and def then
+					local subtitle = `{def.Name} · {Format.reward(def.Reward)}`
+					if def.Title then
+						subtitle ..= ` · Title « {def.Title} »`
+					end
+					Juice.banner("🏅 ACHIEVEMENT UNLOCKED!", subtitle, def.TitleColor or Color3.fromRGB(255, 205, 60), 2)
+					Juice.confetti(60)
+					CombatFx.sound("Coin", nil, 1.3, 0.6)
+				end
+			end
+			achieved = table.clone(value or {})
 		elseif field == "StudXP" then
 			local now = levelsOf(value)
 			local order = 0

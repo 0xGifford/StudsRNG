@@ -174,6 +174,10 @@ function State.stopFight(): Response
 	return Net.invoke("StopFight")
 end
 
+function State.setTitle(id: string): Response
+	return Net.invoke("SetTitle", id)
+end
+
 function State.rebirth(): Response
 	return Net.invoke("Rebirth")
 end

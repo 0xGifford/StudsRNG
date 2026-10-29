@@ -96,11 +96,11 @@ return {
 		Cooldown = "",
 		Busy = "",
 		RateLimited = "",
-		AlreadyClaimed = "Already claimed",
 		IndexIncomplete = "Find every stud in this tab first",
 		EnemyGone = "",
 		NoStuds = "Equip some studs to fight!",
 		KnockedOut = "Your studs are still recovering",
 		TooFar = "Get closer to fight",
+		TitleLocked = "Unlock that achievement first",
 	} :: { [string]: string },
 }
