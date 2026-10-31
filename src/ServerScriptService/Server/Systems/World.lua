@@ -16,6 +16,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --     rename never leaves a stale sign.
 --   * Players who fall out of the map (below Config.World.FallY) are put back
 --     at the nearest zone they own, else the Lobby's SpawnLocation.
+--   * Every zone (and the Lobby) is always loaded on every client, owned or
+--     not: with streaming on, a zone model could otherwise arrive late or in
+--     pieces while you look at it from the zone before.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -77,7 +80,23 @@ local function rescueSpot(player: Player, position: Vector3): BasePart?
 	return best
 end
 
-function World.init() end
+-- Persistent models are sent whole to each client and never streamed out.
+local function keepLoaded(model: Instance)
+	if model:IsA("Model") then
+		model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+	end
+end
+
+function World.init()
+	if not workspace.StreamingEnabled then return end
+	local zones = workspace:FindFirstChild(Config.ZoneFolder)
+	if zones then
+		for _, child in zones:GetChildren() do
+			keepLoaded(child)
+		end
+		zones.ChildAdded:Connect(keepLoaded)
+	end
+end
 
 function World.start()
 	for _, sign in CollectionService:GetTagged(Tags.ZoneSign) do

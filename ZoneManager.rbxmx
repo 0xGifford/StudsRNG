@@ -714,6 +714,7 @@ report("Ready. Press Wire all zones after building or moving zones.")
 	  signs     every signage TextLabel in Zone<N> reads "Zone N", and the
 	            sign is tagged ZoneSign (the game keeps the text in step with
 	            Shared/Zones)
+	  streaming every zone and the Lobby are Persistent: always loaded
 	  other     Zone tag removed from things under Zones that aren't zones
 ]]
 
@@ -733,9 +734,11 @@ return function(env: any)
 		Lobby = "Lobby",
 		BarrierHeight = 40,
 		BarrierThickness = 1.5,
-		BarrierColor = Color3.fromRGB(25, 25, 35),
-		BarrierTransparency = 0.5,
-		BarrierMaterial = "SmoothPlastic",
+		-- A see-through force field: the zone behind it stays in full view
+		-- (a dark wall the width of a zone shades the whole zone out).
+		BarrierColor = Color3.fromRGB(110, 200, 255),
+		BarrierTransparency = 0,
+		BarrierMaterial = "ForceField",
 		SpawnDepth = 12, -- studs past the gate line
 		BoxHeight = 100, -- ZoneSize.Y
 		-- What a sign says for zone n.
@@ -1141,6 +1144,9 @@ return function(env: any)
 			local model = zone.model
 			model:SetAttribute("ZoneId", zone.id)
 			model:AddTag("Zone")
+			-- Always loaded: every zone is in view from the next, so none may
+			-- wait on streaming (it's sent whole when the player joins).
+			model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 			local lo, hi = zone.boxLo, zone.boxHi
 			model:SetAttribute("Center", Vector3.new((lo.X + hi.X) / 2, lo.Y, (lo.Z + hi.Z) / 2))
 			model:SetAttribute("ZoneSize", Vector3.new(hi.X - lo.X, o.BoxHeight, hi.Z - lo.Z))
@@ -1205,6 +1211,7 @@ return function(env: any)
 
 		-- The Lobby's SpawnLocation (where everyone joins).
 		if lobby then
+			lobby.model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 			local existing = lobby.model:FindFirstChild("LobbySpawn")
 			if existing then existing:Destroy() end
 			local solids = solidsOf({ lobby.model }, {})
