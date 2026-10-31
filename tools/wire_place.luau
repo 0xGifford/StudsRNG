@@ -188,19 +188,58 @@ local templateEntrance = Vector3.new(1, 0, 0)
 local keyGroups = game:GetService("ReplicatedStorage"):FindFirstChild("KeyCapperGroups")
 local templateGroup = keyGroups and keyGroups:FindFirstChild(ZONES[1][2])
 
+-- Zone boxes (from their Ground), trimmed back to the seam where two
+-- grounds overlap, so "which zone am I in" is never ambiguous.
+local zoneBoxes = {}
+for order in ZONES do
+	local lo, hi = boxOf(groundOf(models[order]))
+	zoneBoxes[order] = { lo = lo, hi = hi }
+end
+for i = 1, #ZONES do
+	for j = i + 1, #ZONES do
+		local a, b = zoneBoxes[i], zoneBoxes[j]
+		local overlapX = math.min(a.hi.X, b.hi.X) - math.max(a.lo.X, b.lo.X)
+		local overlapZ = math.min(a.hi.Z, b.hi.Z) - math.max(a.lo.Z, b.lo.Z)
+		if overlapX > 0 and overlapZ > 0 then
+			if overlapX < overlapZ then
+				local left, right = if a.lo.X < b.lo.X then a else b, if a.lo.X < b.lo.X then b else a
+				local seam = (left.hi.X + right.lo.X) / 2
+				left.hi = Vector3.new(seam, left.hi.Y, left.hi.Z)
+				right.lo = Vector3.new(seam, right.lo.Y, right.lo.Z)
+			else
+				local near, far = if a.lo.Z < b.lo.Z then a else b, if a.lo.Z < b.lo.Z then b else a
+				local seam = (near.hi.Z + far.lo.Z) / 2
+				near.hi = Vector3.new(near.hi.X, near.hi.Y, seam)
+				far.lo = Vector3.new(far.lo.X, far.lo.Y, seam)
+			end
+		end
+	end
+end
+
 for order, entry in ZONES do
 	local zone = models[order]
 	local id, subtitle = entry[2], entry[3]
 	local ground = groundOf(zone)
 	local lo, hi = boxOf(ground)
 	local top = hi.Y
+	local area = zoneBoxes[order]
 
 	zone.Name = id
 	zone:AddTag("Zone")
 	zone:SetAttribute("ZoneId", id)
 	zone:SetAttribute("Subtitle", subtitle)
-	zone:SetAttribute("Center", Vector3.new((lo.X + hi.X) / 2, top, (lo.Z + hi.Z) / 2))
-	zone:SetAttribute("ZoneSize", Vector3.new(hi.X - lo.X, 80, hi.Z - lo.Z))
+	zone:SetAttribute("Center", Vector3.new((area.lo.X + area.hi.X) / 2, top, (area.lo.Z + area.hi.Z) / 2))
+	zone:SetAttribute("ZoneSize", Vector3.new(area.hi.X - area.lo.X, 80, area.hi.Z - area.lo.Z))
+
+	-- Anything inside that still names another zone (copied from where it
+	-- was built) belongs to this one.
+	for _, d in zone:GetDescendants() do
+		local named = d:GetAttribute("ZoneId")
+		if typeof(named) == "string" and named ~= id then
+			d:SetAttribute("ZoneId", id)
+			note(`{id}: {d.Name} said ZoneId "{named}", now "{id}"`)
+		end
+	end
 
 	-- Which way the previous zone (or the lobby, for the first) lies.
 	local center = Vector3.new((lo.X + hi.X) / 2, top, (lo.Z + hi.Z) / 2)
