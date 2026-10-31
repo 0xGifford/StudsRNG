@@ -68,6 +68,31 @@ for _, d in workspace:GetDescendants() do
 end
 
 local styles = game:GetService("ReplicatedStorage"):FindFirstChild("KeyCapperGroups")
+local missingStyles = {}
+
+-- Keys by the zone they pay in: KeyCapper keeps them in workspace.KeyCapperKeys,
+-- not inside the zone models (World, else a "Zone7" Group).
+local keysByZone: { [string]: number } = {}
+for _, d in workspace:GetDescendants() do
+	if d:HasTag("KeyCapper_Key") then
+		local world = d:GetAttribute("World")
+		local group = d:GetAttribute("Group")
+		local id = if typeof(world) == "string" and world ~= "" then world
+			elseif typeof(group) == "string" and string.match(group, "^Zone%d+$") then string.format("%03d", tonumber(string.match(group, "%d+")))
+			else nil
+		if typeof(group) == "string" and styles and not styles:FindFirstChild(group) and not missingStyles[group] then
+			missingStyles[group] = true
+			problem(`keys use KeyCapper group "{group}", which has no style in ReplicatedStorage.KeyCapperGroups`)
+		end
+		if id then
+			if not known[id] then
+				problem(`{d:GetFullName()} pays in zone "{id}", which isn't a zone`)
+			end
+			keysByZone[id] = (keysByZone[id] or 0) + 1
+		end
+	end
+end
+
 local boxes = {}
 for order, id in ids do
 	local zone = zoneModels[id]
@@ -94,7 +119,7 @@ for order, id in ids do
 	if has.ZoneSpawn == 0 then problem(`{zone.Name} ("{id}") has no ZoneSpawn (teleports there fail)`) end
 	if has.EnemyGround == 0 then problem(`{zone.Name} ("{id}") has no EnemyGround (enemies use the zone's own parts)`) end
 	if has.ZoneBarrier == 0 then problem(`{zone.Name} ("{id}") has no ZoneBarrier (nothing stops players walking in)`) end
-	if has.KeyCapper_Hitbox == 0 then warn(`{zone.Name} has no keys yet`) end
+	if has.KeyCapper_Hitbox == 0 and not keysByZone[id] then warn(`{zone.Name} has no keys yet`) end
 	if has.EnemySpawn == 0 then warn(`{zone.Name} has no EnemySpawn markers yet (enemies use random spots)`) end
 	for group in groups do
 		if styles and not styles:FindFirstChild(group) then

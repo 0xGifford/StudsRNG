@@ -47,9 +47,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                   Multiplier  number   extra multiplier on every key in it (default 1)
 --                   Enabled     boolean  false: its keys never pay (default true)
 --   KeyCapper_Hitbox (Config.Press.HitboxTag, placed by the KeyCapper plugin)
---                 A key's hitbox; its parent Model is the key.
+--                 A key's hitbox; its parent Model is the key. KeyCapper keeps
+--                 keys in workspace.KeyCapperKeys/Zone<N> and sets World.
 --                   Value    number   Clacks per press (on the key Model)
---                   World    string   zone id (on the key Model; default: its Keyboard / Zone)
+--                   World    string   zone id (on the key Model; default: its
+--                                     Keyboard / Zone, else a "Zone7" Group)
 --                   Enabled  boolean  false: this key never pays (default true)
 --   EnemyGround   BasePart enemies may stand on (a zone's floor). Enemies
 --                 spawn on it, at EnemySpawn markers first, then random clear
@@ -159,7 +161,9 @@ function Tags.zoneOf(instance: Instance): string?
 	return if zone then Tags.idOfZone(zone) else nil
 end
 
--- A key's zone: the key Model's World, else its Keyboard's / Zone's.
+-- A key's zone: the key Model's World (KeyCapper sets it when you brush in a
+-- zone), else its Keyboard's / Zone's, else its KeyCapper group when that's
+-- named after a zone ("Zone7" → "007").
 function Tags.keyZone(hitbox: Instance): string?
 	local model = hitbox.Parent
 	if not model then return nil end
@@ -168,7 +172,10 @@ function Tags.keyZone(hitbox: Instance): string?
 	local keyboard = Tags.ancestorWith(model, Tags.Keyboard)
 	local fromKeyboard = keyboard and Tags.string(keyboard, Attr.ZoneId)
 	if fromKeyboard then return fromKeyboard end
-	return Tags.zoneOf(model)
+	local zone = Tags.zoneOf(model)
+	if zone then return zone end
+	local group = Tags.string(model, "Group")
+	return if group then Zones.idFromName(group) else nil
 end
 
 -- Every tagged instance of a zone (e.g. all ZoneSpawns of "Arcade").
