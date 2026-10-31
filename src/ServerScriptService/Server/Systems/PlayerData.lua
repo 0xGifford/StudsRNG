@@ -29,7 +29,7 @@ local ProfileStore = require(ServerScriptService:WaitForChild("Packages"):WaitFo
 
 type PlayerData = Types.PlayerData
 
-local CURRENT_VERSION = 2
+local CURRENT_VERSION = 3
 
 local TEMPLATE: PlayerData = {
 	Version = CURRENT_VERSION,
@@ -43,7 +43,7 @@ local TEMPLATE: PlayerData = {
 	Equipped = {},
 	Index = {},
 	AutoDelete = {},
-	UnlockedWorlds = { Grasslands = true },
+	UnlockedWorlds = { ["001"] = true },
 	Rebirths = 0,
 	Upgrades = {},
 	LuckyRolls = 0,
@@ -70,21 +70,34 @@ local TEMPLATE: PlayerData = {
 	Bought = {}, -- [product key] = true for one-time products (Starter Pack)
 }
 
+-- Owned zones carry over a map change by their place in the unlock order
+-- (the 3rd zone stays the 3rd zone): ids from `from` become ids from `to`.
+local function remapZones(data: any, from: { string }, to: { string })
+	local old = if typeof(data.UnlockedWorlds) == "table" then data.UnlockedWorlds else {}
+	local unlocked = {}
+	for order, oldId in from do
+		if old[oldId] and to[order] then
+			unlocked[to[order]] = true
+		end
+	end
+	data.UnlockedWorlds = unlocked
+end
+
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.
 local MIGRATIONS: { [number]: (any) -> () } = {
-	-- v1 → v2: the Studio-built map renamed every zone. Owned zones carry over
-	-- by their place in the unlock order (the 3rd zone stays the 3rd zone).
+	-- v1 → v2: the first Studio-built map renamed every zone.
 	[1] = function(data)
 		local Zones = require(Shared.Zones)
-		local old = if typeof(data.UnlockedWorlds) == "table" then data.UnlockedWorlds else {}
-		local unlocked = {}
-		for order, legacyId in Zones.LegacyOrder do
-			local zone = Zones.List[order]
-			if old[legacyId] and zone then
-				unlocked[zone.Id] = true
-			end
+		remapZones(data, Zones.Legacy[1], Zones.Legacy[2])
+	end,
+	-- v2 → v3: the zone rework: zones are numbered ("001" .. "034").
+	[2] = function(data)
+		local Zones = require(Shared.Zones)
+		local ids = {}
+		for _, def in Zones.List do
+			table.insert(ids, def.Id)
 		end
-		data.UnlockedWorlds = unlocked
+		remapZones(data, Zones.Legacy[2], ids)
 	end,
 }
 

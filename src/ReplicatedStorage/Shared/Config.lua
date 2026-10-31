@@ -45,26 +45,14 @@ Config.Press = {
 	TeleportSlack = 6,
 }
 
--- The generated map (Systems/MapBuilder). Zones are laid out in a line
--- along +Z from Origin, joined by bridges with a barrier at each zone's
--- entrance. A zone that already exists under workspace.Zones (built by
--- hand) is left alone, so you can replace any zone with your own build.
-Config.Map = {
-	-- Zones are built in Studio with tools/ZoneKit now; turn this on to
-	-- generate any zone that isn't built (a Zone-tagged instance with its id).
-	Enabled = false,
-	-- Players below Origin.Y - 70 are put back at the nearest zone they own.
+-- The world (Systems/World): the map is built by hand in Studio
+-- (workspace.Zones: Lobby, Zone1 .. Zone34; tools/wire_zones.luau or the
+-- ZoneManager plugin wire it up).
+Config.World = {
+	-- Players who fall below FallY are put back at the nearest zone they own
+	-- (or the Lobby).
 	FallRescue = true,
-	-- Zone 1's floor centre; must match ZoneKit's ORIGIN / WIDTH / DEPTH.
-	Origin = Vector3.new(15, 1, -28),
-	ZoneWidth = 170, -- X (inside the cliffs)
-	ZoneDepth = 150, -- Z
-	Bridge = 0, -- gap between zones (ZoneKit builds them edge to edge)
-	KeyCols = 22,
-	KeyRows = 8,
-	-- Disable SpawnLocations outside the generated map so players spawn in
-	-- Grasslands.
-	TakeOverSpawns = true,
+	FallY = -90,
 }
 
 -- Press streak: presses closer together than Window keep a combo going;

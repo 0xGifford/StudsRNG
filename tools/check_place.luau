@@ -4,11 +4,14 @@
 	  lune run tools/check_place.luau <place.rbxl>
 
 	Every zone in Shared/Zones.lua needs a Zone-tagged Model whose ZoneId is
-	its id, with a ZoneSpawn, keys, EnemyGround and (after the first) a
-	ZoneBarrier. Also flags: enabled SpawnLocations outside the first zone,
-	ZoneId attributes naming unknown zones, keys whose KeyCapper Group has no
-	style, Zone-tagged things that aren't in Shared/Zones, and zones whose
-	boxes overlap. Exits 1 when it finds a problem.
+	its id, with a ZoneSpawn, a ZoneBarrier and EnemyGround. Also flags:
+	enabled SpawnLocations outside the Lobby (or none in it), ZoneId
+	attributes naming unknown zones, keys whose KeyCapper Group has no style,
+	Zone-tagged things that aren't in Shared/Zones, and zones whose boxes
+	overlap. Exits 1 when it finds a problem.
+
+	Warns (doesn't fail) about zones still waiting on hand work: no keys
+	(KeyCapper keyboard on Stuff.Pit.Surf), no EnemySpawn markers.
 ]]
 
 local fs = require("@lune/fs")
@@ -22,23 +25,27 @@ assert(path, "usage: lune run tools/check_place.luau <place.rbxl>")
 local game = roblox.deserializePlace(fs.readFile(path))
 local workspace = game:GetService("Workspace")
 
--- Zone ids in unlock order, read from Shared/Zones.lua.
+-- Zone ids in unlock order: Shared/Zones.lua numbers COUNT zones "001"...
 local zonesSource = fs.readFile("src/ReplicatedStorage/Shared/Zones.lua")
-local listStart = string.find(zonesSource, "local zones:", 1, true) or 1
-local listEnd = string.find(zonesSource, "\n}", listStart, true) or #zonesSource
+local count = tonumber(string.match(zonesSource, "local COUNT = (%d+)"))
+assert(count, "couldn't read COUNT from Shared/Zones.lua")
 local ids = {}
-for id in string.gmatch(string.sub(zonesSource, listStart, listEnd), 'Id = "([%w_]+)"') do
-	table.insert(ids, id)
+for n = 1, count do
+	table.insert(ids, string.format("%03d", n))
 end
 local known = {}
 for order, id in ids do
 	known[id] = order
 end
 
-local problems = 0
+local problems, warnings = 0, 0
 local function problem(text: string)
 	problems += 1
 	print("✗ " .. text)
+end
+local function warn(text: string)
+	warnings += 1
+	print("· " .. text)
 end
 
 -- Zone models by id.
@@ -47,7 +54,8 @@ for _, d in workspace:GetDescendants() do
 	if d:HasTag("Zone") then
 		local id = d:GetAttribute("ZoneId")
 		if typeof(id) ~= "string" or id == "" then
-			id = d.Name
+			local n = tonumber(string.match(string.lower(d.Name), "^zone%s*(%d+)$"))
+			id = if n then string.format("%03d", n) else d.Name
 		end
 		if not known[id] then
 			problem(`{d:GetFullName()} is tagged Zone but "{id}" isn't in Shared/Zones`)
@@ -67,7 +75,7 @@ for order, id in ids do
 		problem(`zone {order} "{id}" has no Zone-tagged Model in the workspace`)
 		continue
 	end
-	local has = { ZoneSpawn = 0, KeyCapper_Hitbox = 0, EnemyGround = 0, ZoneBarrier = 0 }
+	local has = { ZoneSpawn = 0, KeyCapper_Hitbox = 0, EnemyGround = 0, ZoneBarrier = 0, EnemySpawn = 0 }
 	local groups = {}
 	for _, d in zone:GetDescendants() do
 		for tag in has do
@@ -79,14 +87,15 @@ for order, id in ids do
 		if typeof(zid) == "string" and zid ~= "" and not known[zid] then
 			problem(`{d:GetFullName()} has ZoneId "{zid}", which isn't a zone`)
 		end
-		if d:IsA("SpawnLocation") and d.Enabled and order ~= 1 then
+		if d:IsA("SpawnLocation") and d.Enabled then
 			problem(`{d:GetFullName()} is an enabled SpawnLocation: players can spawn in "{id}" without owning it`)
 		end
 	end
-	if has.ZoneSpawn == 0 then problem(`"{id}" has no ZoneSpawn (teleports there fail)`) end
-	if has.KeyCapper_Hitbox == 0 then problem(`"{id}" has no keys`) end
-	if has.EnemyGround == 0 then problem(`"{id}" has no EnemyGround (enemies use the zone's own parts)`) end
-	if order > 1 and has.ZoneBarrier == 0 then problem(`"{id}" has no ZoneBarrier (nothing stops players walking in)`) end
+	if has.ZoneSpawn == 0 then problem(`{zone.Name} ("{id}") has no ZoneSpawn (teleports there fail)`) end
+	if has.EnemyGround == 0 then problem(`{zone.Name} ("{id}") has no EnemyGround (enemies use the zone's own parts)`) end
+	if has.ZoneBarrier == 0 then problem(`{zone.Name} ("{id}") has no ZoneBarrier (nothing stops players walking in)`) end
+	if has.KeyCapper_Hitbox == 0 then warn(`{zone.Name} has no keys yet`) end
+	if has.EnemySpawn == 0 then warn(`{zone.Name} has no EnemySpawn markers yet (enemies use random spots)`) end
 	for group in groups do
 		if styles and not styles:FindFirstChild(group) then
 			problem(`"{id}" has keys in KeyCapper group "{group}", which has no style in ReplicatedStorage.KeyCapperGroups`)
@@ -113,5 +122,21 @@ for i = 1, #boxes do
 	end
 end
 
-print(if problems == 0 then `✓ {#ids} zones, no problems` else `{problems} problem(s)`)
+-- Players join in the Lobby.
+local lobbySpawns = 0
+local zonesFolder = workspace:FindFirstChild("Zones")
+local lobby = zonesFolder and zonesFolder:FindFirstChild("Lobby")
+for _, d in workspace:GetDescendants() do
+	if d:IsA("SpawnLocation") and d.Enabled then
+		if lobby and d:IsDescendantOf(lobby) then
+			lobbySpawns += 1
+		elseif not d:FindFirstAncestorWhichIsA("Model") or not d:FindFirstAncestorWhichIsA("Model"):HasTag("Zone") then
+			problem(`{d:GetFullName()} is an enabled SpawnLocation outside the Lobby`)
+		end
+	end
+end
+if lobbySpawns == 0 then problem("no enabled SpawnLocation in Zones.Lobby: players join at the origin") end
+
+local suffix = if warnings > 0 then `, {warnings} to do by hand` else ""
+print(if problems == 0 then `✓ {#ids} zones, no problems{suffix}` else `{problems} problem(s){suffix}`)
 process.exit(if problems > 0 then 1 else 0)

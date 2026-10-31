@@ -30,48 +30,36 @@ export type ZoneDef = {
 	Color: Color3,
 }
 
--- The zones built in Studio (workspace.Zones), in the order players unlock
--- them: a snake across the map, five per row. Each zone Model carries its
--- Id as the ZoneId attribute (tools/wire_place.luau sets them up).
--- Prices: the first seven by hand, then each zone costs PRICE_GROWTH more
--- and pays MULTIPLIER_GROWTH more per key (tools/balance.py checks the
--- curve: ~4 minutes per zone early, rising later).
-local zones: { { Id: string, Name: string, Emoji: string, Color: Color3 } } = {
-	{ Id = "Grasslands", Name = "Grasslands", Emoji = "🌳", Color = Color3.fromRGB(120, 220, 90) },
-	{ Id = "City", Name = "City", Emoji = "🏙️", Color = Color3.fromRGB(110, 190, 255) },
-	{ Id = "Desert", Name = "Desert", Emoji = "🏜️", Color = Color3.fromRGB(240, 200, 90) },
-	{ Id = "Orchard", Name = "Orchard", Emoji = "🍎", Color = Color3.fromRGB(255, 110, 90) },
-	{ Id = "Frostlands", Name = "Frostlands", Emoji = "❄️", Color = Color3.fromRGB(120, 200, 255) },
-	{ Id = "Springs", Name = "Fountain Springs", Emoji = "⛲", Color = Color3.fromRGB(220, 120, 220) },
-	{ Id = "Village", Name = "Village", Emoji = "🏡", Color = Color3.fromRGB(130, 210, 110) },
-	{ Id = "Metro", Name = "Metro", Emoji = "🚕", Color = Color3.fromRGB(190, 190, 205) },
-	{ Id = "WildWest", Name = "Wild West", Emoji = "🤠", Color = Color3.fromRGB(230, 180, 110) },
-	{ Id = "Quarry", Name = "Quarry", Emoji = "🏗️", Color = Color3.fromRGB(230, 200, 70) },
-	{ Id = "Reef", Name = "Coral Reef", Emoji = "🐠", Color = Color3.fromRGB(255, 130, 110) },
-	{ Id = "Lagoon", Name = "Shell Lagoon", Emoji = "🐚", Color = Color3.fromRGB(255, 160, 140) },
-	{ Id = "Beach", Name = "Beach", Emoji = "🏖️", Color = Color3.fromRGB(255, 214, 120) },
-	{ Id = "Meadow", Name = "Meadow", Emoji = "🌼", Color = Color3.fromRGB(150, 230, 100) },
-	{ Id = "Woodlands", Name = "Woodlands", Emoji = "🌲", Color = Color3.fromRGB(90, 190, 90) },
-	{ Id = "Jungle", Name = "Jungle", Emoji = "🌴", Color = Color3.fromRGB(150, 230, 60) },
-	{ Id = "Canyon", Name = "Canyon", Emoji = "🪨", Color = Color3.fromRGB(235, 170, 80) },
-	{ Id = "Suburbs", Name = "Suburbs", Emoji = "🏘️", Color = Color3.fromRGB(140, 220, 140) },
-	{ Id = "Lumberyard", Name = "Lumberyard", Emoji = "🪵", Color = Color3.fromRGB(200, 140, 90) },
-	{ Id = "Hive", Name = "Hive", Emoji = "🐝", Color = Color3.fromRGB(255, 170, 50) },
-	{ Id = "Snowfield", Name = "Snowfield", Emoji = "☃️", Color = Color3.fromRGB(230, 245, 255) },
-	{ Id = "Wildwood", Name = "Wildwood", Emoji = "🍃", Color = Color3.fromRGB(100, 200, 110) },
-	{ Id = "Tropics", Name = "Tropics", Emoji = "🏝️", Color = Color3.fromRGB(80, 220, 200) },
-	{ Id = "Ashlands", Name = "Ashlands", Emoji = "🌋", Color = Color3.fromRGB(255, 100, 60) },
-	{ Id = "Glacier", Name = "Glacier", Emoji = "🧊", Color = Color3.fromRGB(100, 180, 255) },
-	{ Id = "CrystalSprings", Name = "Crystal Springs", Emoji = "💎", Color = Color3.fromRGB(200, 130, 255) },
-	{ Id = "Hamlet", Name = "Hamlet", Emoji = "🛖", Color = Color3.fromRGB(170, 220, 120) },
-	{ Id = "Downtown", Name = "Downtown", Emoji = "🌆", Color = Color3.fromRGB(255, 140, 200) },
-	{ Id = "Frontier", Name = "Frontier", Emoji = "🐎", Color = Color3.fromRGB(240, 190, 120) },
-	{ Id = "Honeycomb", Name = "Honeycomb", Emoji = "🍯", Color = Color3.fromRGB(255, 200, 60) },
-	{ Id = "Tundra", Name = "Tundra", Emoji = "🐧", Color = Color3.fromRGB(200, 230, 255) },
-	{ Id = "Elderwood", Name = "Elderwood", Emoji = "🦉", Color = Color3.fromRGB(120, 210, 150) },
-	{ Id = "Badlands", Name = "Badlands", Emoji = "🦂", Color = Color3.fromRGB(230, 150, 70) },
-	{ Id = "Obsidian", Name = "Obsidian Wastes", Emoji = "🖤", Color = Color3.fromRGB(170, 120, 255) },
+-- The zones built in Studio (workspace.Zones.Zone1 .. Zone34), in the
+-- order players unlock them. Zone N's Id is N padded to three digits
+-- ("001"), and the model's ZoneId attribute carries it (tools/wire_zones.luau
+-- or the ZoneManager plugin set it; Tags.idOfZone also reads "ZoneN" names).
+-- Players see "Zone N". Colors tint the zone's UI (signs, cards, banners).
+local COUNT = 34
+local PALETTE = {
+	Color3.fromRGB(120, 220, 90), Color3.fromRGB(110, 190, 255), Color3.fromRGB(240, 200, 90),
+	Color3.fromRGB(255, 110, 90), Color3.fromRGB(120, 200, 255), Color3.fromRGB(220, 120, 220),
+	Color3.fromRGB(130, 210, 110), Color3.fromRGB(190, 190, 205), Color3.fromRGB(230, 180, 110),
+	Color3.fromRGB(230, 200, 70), Color3.fromRGB(255, 130, 110), Color3.fromRGB(255, 160, 140),
+	Color3.fromRGB(255, 214, 120), Color3.fromRGB(150, 230, 100), Color3.fromRGB(90, 190, 90),
+	Color3.fromRGB(150, 230, 60), Color3.fromRGB(235, 170, 80), Color3.fromRGB(140, 220, 140),
+	Color3.fromRGB(200, 140, 90), Color3.fromRGB(255, 170, 50), Color3.fromRGB(230, 245, 255),
+	Color3.fromRGB(100, 200, 110), Color3.fromRGB(80, 220, 200), Color3.fromRGB(255, 100, 60),
+	Color3.fromRGB(100, 180, 255), Color3.fromRGB(200, 130, 255), Color3.fromRGB(170, 220, 120),
+	Color3.fromRGB(255, 140, 200), Color3.fromRGB(240, 190, 120), Color3.fromRGB(255, 200, 60),
+	Color3.fromRGB(200, 230, 255), Color3.fromRGB(120, 210, 150), Color3.fromRGB(230, 150, 70),
+	Color3.fromRGB(170, 120, 255),
 }
+
+local zones: { { Id: string, Name: string, Emoji: string, Color: Color3 } } = {}
+for n = 1, COUNT do
+	table.insert(zones, {
+		Id = string.format("%03d", n),
+		Name = `Zone {n}`,
+		Emoji = "",
+		Color = PALETTE[(n - 1) % #PALETTE + 1],
+	})
+end
 
 -- The first zones are priced by hand; after that the curve takes over.
 local HAND_PRICES = { 0, 1_400, 3_700, 9_700, 22_000, 45_000, 91_000 }
@@ -98,14 +86,24 @@ for order, entry in zones do
 	})
 end
 
--- Ids before the Studio-built map, by order (PlayerData migrates saves
--- that still use them: the zone at the same place in the order).
-local LEGACY_ORDER = {
-	"Office", "Arcade", "Studio", "Neon", "Islands", "Cave", "Space", "Desert", "Jungle", "Candy",
-	"Autumn", "Shroom", "Reef", "Swamp", "Sakura", "Canyon", "Tundra", "Ashlands", "Toyland", "Farm",
-	"Haunted", "Geode", "Clockwork", "CyberCity", "Moon", "Mars", "Galaxy", "Atlantis", "Pirate", "WildWest",
-	"Oasis", "Savanna", "Bamboo", "Frostpeak", "Rainbow", "Dino", "Bakery", "Toxic", "Factory", "Ruins",
-	"SkyIsles", "CrystalGarden", "NeonNights", "Underworld", "Fairy", "Thunder", "Abyss", "GoldenCity", "Void", "Kingdom",
+-- Saved ids from earlier maps, by version, in unlock order. PlayerData
+-- migrates a save by place in the order (the 3rd zone stays the 3rd zone).
+local LEGACY = {
+	-- v1: the generated map
+	[1] = {
+		"Office", "Arcade", "Studio", "Neon", "Islands", "Cave", "Space", "Desert", "Jungle", "Candy",
+		"Autumn", "Shroom", "Reef", "Swamp", "Sakura", "Canyon", "Tundra", "Ashlands", "Toyland", "Farm",
+		"Haunted", "Geode", "Clockwork", "CyberCity", "Moon", "Mars", "Galaxy", "Atlantis", "Pirate", "WildWest",
+		"Oasis", "Savanna", "Bamboo", "Frostpeak", "Rainbow", "Dino", "Bakery", "Toxic", "Factory", "Ruins",
+		"SkyIsles", "CrystalGarden", "NeonNights", "Underworld", "Fairy", "Thunder", "Abyss", "GoldenCity", "Void", "Kingdom",
+	},
+	-- v2: the first hand-built map
+	[2] = {
+		"Grasslands", "City", "Desert", "Orchard", "Frostlands", "Springs", "Village", "Metro", "WildWest", "Quarry",
+		"Reef", "Lagoon", "Beach", "Meadow", "Woodlands", "Jungle", "Canyon", "Suburbs", "Lumberyard", "Hive",
+		"Snowfield", "Wildwood", "Tropics", "Ashlands", "Glacier", "CrystalSprings", "Hamlet", "Downtown", "Frontier", "Honeycomb",
+		"Tundra", "Elderwood", "Badlands", "Obsidian",
+	},
 }
 
 local byId: { [string]: ZoneDef } = {}
@@ -119,8 +117,19 @@ local Zones = {
 	List = list,
 	ById = byId,
 	Default = list[1].Id,
-	LegacyOrder = LEGACY_ORDER,
+	Legacy = LEGACY,
 }
+
+-- The id for a zone model named "Zone7" (or "zone 7"), else nil.
+function Zones.idFromName(name: string): string?
+	local n = tonumber(string.match(string.lower(name), "^zone%s*(%d+)$"))
+	return if n then string.format("%03d", n) else nil
+end
+
+-- What signs, cards and banners show: "🌵 Zone 4", or "Zone 4" with no emoji.
+function Zones.title(def: ZoneDef): string
+	return if def.Emoji ~= "" then `{def.Emoji} {def.Name}` else def.Name
+end
 
 function Zones.price(def: ZoneDef, discount: number): number
 	return math.floor(def.Price * (1 - math.clamp(discount, 0, 1)))

@@ -20,10 +20,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local Zones = require(Shared.Zones)
-local MapThemes = require(Shared.MapThemes)
 local Signal = require(Shared.Util.Signal)
 local Tags = require(Shared.Tags)
 
@@ -76,11 +74,7 @@ end
 
 local function zoneCenter(def: Zones.ZoneDef): Vector3?
 	local zone = Tags.forZone(Tags.Zone, def.Id)[1]
-	if not zone then
-		-- Not streamed in yet: where MapBuilder puts it.
-		if not Config.Map.Enabled then return nil end
-		return Config.Map.Origin + Vector3.new(0, 0, (def.Order - 1) * (Config.Map.ZoneDepth + Config.Map.Bridge))
-	end
+	if not zone then return nil end -- not streamed in yet
 	local center = zone:GetAttribute(Tags.Attr.Center)
 	if typeof(center) == "Vector3" then return center end
 	local cframe = Tags.zoneBox(zone)
@@ -190,8 +184,9 @@ local function play()
 					TweenService:Create(subtitle, TweenInfo.new(0.6), { TextTransparency = 1 }):Play()
 				end)
 			end
-			local theme = MapThemes[def.Id]
-			caption.Text = `{string.upper(def.Name)} · {if theme then theme.Subtitle else ""}`
+			local zoneModel = Tags.forZone(Tags.Zone, def.Id)[1]
+			local zoneSubtitle = if zoneModel then Tags.string(zoneModel, "Subtitle") else nil
+			caption.Text = if zoneSubtitle then `{string.upper(def.Name)} · {zoneSubtitle}` else string.upper(def.Name)
 			caption.TextColor3 = def.Color
 			caption.TextTransparency = 1
 			TweenService:Create(caption, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
