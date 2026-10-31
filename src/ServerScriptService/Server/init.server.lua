@@ -50,6 +50,7 @@ local ORDER = {
 -- old modules around ($ignoreUnknownInstances), so never load these.
 local RETIRED = {
 	MapBuilder = true, -- the generated map; the map is built by hand now (Systems/World)
+	StudTemplate = true, -- now Systems/Templates (studs and enemies)
 }
 
 local systems: { { name: string, module: any } } = {}

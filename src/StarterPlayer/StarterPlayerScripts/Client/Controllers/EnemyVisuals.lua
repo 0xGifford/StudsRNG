@@ -20,6 +20,18 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Every piece is anchored and placed with one BulkMoveTo per frame; enemies
 -- far from the camera aren't animated.
 --
+-- Your own enemy models: put Models named Enemy, MiniBoss and Titan in
+-- ServerStorage.EnemyTemplates (Systems/Templates copies them for clients).
+-- Each enemy uses its own kind's model, else MiniBoss / Enemy. The model is
+-- scaled to the enemy's size (its width), stood on the ground and turned so
+-- its front (the PrimaryPart's / pivot's LookVector) faces where it walks,
+-- and gets all the motion above. Parts named (or starting with):
+--   Foot    step while walking (left / right from where they sit)
+--   Eye     blink                 Pupil   glow red while it hunts you
+--   Brow    tilt angrier while it hunts you
+-- Parts with the attribute Tint = true take the zone's enemy colour.
+-- Without templates, enemies are the built-in brick monsters.
+--
 -- Other controllers anchor UI and effects to the visual, not the proxy:
 --   EnemyVisuals.rootOf(model) -> BasePart?   EnemyVisuals.modelOf(model) -> Model?
 
@@ -29,6 +41,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local Tags = require(Shared.Tags)
 
 local EnemyVisuals = {}
@@ -51,6 +64,8 @@ type Visual = {
 	pieces: { Piece },
 	pupils: { BasePart },
 	whites: { BasePart },
+	whiteHeights: { number }, -- each eye's open height (blink squashes it)
+	pupilRest: { { color: Color3, material: Enum.Material } }?, -- a template's own pupils, when calm
 	size: number,
 	boss: boolean,
 	position: Vector3,
@@ -82,12 +97,125 @@ local function newPart(size: Vector3, color: Color3, material: Enum.Material?): 
 	return part
 end
 
+-- The template for this kind of enemy, falling back to the plainer kinds.
+local function templateFor(boss: boolean, titan: boolean): Model?
+	local assets = ReplicatedStorage:FindFirstChild(Config.Visuals.TemplateFolder)
+	local templates = assets and assets:FindFirstChild(Config.Visuals.EnemyTemplateFolder)
+	if not templates then return nil end
+	local names = if titan then { "Titan", "MiniBoss", "Enemy" } elseif boss then { "MiniBoss", "Enemy" } else { "Enemy" }
+	for _, name in names do
+		local found = templates:FindFirstChild(name)
+		if found and found:IsA("Model") then
+			return found
+		end
+	end
+	return nil
+end
+
+local function kindOf(name: string): string
+	local lower = string.lower(name)
+	-- "brow" before "eye": an Eyebrow is a brow.
+	for _, kind in { "foot", "pupil", "brow", "eye" } do
+		if string.sub(lower, 1, #kind) == kind or string.find(lower, kind, 1, true) then
+			return kind
+		end
+	end
+	return "body"
+end
+
+-- An enemy drawn from your model: every part is a piece moved with the body.
+local function buildFromTemplate(model: Model, proxy: BasePart, source: Model, bodyColor: Color3, boss: boolean): Visual
+	local s = proxy.Size.X
+	local clone = source:Clone()
+	for _, d in clone:GetDescendants() do
+		if d:IsA("LuaSourceContainer") then d:Destroy() end
+	end
+	local _, extents = clone:GetBoundingBox()
+	local width = math.max(extents.X, extents.Z, 1e-3)
+	clone:ScaleTo(clone:GetScale() * (s / width))
+	local cframe, size = clone:GetBoundingBox()
+
+	local visual = Instance.new("Model")
+	visual.Name = model.Name
+	-- Invisible box the size of the proxy: UI and effects anchor to it.
+	local root = newPart(Vector3.new(s, s * 0.8, s), bodyColor)
+	root.Name = "Body"
+	root.Transparency = 1
+	root.Parent = visual
+	visual.PrimaryPart = root
+
+	-- The proxy hovers 0.6 + 0.4s above the ground; stand the model on it.
+	local base = CFrame.new(0, -(0.6 + 0.4 * s) + size.Y / 2, 0)
+	local pieces: { Piece } = {}
+	local pupils, whites = {}, {}
+	local pupilRest = {}
+	for _, d in clone:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			if d:GetAttribute("Tint") == true then
+				d.Color = bodyColor
+			end
+			local relative = cframe:ToObjectSpace(d.CFrame)
+			local kind = kindOf(d.Name)
+			local side = if relative.Position.X < 0 then -1 else 1
+			table.insert(pieces, { part = d, offset = base * relative, kind = kind, side = side })
+			if kind == "pupil" then
+				table.insert(pupils, d)
+				table.insert(pupilRest, { color = d.Color, material = d.Material })
+				if boss then
+					d.Color = RED
+					d.Material = Enum.Material.Neon
+				end
+			elseif kind == "eye" then
+				table.insert(whites, d)
+			end
+		end
+	end
+	clone.Parent = visual
+	visual.Parent = folder
+
+	local heights = {}
+	for i, eye in whites do
+		heights[i] = eye.Size.Y
+	end
+	local health = model:GetAttribute("Health")
+	return {
+		model = visual,
+		proxy = proxy,
+		root = root,
+		pieces = pieces,
+		pupils = pupils,
+		whites = whites,
+		whiteHeights = heights,
+		pupilRest = pupilRest,
+		size = s,
+		boss = boss,
+		position = proxy.Position,
+		rotation = proxy.CFrame.Rotation,
+		phase = math.random() * math.pi * 2,
+		spawnedAt = os.clock(),
+		hit = 0,
+		lastHealth = if typeof(health) == "number" then health else 0,
+		nextBlink = os.clock() + 1 + math.random() * 3,
+		blinking = false,
+		hunting = false,
+		connections = {},
+	}
+end
+
 local function build(model: Model, proxy: BasePart): Visual
 	local s = proxy.Size.X
 	local color = model:GetAttribute("Color")
 	local bodyColor = if typeof(color) == "Color3" then color else proxy.Color
 	local boss = model:GetAttribute("Boss") == true
 	local titan = model:GetAttribute("ZoneBoss") == true
+	local source = templateFor(boss, titan)
+	if source then
+		return buildFromTemplate(model, proxy, source, bodyColor, boss or titan)
+	end
 
 	local visual = Instance.new("Model")
 	visual.Name = model.Name
@@ -138,6 +266,11 @@ local function build(model: Model, proxy: BasePart): Visual
 		pieces = pieces,
 		pupils = pupils,
 		whites = whites,
+		whiteHeights = (function()
+			local heights = {}
+			for i, eye in whites do heights[i] = eye.Size.Y end
+			return heights
+		end)(),
 		size = s,
 		boss = boss,
 		position = proxy.Position,
@@ -154,6 +287,15 @@ local function build(model: Model, proxy: BasePart): Visual
 end
 
 local function setEyeColor(visual: Visual, color: Color3, neon: boolean)
+	local rest = visual.pupilRest
+	if rest and not neon then
+		-- A template's pupils go back to how you made them.
+		for i, pupil in visual.pupils do
+			pupil.Color = rest[i].color
+			pupil.Material = rest[i].material
+		end
+		return
+	end
 	for _, pupil in visual.pupils do
 		pupil.Color = color
 		pupil.Material = if neon then Enum.Material.Neon else Enum.Material.SmoothPlastic
@@ -215,15 +357,15 @@ local function blink(visual: Visual, now: number)
 	if visual.blinking then
 		if now >= visual.nextBlink then
 			visual.blinking = false
-			for _, eye in visual.whites do
-				eye.Size = Vector3.new(eye.Size.X, visual.size * 0.26, eye.Size.Z)
+			for i, eye in visual.whites do
+				eye.Size = Vector3.new(eye.Size.X, visual.whiteHeights[i], eye.Size.Z)
 			end
 			visual.nextBlink = now + 2 + math.random() * 3
 		end
 	elseif now >= visual.nextBlink then
 		visual.blinking = true
-		for _, eye in visual.whites do
-			eye.Size = Vector3.new(eye.Size.X, visual.size * 0.04, eye.Size.Z)
+		for i, eye in visual.whites do
+			eye.Size = Vector3.new(eye.Size.X, visual.whiteHeights[i] * 0.15, eye.Size.Z)
 		end
 		visual.nextBlink = now + 0.12
 	end
