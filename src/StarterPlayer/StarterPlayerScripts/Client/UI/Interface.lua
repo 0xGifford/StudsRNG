@@ -90,6 +90,17 @@ end
 -- Idempotent; every controller calls it at the top of start().
 local settingUp = false
 
+-- Yields until the ReplicatedFirst loading screen is gone (it marks the
+-- LocalPlayer LoadingScreen / LoadingScreenDone), or `timeout` seconds.
+-- Returns at once when there is no loading screen.
+function Interface.waitForLoadingScreen(timeout: number?)
+	local deadline = os.clock() + (timeout or 40)
+	while player:GetAttribute("LoadingScreen") == true and player:GetAttribute("LoadingScreenDone") ~= true do
+		if os.clock() > deadline then return end
+		task.wait(0.1)
+	end
+end
+
 function Interface.setup()
 	if ready then return end
 	if settingUp then

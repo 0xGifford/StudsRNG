@@ -20,6 +20,7 @@ import math
 # --- Shared/Zones.lua ---
 HAND = [(0, 1), (1_400, 2), (3_700, 4), (9_700, 7), (22_000, 11), (45_000, 17), (91_000, 26)]
 PRICE_GROWTH, MULTIPLIER_GROWTH = 1.95, 1.5
+ZONES = 34  # workspace.Zones, in Shared/Zones.lua
 # --- Shared/Enemies.lua ---
 def enemy_health(n): return math.floor(45 * 1.2 ** n)
 def enemy_damage(n): return 4 * 1.16 ** n
@@ -39,7 +40,7 @@ def round2(v):
 
 def zones():
     z = list(HAND)
-    while len(z) < 50:
+    while len(z) < ZONES:
         p, m = z[-1]
         z.append((round2(p * PRICE_GROWTH), math.floor(m * MULTIPLIER_GROWTH + 0.5)))
     return z
@@ -47,7 +48,7 @@ def zones():
 def main():
     z = zones()
     print(" zone  next price   key x    min to next | enemy HP   kill s  survive s")
-    for n in [1, 2, 3, 4, 5, 7, 10, 15, 20, 25, 30, 35, 40, 45, 49]:
+    for n in [1, 2, 3, 4, 5, 7, 10, 15, 20, 25, 30, 33]:
         price_next, _ = z[n]
         _, km = z[n - 1]
         minutes = price_next / (PRESSES_PER_SEC * km * clack_mult(n)) / 60

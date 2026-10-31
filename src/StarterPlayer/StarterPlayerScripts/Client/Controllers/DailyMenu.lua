@@ -208,6 +208,7 @@ function DailyMenu.start()
 		if not State.isReady() then
 			State.Ready:Wait()
 		end
+		Interface.waitForLoadingScreen()
 		task.wait(5)
 		if not State.get("SeenIntro") then return end
 		local canClaim = RewardDefs.dailyState(State.get("Daily"), today())
