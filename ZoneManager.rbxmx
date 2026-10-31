@@ -1,0 +1,317 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<External>null</External>
+	<External>nil</External>
+	<Item class="Script" referent="RBX9668CB0F750542979A9D322FE4A538F7">
+		<Properties>
+			<ProtectedString name="Source"><![CDATA[-- Mosswake Zone Tools - local Roblox Studio plugin
+-- Save as a .lua file in your Studio Plugins folder, or paste into a Plugin Script.
+-- Tags, attributes, zone setup, EnemyGround marking and EnemySpawn scattering.
+--!strict
+
+local CollectionService = game:GetService("CollectionService")
+local Selection = game:GetService("Selection")
+local Workspace = game:GetService("Workspace")
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+
+local toolbar = plugin:CreateToolbar("Mosswake")
+local toggle = toolbar:CreateButton("MosswakeZoneTools", "Open Mosswake Zone Tools", "", "Zone Tools")
+toggle.ClickableWhenViewportHidden = true
+local widget = plugin:CreateDockWidgetPluginGui("MosswakeZoneTools", DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 360, 650, 300, 420))
+widget.Title = "Mosswake Zone Tools"
+toggle.Click:Connect(function() widget.Enabled = not widget.Enabled end)
+widget:GetPropertyChangedSignal("Enabled"):Connect(function() toggle:SetActive(widget.Enabled) end)
+
+local C = {
+	bg = Color3.fromRGB(24, 26, 29), panel = Color3.fromRGB(32, 35, 39), input = Color3.fromRGB(19, 21, 24),
+	border = Color3.fromRGB(58, 63, 70), text = Color3.fromRGB(235, 238, 241), muted = Color3.fromRGB(158, 166, 175),
+	accent = Color3.fromRGB(132, 174, 139), danger = Color3.fromRGB(190, 92, 92),
+}
+local function make(className: string, props: {[string]: any}, parent: Instance): any
+	local obj = Instance.new(className)
+	for k, v in pairs(props) do (obj :: any)[k] = v end
+	obj.Parent = parent
+	return obj
+end
+local root = make("Frame", {BackgroundColor3=C.bg, BorderSizePixel=0, Size=UDim2.fromScale(1,1)}, widget)
+local scroll = make("ScrollingFrame", {BackgroundTransparency=1, BorderSizePixel=0, Size=UDim2.fromScale(1,1), AutomaticCanvasSize=Enum.AutomaticSize.Y, CanvasSize=UDim2.new(), ScrollBarThickness=5, ScrollBarImageColor3=C.border}, root)
+make("UIPadding", {PaddingTop=UDim.new(0,12), PaddingBottom=UDim.new(0,12), PaddingLeft=UDim.new(0,12), PaddingRight=UDim.new(0,12)}, scroll)
+local body = make("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y}, scroll)
+make("UIListLayout", {Padding=UDim.new(0,9), SortOrder=Enum.SortOrder.LayoutOrder}, body)
+
+local function text(parent: Instance, value: string, size: number?, color: Color3?): TextLabel
+	return make("TextLabel", {BackgroundTransparency=1, Font=Enum.Font.Gotham, Text=value, TextColor3=color or C.text, TextSize=size or 11, TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Center, TextWrapped=true, Size=UDim2.new(1,0,0,20), AutomaticSize=Enum.AutomaticSize.Y}, parent)
+end
+local status: TextLabel
+local function report(message: string, bad: boolean?)
+	status.Text = message
+	status.TextColor3 = if bad then C.danger else C.accent
+end
+local function section(title: string, description: string?): Frame
+	local f = make("Frame", {BackgroundColor3=C.panel, BorderSizePixel=0, Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y}, body)
+	make("UICorner", {CornerRadius=UDim.new(0,7)}, f)
+	make("UIStroke", {Color=C.border, Transparency=0.45}, f)
+	make("UIPadding", {PaddingTop=UDim.new(0,9), PaddingBottom=UDim.new(0,10), PaddingLeft=UDim.new(0,10), PaddingRight=UDim.new(0,10)}, f)
+	make("UIListLayout", {Padding=UDim.new(0,6), SortOrder=Enum.SortOrder.LayoutOrder}, f)
+	local h = text(f,title,13,C.accent); h.Font=Enum.Font.GothamBold
+	if description then text(f,description,10,C.muted) end
+	return f
+end
+local function box(parent: Instance, hint: string, initial: string?): TextBox
+	local b = make("TextBox", {BackgroundColor3=C.input, BorderSizePixel=0, ClearTextOnFocus=false, Font=Enum.Font.Code, PlaceholderText=hint, PlaceholderColor3=C.muted, Text=initial or "", TextColor3=C.text, TextSize=12, TextXAlignment=Enum.TextXAlignment.Left, Size=UDim2.new(1,0,0,30)}, parent)
+	make("UICorner", {CornerRadius=UDim.new(0,5)}, b)
+	make("UIPadding", {PaddingLeft=UDim.new(0,8), PaddingRight=UDim.new(0,8)}, b)
+	return b
+end
+local function button(parent: Instance, caption: string, callback: ()->(), width: number?): TextButton
+	local b = make("TextButton", {BackgroundColor3=C.input, BorderSizePixel=0, Font=Enum.Font.GothamMedium, Text=caption, TextColor3=C.text, TextSize=11, Size=UDim2.new(1,0,0,29)}, parent)
+	if width then b.Size=UDim2.new(width, -3, 1, 0) end
+	make("UICorner", {CornerRadius=UDim.new(0,5)}, b)
+	b.Activated:Connect(callback)
+	return b
+end
+local function row(parent: Instance): Frame
+	local f=make("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,0,30)}, parent)
+	make("UIListLayout", {FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,6)}, f)
+	return f
+end
+local function selected(): {Instance} return Selection:Get() end
+local function selectedParts(): {BasePart}
+	local out={}
+	for _,v in ipairs(selected()) do if v:IsA("BasePart") then table.insert(out,v) end end
+	return out
+end
+local function selectedModels(): {Model}
+	local out={}
+	for _,v in ipairs(selected()) do if v:IsA("Model") then table.insert(out,v) end end
+	return out
+end
+local function targets(descendants: boolean): {Instance}
+	local out, seen = {}, {}
+	for _,v in ipairs(selected()) do
+		if not seen[v] then seen[v]=true; table.insert(out,v) end
+		if descendants then for _,d in ipairs(v:GetDescendants()) do if not seen[d] then seen[d]=true; table.insert(out,d) end end end
+	end
+	return out
+end
+
+local head=make("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,0,42)}, body)
+local brand=text(head,"MOSSWAKE",16,C.text); brand.Font=Enum.Font.GothamBold
+local sub=text(head,"Studio tagging and zone setup",10,C.muted); sub.Position=UDim2.fromOffset(0,22)
+
+local selectionPanel=section("Selection","Selection is read directly from Studio.")
+local selectionLabel=text(selectionPanel,"0 selected",10,C.muted)
+button(selectionPanel,"Refresh selection",function() selectionLabel.Text=#selected().." selected" end)
+Selection.SelectionChanged:Connect(function() selectionLabel.Text=#selected().." selected" end)
+
+local tagPanel=section("CollectionService tags","Add/remove a tag on selected instances or their descendants.")
+local tagBox=box(tagPanel,"Tag name (e.g. EnemyGround)")
+local includeDescendants=false
+local scopeButton: TextButton
+scopeButton=button(tagPanel,"Scope: selection only",function()
+	includeDescendants=not includeDescendants
+	scopeButton.Text=includeDescendants and "Scope: selection + descendants" or "Scope: selection only"
+end)
+local tagButtons=row(tagPanel)
+button(tagButtons,"Add tag",function()
+	local name=tagBox.Text; local list=targets(includeDescendants)
+	if name=="" or #list==0 then report("Enter a tag and select instances.",true); return end
+	ChangeHistoryService:SetWaypoint("Before adding tag")
+	local n=0
+	for _,v in ipairs(list) do if not CollectionService:HasTag(v,name) then CollectionService:AddTag(v,name); n+=1 end end
+	ChangeHistoryService:SetWaypoint("Added tag")
+	report(string.format("Added '%s' to %d instance(s).",name,n))
+end,0.5)
+button(tagButtons,"Remove tag",function()
+	local name=tagBox.Text; local list=targets(includeDescendants)
+	if name=="" or #list==0 then report("Enter a tag and select instances.",true); return end
+	ChangeHistoryService:SetWaypoint("Before removing tag")
+	local n=0
+	for _,v in ipairs(list) do if CollectionService:HasTag(v,name) then CollectionService:RemoveTag(v,name); n+=1 end end
+	ChangeHistoryService:SetWaypoint("Removed tag")
+	report(string.format("Removed '%s' from %d instance(s).",name,n))
+end,0.5)
+
+local attrPanel=section("Attributes","Set an attribute on every selected instance. Vector3: x, y, z. Color3: RGB 0-1 or 0-255.")
+local attrName=box(attrPanel,"Attribute name (e.g. ZoneId)")
+local attrValue=box(attrPanel,"Value")
+local attrType="string"
+local typeRow=row(attrPanel)
+for _,kind in ipairs({"string","number","boolean","Vector3","Color3"}) do
+	local b=button(typeRow,kind,function() attrType=kind; report("Attribute type: "..kind) end,0.2); b.TextSize=9
+end
+local function parseValue(): (boolean, any)
+	local raw=attrValue.Text
+	if attrType=="string" then return true,raw end
+	if attrType=="number" then local n=tonumber(raw); return n~=nil,n end
+	if attrType=="boolean" then if raw:lower()=="true" then return true,true elseif raw:lower()=="false" then return true,false end; return false,nil end
+	local a,b,c=string.match(raw,"^%s*([%+%-%.%d]+)%s*,%s*([%+%-%.%d]+)%s*,%s*([%+%-%.%d]+)%s*$")
+	if not a then return false,nil end
+	local x,y,z=tonumber(a),tonumber(b),tonumber(c)
+	if not x or not y or not z then return false,nil end
+	if attrType=="Vector3" then return true,Vector3.new(x,y,z) end
+	if attrType=="Color3" then
+		if x>1 or y>1 or z>1 then return true,Color3.fromRGB(math.clamp(math.round(x),0,255),math.clamp(math.round(y),0,255),math.clamp(math.round(z),0,255)) end
+		return true,Color3.new(math.clamp(x,0,1),math.clamp(y,0,1),math.clamp(z,0,1))
+	end
+	return false,nil
+end
+button(attrPanel,"Set attribute on selection",function()
+	local name=attrName.Text; local list=selected(); local ok,value=parseValue()
+	if name=="" or #list==0 or not ok then report("Check the attribute name, selection and value format.",true); return end
+	ChangeHistoryService:SetWaypoint("Before setting attribute")
+	for _,v in ipairs(list) do v:SetAttribute(name,value) end
+	ChangeHistoryService:SetWaypoint("Set attribute")
+	report(string.format("Set '%s' on %d instance(s).",name,#list))
+end)
+button(attrPanel,"Remove attribute from selection",function()
+	local name=attrName.Text; local list=selected()
+	if name=="" or #list==0 then report("Enter an attribute name and select instances.",true); return end
+	ChangeHistoryService:SetWaypoint("Before removing attribute")
+	local n=0; for _,v in ipairs(list) do if v:GetAttribute(name)~=nil then v:SetAttribute(name,nil); n+=1 end end
+	ChangeHistoryService:SetWaypoint("Removed attribute")
+	report(string.format("Removed '%s' from %d instance(s).",name,n))
+end)
+
+local zonePanel=section("Zone setup","Select a zone Model and a BasePart inside it to assign the Ground, or select only the zone to configure it.")
+local zoneIdBox=box(zonePanel,"ZoneId (must match your Zones.ById key)")
+local groundNameBox=box(zonePanel,"Ground part name","Ground")
+button(zonePanel,"Assign selected part as Ground",function()
+	local models,parts=selectedModels(),selectedParts()
+	if #models~=1 or #parts~=1 then report("Select exactly one zone Model and one BasePart.",true); return end
+	local zone,ground=models[1],parts[1]
+	if not ground:IsDescendantOf(zone) then report("The selected part must be inside the selected zone.",true); return end
+	ChangeHistoryService:SetWaypoint("Before assigning Ground")
+	ground.Name=if groundNameBox.Text~="" then groundNameBox.Text else "Ground"
+	zone.PrimaryPart=ground
+	zone:SetAttribute("Center",ground.Position)
+	zone:SetAttribute("ZoneSize",ground.Size)
+	CollectionService:AddTag(zone,"Zone")
+	if zoneIdBox.Text~="" then zone:SetAttribute("ZoneId",zoneIdBox.Text) end
+	ChangeHistoryService:SetWaypoint("Assigned Ground")
+	report("Assigned '"..ground.Name.."' as Ground and configured the zone.")
+end)
+button(zonePanel,"Configure selected zone from direct Ground child",function()
+	local models=selectedModels()
+	if #models~=1 then report("Select exactly one zone Model.",true); return end
+	local zone=models[1]; local ground=zone:FindFirstChild(if groundNameBox.Text~="" then groundNameBox.Text else "Ground")
+	if not ground or not ground:IsA("BasePart") then report("No direct BasePart Ground child found.",true); return end
+	ChangeHistoryService:SetWaypoint("Before zone setup")
+	zone.PrimaryPart=ground; zone:SetAttribute("Center",ground.Position); zone:SetAttribute("ZoneSize",ground.Size)
+	zone:SetAttribute("ZoneId",if zoneIdBox.Text~="" then zoneIdBox.Text else zone:GetAttribute("ZoneId"))
+	CollectionService:AddTag(zone,"Zone")
+	ChangeHistoryService:SetWaypoint("Configured zone")
+	report("Zone configured. ZoneId: "..tostring(zone:GetAttribute("ZoneId")))
+end)
+button(zonePanel,"Mark selected parts as EnemyGround",function()
+	local parts=selectedParts(); if #parts==0 then report("Select one or more BaseParts.",true); return end
+	ChangeHistoryService:SetWaypoint("Before EnemyGround tagging")
+	for _,p in ipairs(parts) do CollectionService:AddTag(p,"EnemyGround") end
+	ChangeHistoryService:SetWaypoint("Tagged EnemyGround")
+	report("Tagged "..#parts.." part(s) as EnemyGround.")
+end)
+
+local spawnPanel=section("Enemy spawn scatter","Creates invisible anchored EnemySpawn marker Parts on the zone Ground and/or parts tagged EnemyGround.")
+local countBox=box(spawnPanel,"Spawn count","20")
+local spacingBox=box(spawnPanel,"Minimum spacing (studs)","8")
+local insetBox=box(spawnPanel,"Edge inset (studs)","4")
+local heightBox=box(spawnPanel,"Marker height above surface","0.15")
+local folderBox=box(spawnPanel,"Folder name","EnemySpawns")
+local includeZoneGround=true
+local includeEnemyGround=true
+local groundToggle: TextButton
+local taggedToggle: TextButton
+groundToggle=button(spawnPanel,"Include zone Ground: ON",function() includeZoneGround=not includeZoneGround; groundToggle.Text="Include zone Ground: "..(includeZoneGround and "ON" or "OFF") end)
+taggedToggle=button(spawnPanel,"Include EnemyGround tags: ON",function() includeEnemyGround=not includeEnemyGround; taggedToggle.Text="Include EnemyGround tags: "..(includeEnemyGround and "ON" or "OFF") end)
+local function numberFrom(b: TextBox, allowZero: boolean): number?
+	local n=tonumber(b.Text)
+	if not n or n~=n or n==math.huge or n==-math.huge or (allowZero and n<0) or (not allowZero and n<=0) then return nil end
+	return n
+end
+local function scatter(zone: Model): (boolean,string)
+	local count=numberFrom(countBox,false); local spacing=numberFrom(spacingBox,true); local inset=numberFrom(insetBox,true); local height=numberFrom(heightBox,true)
+	if not count or count%1~=0 or count>500 then return false,"Spawn count must be a whole number from 1 to 500." end
+	if not spacing or not inset or not height then return false,"Spacing, inset and height must be zero or greater." end
+	local zoneId=zone:GetAttribute("ZoneId")
+	if typeof(zoneId)~="string" or zoneId=="" then return false,"Set the zone's ZoneId before scattering." end
+	local surfaces: {BasePart}={}; local seen: {[Instance]:boolean}={}
+	local function add(p: Instance) if p:IsA("BasePart") and p:IsDescendantOf(zone) and not seen[p] then seen[p]=true; table.insert(surfaces,p) end end
+	if includeZoneGround then
+		if zone.PrimaryPart then add(zone.PrimaryPart) else add(zone:FindFirstChild(if groundNameBox.Text~="" then groundNameBox.Text else "Ground") or zone) end
+	end
+	if includeEnemyGround then for _,p in ipairs(CollectionService:GetTagged("EnemyGround")) do add(p) end end
+	if #surfaces==0 then return false,"No eligible Ground or EnemyGround surface found." end
+	local candidates={}
+	for _,p in ipairs(surfaces) do
+		local hx=p.Size.X/2-inset; local hz=p.Size.Z/2-inset
+		if hx>0 and hz>0 then table.insert(candidates,{part=p,hx=hx,hz=hz}) end
+	end
+	if #candidates==0 then return false,"Surfaces are too small for this edge inset." end
+	local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Include; params.FilterDescendantsInstances=surfaces; params.IgnoreWater=true
+	local positions: {Vector3}={}; local rng=Random.new()
+	for _=1,math.max(count*40,120) do
+		if #positions>=count then break end
+		local c=candidates[rng:NextInteger(1,#candidates)]; local p=c.part
+		local sample=p.CFrame:PointToWorldSpace(Vector3.new(rng:NextNumber(-c.hx,c.hx),p.Size.Y/2+25,rng:NextNumber(-c.hz,c.hz)))
+		local hit=Workspace:Raycast(sample+Vector3.new(0,40,0),Vector3.new(0,-600,0),params)
+		if hit and hit.Instance==p then
+			local pos=hit.Position+Vector3.new(0,height,0); local clear=true
+			for _,other in ipairs(positions) do local dx=pos.X-other.X; local dz=pos.Z-other.Z; if dx*dx+dz*dz<spacing*spacing then clear=false; break end end
+			if clear then table.insert(positions,pos) end
+		end
+	end
+	if #positions==0 then return false,"No valid positions found. Reduce inset or spacing." end
+	local folderName=if folderBox.Text~="" then folderBox.Text else "EnemySpawns"
+	local folder=zone:FindFirstChild(folderName)
+	if folder and not folder:IsA("Folder") then return false,"An object with the spawn folder name already exists." end
+	ChangeHistoryService:SetWaypoint("Before scattering EnemySpawns")
+	if not folder then folder=Instance.new("Folder"); folder.Name=folderName; folder.Parent=zone end
+	for i,pos in ipairs(positions) do
+		local marker=Instance.new("Part")
+		marker.Name=string.format("EnemySpawn_%03d",i); marker.Size=Vector3.new(1,0.2,1); marker.Position=pos
+		marker.Anchored=true; marker.CanCollide=false; marker.CanTouch=false; marker.CanQuery=false
+		marker.Transparency=1; marker.CastShadow=false
+		marker:SetAttribute("ZoneId",zoneId)
+		CollectionService:AddTag(marker,"EnemySpawn")
+		marker.Parent=folder
+	end
+	ChangeHistoryService:SetWaypoint("Scattered EnemySpawns")
+	return true,string.format("Created %d of %d requested EnemySpawn markers.",#positions,count)
+end
+button(spawnPanel,"Scatter EnemySpawns in selected zone",function()
+	local models=selectedModels(); if #models~=1 then report("Select exactly one zone Model.",true); return end
+	local ok,message=scatter(models[1]); report(message,not ok)
+end)
+button(spawnPanel,"Delete tagged EnemySpawns in selected zone",function()
+	local models=selectedModels(); if #models~=1 then report("Select exactly one zone Model.",true); return end
+	local zone=models[1]; local remove={}
+	for _,d in ipairs(zone:GetDescendants()) do if d:IsA("BasePart") and CollectionService:HasTag(d,"EnemySpawn") then table.insert(remove,d) end end
+	ChangeHistoryService:SetWaypoint("Before deleting EnemySpawns")
+	for _,p in ipairs(remove) do p:Destroy() end
+	ChangeHistoryService:SetWaypoint("Deleted EnemySpawns")
+	report("Deleted "..#remove.." tagged EnemySpawn marker(s).")
+end)
+
+local footer=make("Frame", {BackgroundColor3=C.input, BorderSizePixel=0, Size=UDim2.new(1,0,0,46)}, body)
+make("UICorner", {CornerRadius=UDim.new(0,6)}, footer)
+make("UIPadding", {PaddingLeft=UDim.new(0,9), PaddingRight=UDim.new(0,9), PaddingTop=UDim.new(0,5), PaddingBottom=UDim.new(0,5)}, footer)
+status=text(footer,"Ready. Select instances in the Explorer or viewport.",10,C.accent)
+status.Size=UDim2.new(1,0,1,0)
+report("Ready. Select a zone or parts to begin.")
+]]></ProtectedString>
+			<bool name="Disabled">false</bool>
+			<Content name="LinkedSource"><null></null></Content>
+			<token name="RunContext">0</token>
+			<string name="ScriptGuid">{56CCD26B-0A3A-4A4F-AA93-3E1FE9E92E78}</string>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+			<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+			<bool name="DefinesCapabilities">false</bool>
+			<string name="Name">ZoneManager</string>
+			<BinaryString name="SerializedOverrides"></BinaryString>
+			<int64 name="SourceAssetId">-1</int64>
+			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+		</Properties>
+	</Item>
+	<SharedStrings>
+		<SharedString md5="yuZpQdnvvUBOTYh1jqZ2cA=="></SharedString>
+	</SharedStrings>
+</roblox>
