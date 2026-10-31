@@ -22,6 +22,17 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.8",
+		Date = "Oct 31, 2026",
+		Title = "A Whole New World",
+		Notes = {
+			"A brand new hand-built map: 34 zones, from Grasslands and the City to the Obsidian Wastes.",
+			"Every zone has its own keyboard, enemies and gate. Buy a zone at its gate and walk on in.",
+			"A new loading screen.",
+			"Your unlocked zones carry over to the new map.",
+		},
+	},
+	{
 		Version = "1.7",
 		Date = "Oct 30, 2026",
 		Title = "Bigger & Better",
