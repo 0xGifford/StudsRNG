@@ -235,7 +235,9 @@ function Intro.start()
 			finish()
 			return
 		end
-		-- Give the map a moment to stream in around the camera's path.
+		-- After the loading screen, and give the map a moment to stream in
+		-- around the camera's path.
+		Interface.waitForLoadingScreen()
 		task.wait(1.5)
 		local ok, err = pcall(play)
 		if not ok then
