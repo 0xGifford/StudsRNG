@@ -11,6 +11,21 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Builds the visual for one stud + variant. Client-side only in practice
 -- (followers, index viewports, roll reveal). Cosmetic: no gameplay reads it.
+--
+-- Your own stud model: put ONE Model (or Part / MeshPart) named
+-- "StudTemplate" in ServerStorage (Systems/Templates copies it where clients
+-- can see it). Build it at the size a normal stud should be. Every stud uses
+-- it:
+--   colour     every part takes the stud's colour (Inverted: the inverse,
+--              Gold: gold), except parts with the attribute KeepColor = true
+--   material   your parts keep their own material, unless the stud or
+--              variant has a special one (Neon, Glass, Foil for Gold...)
+--   size       Big / Huge / Jumbo scale the whole model up
+--   effects    the stud's particles and glow, Shiny sparkles, the Shiny /
+--              Inverted outline, Rainbow colour cycling
+-- build() always returns one BasePart (for a Model: an invisible box around
+-- it, carrying the model). Move it with StudVisuals.place, not .CFrame, so a
+-- Model's parts come along (also inside ViewportFrames, where welds don't run).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -117,11 +132,99 @@ local function makeEmitter(name: string, preset: Preset, color: Color3, scale: n
 	return emitter
 end
 
-local function basePart(): BasePart
+-- A Model-built stud: its root box → the parts it carries, where they sit
+-- relative to it, and which of them take the stud's colour.
+type Rig = { parts: { BasePart }, offsets: { CFrame }, tinted: { BasePart } }
+local rigs: { [BasePart]: Rig } = setmetatable({}, { __mode = "k" }) :: any
+
+local PLAIN = { [Enum.Material.Plastic] = true, [Enum.Material.SmoothPlastic] = true }
+
+local function template(): Instance?
 	local folder = ReplicatedStorage:FindFirstChild(Config.Visuals.TemplateFolder)
-	local template = folder and folder:FindFirstChild(Config.Visuals.TemplateName)
-	if template and template:IsA("BasePart") then
-		return template:Clone()
+	local found = folder and folder:FindFirstChild(Config.Visuals.TemplateName)
+	if found and (found:IsA("BasePart") or found:IsA("Model")) then
+		return found
+	end
+	return nil
+end
+
+local function largest(size: Vector3): number
+	return math.max(size.X, size.Y, size.Z, 1e-3)
+end
+
+-- A stud from a Model template: scaled, coloured, wrapped in a root box.
+-- fit: the size of its largest side (index cells), else the variant's scale.
+local function fromModel(source: Model, color: Color3, material: Enum.Material?, scale: number, fit: number?): BasePart
+	local model = source:Clone()
+	for _, d in model:GetDescendants() do
+		if d:IsA("LuaSourceContainer") then d:Destroy() end
+	end
+	local _, extents = model:GetBoundingBox()
+	local factor = if fit then fit / largest(extents) else scale
+	if math.abs(factor - 1) > 1e-3 then
+		model:ScaleTo(model:GetScale() * factor)
+	end
+	local cframe, size = model:GetBoundingBox()
+
+	local root = Instance.new("Part")
+	root.Size = size
+	root.CFrame = cframe
+	root.Transparency = 1
+	root.Color = color
+
+	local rig: Rig = { parts = {}, offsets = {}, tinted = {} }
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			d.Massless = true
+			if d:GetAttribute("KeepColor") ~= true then
+				d.Color = color
+				if material then
+					d.Material = material
+				end
+				table.insert(rig.tinted, d)
+			end
+			table.insert(rig.parts, d)
+			table.insert(rig.offsets, cframe:ToObjectSpace(d.CFrame))
+		end
+	end
+	model.Parent = root
+	rigs[root] = rig
+	return root
+end
+
+-- Moves a built stud (and, for a Model template, every part of it).
+function StudVisuals.place(part: BasePart, cframe: CFrame)
+	part.CFrame = cframe
+	local rig = rigs[part]
+	if not rig then return end
+	if part:IsDescendantOf(workspace) then
+		local cframes = table.create(#rig.parts)
+		for i, offset in rig.offsets do
+			cframes[i] = cframe * offset
+		end
+		workspace:BulkMoveTo(rig.parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+	else
+		-- Not in the world yet, or in a ViewportFrame.
+		for i, piece in rig.parts do
+			piece.CFrame = cframe * rig.offsets[i]
+		end
+	end
+end
+
+-- What a Highlight should outline: the model for a Model-built stud (its
+-- root box is invisible), else the part itself.
+function StudVisuals.adorneeOf(part: BasePart): Instance
+	return if rigs[part] then part:FindFirstChildWhichIsA("Model") or part else part
+end
+
+local function basePart(): BasePart
+	local found = template()
+	if found and found:IsA("BasePart") then
+		return found:Clone()
 	end
 
 	-- A classic brick: the studs surface on all six faces.
@@ -160,10 +263,27 @@ function StudVisuals.scaleOf(variant: VariantDef): number
 end
 
 -- Returns an unparented, anchored, non-colliding part.
+-- fit: make its largest side this many studs (index cells) instead of
+-- scaling it by the variant (Big / Huge / Jumbo).
 -- Rainbow studs get the attribute "Rainbow" = true; call StudVisuals.step
 -- each frame to animate them.
-function StudVisuals.build(def: StudDef, variant: VariantDef): BasePart
-	local part = basePart()
+function StudVisuals.build(def: StudDef, variant: VariantDef, fit: number?): BasePart
+	local scale = StudVisuals.scaleOf(variant)
+	local color = StudVisuals.colorOf(def, variant)
+	local material = variant.MaterialOverride or def.Material
+	local source = template()
+
+	local part: BasePart
+	if source and source:IsA("Model") then
+		-- Your model keeps its own materials unless this stud's is special.
+		local special = if variant.MaterialOverride or not PLAIN[def.Material] then material else nil
+		part = fromModel(source, color, special, scale, fit)
+	else
+		part = basePart()
+		part.Size = if fit then part.Size * (fit / largest(part.Size)) else part.Size * scale
+		part.Color = color
+		part.Material = material
+	end
 	part.Name = `{def.Id}_{variant.Name}`
 	part.Anchored = true
 	part.CanCollide = false
@@ -171,12 +291,6 @@ function StudVisuals.build(def: StudDef, variant: VariantDef): BasePart
 	part.CanTouch = false
 	part.CastShadow = false
 	part.Massless = true
-
-	local scale = StudVisuals.scaleOf(variant)
-	part.Size *= scale
-	local color = StudVisuals.colorOf(def, variant)
-	part.Color = color
-	part.Material = variant.MaterialOverride or def.Material
 
 	if def.Particle and PRESETS[def.Particle] then
 		makeEmitter("StudParticles", PRESETS[def.Particle], color, scale).Parent = part
@@ -221,6 +335,12 @@ function StudVisuals.step(part: BasePart, t: number)
 	if not part:GetAttribute("Rainbow") then return end
 	local color = Color3.fromHSV((t * 0.25) % 1, 0.75, 1)
 	part.Color = color
+	local rig = rigs[part]
+	if rig then
+		for _, piece in rig.tinted do
+			piece.Color = color
+		end
+	end
 	local glow = part:FindFirstChild("Glow")
 	if glow and glow:IsA("PointLight") then
 		glow.Color = color

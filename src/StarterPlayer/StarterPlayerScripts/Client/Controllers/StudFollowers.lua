@@ -91,7 +91,7 @@ local function rebuild(player: Player)
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart")
 			if root and root:IsA("BasePart") then
-				part.CFrame = root.CFrame -- start at the player, not the world origin
+				StudVisuals.place(part, root.CFrame) -- start at the player, not the world origin
 			end
 			part.Parent = if entry.visible then container else nil
 			-- A short streak behind it while it flies or fights.
@@ -121,6 +121,7 @@ local function rebuild(player: Player)
 				highlight.OutlineColor = variant.Outline
 				highlight.OutlineTransparency = 0
 				highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+				highlight.Adornee = StudVisuals.adorneeOf(part)
 				highlight.Parent = part
 			end
 			-- Odds and name floating over it ("1/3.07M" / "Stormy").
@@ -314,7 +315,7 @@ local function update(dt: number)
 				follower.trail.Enabled = (target.Position - part.Position).Magnitude > FLY_DISTANCE
 				spin = CFrame.Angles(0, t * 0.8 + follower.phase, 0)
 			end
-			part.CFrame = CFrame.new(position) * spin
+			StudVisuals.place(part, CFrame.new(position) * spin)
 			StudVisuals.step(part, t)
 		end
 	end

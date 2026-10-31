@@ -93,12 +93,12 @@ function StudCell.setViewport(viewport: ViewportFrame, def: StudDef, variant: Va
 	local old = viewport:FindFirstChild("Stud")
 	if old then old:Destroy() end
 
-	local part = StudVisuals.build(def, variant)
-	part.Name = "Stud"
 	-- Normalised so the framing fits, but bigger variants still read bigger:
-	-- Base 0.75 → Jumbo 1.15.
-	part.Size = Vector3.one * (0.75 + math.clamp((StudVisuals.scaleOf(variant) - 1) / 2.6, 0, 1) * 0.4)
-	part.CFrame = CFrame.Angles(math.rad(22), math.rad(38), 0)
+	-- Base 0.75 → Jumbo 1.15 studs across.
+	local fit = 0.75 + math.clamp((StudVisuals.scaleOf(variant) - 1) / 2.6, 0, 1) * 0.4
+	local part = StudVisuals.build(def, variant, fit)
+	part.Name = "Stud"
+	StudVisuals.place(part, CFrame.Angles(math.rad(22), math.rad(38), 0))
 	strip(part)
 	part.Parent = viewport
 

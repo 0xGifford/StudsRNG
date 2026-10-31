@@ -375,15 +375,21 @@ Config.Followers = {
 }
 
 Config.Visuals = {
-	-- Optional template: a 1×1×1 Part or MeshPart (your own stud model, with
-	-- any Texture / Decal / SurfaceAppearance). Put it in ServerStorage (the
-	-- server copies it to ReplicatedStorage.Assets at boot, where clients
-	-- can see it) or straight in ReplicatedStorage.Assets, named
-	-- TemplateName. The game sets its colour, material, size per variant,
-	-- particles, light and outline. Without one, studs are classic bricks
-	-- with the studs surface on every face (plus FallbackTextureId, if set).
+	-- Your own models (Systems/Templates copies them from ServerStorage to
+	-- ReplicatedStorage.<TemplateFolder> at boot, where clients can see them):
+	--   TemplateName         ONE Model (or Part / MeshPart) every stud is built
+	--                        from, at the size a normal stud should be. The game
+	--                        recolours it (parts with KeepColor = true keep
+	--                        theirs), scales it for Big / Huge / Jumbo and adds
+	--                        particles, glow and the Shiny / Inverted outline
+	--                        (Util/StudVisuals). Without one, studs are classic
+	--                        bricks (plus FallbackTextureId, if set).
+	--   EnemyTemplateFolder  a Folder of Models named Enemy, MiniBoss, Titan
+	--                        (Controllers/EnemyVisuals). Without them, enemies
+	--                        are the built-in brick monsters.
 	TemplateFolder = "Assets",
 	TemplateName = "StudTemplate",
+	EnemyTemplateFolder = "EnemyTemplates",
 	FallbackTextureId = "",
 	Size = Vector3.new(1, 1, 1),
 }
