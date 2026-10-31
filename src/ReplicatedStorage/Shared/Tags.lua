@@ -46,9 +46,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                   Value    number   Clacks per press (on the key Model)
 --                   World    string   zone id (on the key Model; default: its Keyboard / Zone)
 --                   Enabled  boolean  false: this key never pays (default true)
---   EnemySpawn    BasePart where an enemy lives (wanders around it).
+--   EnemyGround   BasePart enemies may stand on (a zone's floor). Enemies
+--                 spawn on it, at EnemySpawn markers first, then random clear
+--                 spots, up to Config.Combat's per-zone capacity. A zone with
+--                 none uses its own geometry.
+--   EnemySpawn    BasePart marking a spot an enemy lives at (wanders around it).
 --                   ZoneId    string   default: the Zone it sits in
---                 Zones without any get Config.Combat.PerZone spots of their own.
 --   Enemy         set by the server on each enemy Model (EnemyId, ZoneId,
 --                 Health, MaxHealth attributes); don't place these yourself.
 --   Leaderboard   BasePart showing a global top list on its front face.
@@ -78,6 +81,7 @@ local Tags = {
 	Keyboard = "Keyboard",
 	MenuTrigger = "MenuTrigger",
 	EnemySpawn = "EnemySpawn",
+	EnemyGround = "EnemyGround",
 	Enemy = "Enemy",
 	Leaderboard = "Leaderboard",
 

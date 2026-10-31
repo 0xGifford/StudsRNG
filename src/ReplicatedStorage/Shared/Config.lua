@@ -247,7 +247,11 @@ Config.IndexTabReward = {
 -- A defeat pays Clacks; the studs then take the next enemy within
 -- RetargetRange, or fly home.
 Config.Combat = {
-	PerZone = 4, -- enemies alive in each zone (when no EnemySpawn parts are placed)
+	-- Enemies per zone: one per AreaPerEnemy square studs of floor (ZoneSize),
+	-- between MinPerZone and MaxPerZone (each one pathfinds: keep it modest).
+	AreaPerEnemy = 1500,
+	MinPerZone = 4,
+	MaxPerZone = 12,
 	Tick = 0.25, -- seconds per combat step
 	AggroRange = 50, -- studs: enemies notice players this close
 	EngageRange = 32, -- studs: studs start fighting an enemy this close
