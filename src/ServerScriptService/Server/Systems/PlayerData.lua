@@ -29,7 +29,7 @@ local ProfileStore = require(ServerScriptService:WaitForChild("Packages"):WaitFo
 
 type PlayerData = Types.PlayerData
 
-local CURRENT_VERSION = 1
+local CURRENT_VERSION = 2
 
 local TEMPLATE: PlayerData = {
 	Version = CURRENT_VERSION,
@@ -43,7 +43,7 @@ local TEMPLATE: PlayerData = {
 	Equipped = {},
 	Index = {},
 	AutoDelete = {},
-	UnlockedWorlds = { Office = true },
+	UnlockedWorlds = { Grasslands = true },
 	Rebirths = 0,
 	Upgrades = {},
 	LuckyRolls = 0,
@@ -71,7 +71,22 @@ local TEMPLATE: PlayerData = {
 }
 
 -- [fromVersion] = function(data) ... end. Runs on load until Version is current.
-local MIGRATIONS: { [number]: (any) -> () } = {}
+local MIGRATIONS: { [number]: (any) -> () } = {
+	-- v1 → v2: the Studio-built map renamed every zone. Owned zones carry over
+	-- by their place in the unlock order (the 3rd zone stays the 3rd zone).
+	[1] = function(data)
+		local Zones = require(Shared.Zones)
+		local old = if typeof(data.UnlockedWorlds) == "table" then data.UnlockedWorlds else {}
+		local unlocked = {}
+		for order, legacyId in Zones.LegacyOrder do
+			local zone = Zones.List[order]
+			if old[legacyId] and zone then
+				unlocked[zone.Id] = true
+			end
+		end
+		data.UnlockedWorlds = unlocked
+	end,
+}
 
 local PlayerData = {}
 
