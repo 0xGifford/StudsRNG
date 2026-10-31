@@ -23,11 +23,17 @@ local LabelSource = require(script.Parent.LabelSource)
 local Eraser = require(script.Parent.Eraser)
 local GroupRegistry = require(script.Parent.Parent.Core.GroupRegistry)
 local GroupStyler = require(script.Parent.Parent.Edit.GroupStyler)
+local ZoneResolver = require(script.Parent.ZoneResolver)
 
 local Brush = {}
 Brush.__index = Brush
 
 Brush.TOOLS = { "Paint", "Erase" }
+-- StudsRNG: how a painted key picks its game zone (see ZoneResolver).
+--   Auto    the zone of the surface it lands on
+--   Locked  always the zone picked in the panel
+--   Off     no zone (the key keeps no World attribute)
+Brush.ZONE_MODES = { "Auto", "Locked", "Off" }
 
 local PAINT_GHOST_COLOR = Color3.fromRGB(90, 200, 255)
 local ERASE_GHOST_COLOR = Color3.fromRGB(255, 90, 90)
@@ -52,6 +58,17 @@ function Brush.new(pluginInstance: Plugin)
 	self.currentGroup = Constants.DEFAULT_GROUP
 	self.tool = "Paint"
 	self.eraseScope = "Group"
+	-- StudsRNG zones. zoneGroups: paint each zone's keys into its own group
+	-- ("Zone7"), so every zone's keyboard can be styled on its own.
+	self.zoneMode = "Auto"
+	self.zoneLock = nil :: number?
+	self.zoneGroups = true
+	-- The zone the cursor is over right now (after zoneMode), for the panel.
+	self.hoverZone = nil :: number?
+	self._aimSurface = nil :: Instance?
+	self._aimPosition = nil :: Vector3?
+	-- The surface under each cell of the last solve, parallel to its frames.
+	self._cellSurfaces = {} :: { Instance }
 	self.ghost = nil :: any
 	self.connections = {}
 
@@ -67,6 +84,9 @@ function Brush.new(pluginInstance: Plugin)
 	-- style just those instead of the whole group when the group's look does
 	-- not depend on its membership.
 	self.strokeNewKeys = {} :: { Model }
+	-- The same keys by the group they were painted into: with zone groups one
+	-- stroke can paint into several groups, and each must only restyle its own.
+	self.strokeNewByGroup = {} :: { [string]: { Model } }
 	-- Groups the stroke changed the membership of, painted or erased: their
 	-- gradients are derived from the members, so they need a restyle at the
 	-- end of the stroke (once, not per key).
@@ -81,6 +101,11 @@ function Brush.new(pluginInstance: Plugin)
 	-- so this is the one moment they can go stale without anything else in the
 	-- UI moving. Carries nothing: the listener re-reads the counts itself.
 	self.OnStrokeEnded = nil :: (() -> ())?
+	-- StudsRNG: fired when the zone under the cursor changes (nil = none).
+	self.OnHoverZone = nil :: ((number?) -> ())?
+	-- StudsRNG: fired when a stroke starts in a zone whose group differs from
+	-- the current one, so the panel can switch to (and show) that group.
+	self.OnZoneGroup = nil :: ((string) -> ())?
 	return self
 end
 
@@ -124,7 +149,12 @@ function Brush:_cellFrames(snap: boolean): { CFrame }
 	local ignore = self:_rayFilter()
 
 	local hit = SurfaceProbe.Probe(unitRay.Origin, unitRay.Direction * 1000, ignore)
-	if not hit then return {} end
+	self._cellSurfaces = {}
+	if not hit then
+		self._aimSurface, self._aimPosition = nil, nil
+		return {}
+	end
+	self._aimSurface, self._aimPosition = hit.instance, hit.position
 
 	local anchor = snap
 		and GridSolver.Snap(hit.position, hit.origin, Constants.GRID_PITCH)
@@ -161,6 +191,7 @@ function Brush:_cellFrames(snap: boolean): { CFrame }
 			-- the key that lands is the rotation the player saw about to land.
 			local steps = self.rotationRandom and math.random(0, 3) or self.rotationSteps
 			table.insert(frames, GridSolver.BuildCFrame(resting, cellHit.frame, steps))
+			table.insert(self._cellSurfaces, cellHit.instance)
 		end
 	end
 
@@ -175,6 +206,14 @@ function Brush:_refresh(applyIfPainting: boolean)
 	self:_ensureGhost()
 	local frames = self:_cellFrames(self.tool ~= "Erase")
 	self.ghost:Show(frames)
+
+	local zone = if self._aimPosition then self:_zoneFor(self._aimSurface, self._aimPosition) else nil
+	if zone ~= self.hoverZone then
+		self.hoverZone = zone
+		if self.OnHoverZone then
+			self.OnHoverZone(zone)
+		end
+	end
 
 	if applyIfPainting and self.painting then
 		self:_applyTool(frames)
@@ -237,6 +276,50 @@ function Brush:SetGroup(name: string)
 	self.currentGroup = name
 end
 
+-- StudsRNG zones ---------------------------------------------------------
+
+function Brush:SetZoneMode(mode: string)
+	self.zoneMode = mode
+end
+
+function Brush:SetZoneLock(zone: number?)
+	self.zoneLock = zone
+end
+
+function Brush:SetZoneGroups(enabled: boolean)
+	self.zoneGroups = enabled
+end
+
+-- The zone a key landing on `surface` at `position` pays in.
+function Brush:_zoneFor(surface: Instance?, position: Vector3): number?
+	if self.zoneMode == "Off" then return nil end
+	if self.zoneMode == "Locked" then return self.zoneLock end
+	return ZoneResolver.Resolve(surface, position)
+end
+
+-- The group a key in `zone` is painted into.
+function Brush:_groupFor(zone: number?): string
+	if self.zoneGroups and zone then
+		return ZoneResolver.GroupName(zone)
+	end
+	return self.currentGroup
+end
+
+-- Creates a zone's group the first time it is painted into, starting from the
+-- current group's look rather than the plain defaults: the first key in a new
+-- zone looks like the keys you were just painting. Must run inside the
+-- stroke's recording, so undo removes the group with the keys.
+function Brush:_ensureGroup(name: string)
+	if GroupRegistry.Get(name) then return end
+	local template = GroupRegistry.Get(self.currentGroup)
+	local group = GroupRegistry.Ensure(name)
+	if template and template ~= group then
+		for key, value in pairs(template:GetAttributes()) do
+			group:SetAttribute(key, value)
+		end
+	end
+end
+
 function Brush:SetSize(size: number)
 	self.brushSize = math.max(1, math.floor(size))
 	-- Only refresh an existing preview: resizing while the brush is off must
@@ -247,7 +330,7 @@ function Brush:SetSize(size: number)
 end
 
 -- Places one cell. Returns the new key, or nil if the cell was left untouched.
-function Brush:_placeCell(cframe: CFrame): Model?
+function Brush:_placeCell(cframe: CFrame, surface: Instance?): Model?
 	local overlapping = OverlapGuard.FindOverlapping(cframe, Constants.KEY_SIZE)
 
 	for _, existing in ipairs(overlapping) do
@@ -265,20 +348,32 @@ function Brush:_placeCell(cframe: CFrame): Model?
 		existing:Destroy()
 	end
 
+	local zone = self:_zoneFor(surface, cframe.Position)
+	local group = self:_groupFor(zone)
+	self:_ensureGroup(group)
+	self.strokeGroups[group] = true
+
 	local label = LabelSource.Pick(self.labelMode, self.currentLetter, self.labelCharset)
-	local key = KeyPlacer.Place(cframe, label, self.currentGroup)
+	local key = KeyPlacer.Place(cframe, label, group, zone)
 	self.strokeKeys[key] = true
 	table.insert(self.strokeNewKeys, key)
+	local byGroup = self.strokeNewByGroup[group]
+	if not byGroup then
+		byGroup = {}
+		self.strokeNewByGroup[group] = byGroup
+	end
+	table.insert(byGroup, key)
 	return key
 end
 
 function Brush:_applyTool(frames: { CFrame })
 	if self.tool == "Erase" then
+		-- "This group" means the zone's own group when zone groups are on.
 		local touched, removed = Eraser.Erase(
 			frames,
 			Constants.KEY_SIZE,
 			self.eraseScope,
-			self.currentGroup
+			self:_groupFor(self.hoverZone)
 		)
 		for group in pairs(touched) do
 			self.strokeGroups[group] = true
@@ -287,9 +382,9 @@ function Brush:_applyTool(frames: { CFrame })
 		return
 	end
 
-	self.strokeGroups[self.currentGroup] = true
-	for _, cframe in ipairs(frames) do
-		self:_placeCell(cframe)
+	local surfaces = self._cellSurfaces
+	for index, cframe in ipairs(frames) do
+		self:_placeCell(cframe, surfaces[index])
 	end
 end
 
@@ -299,13 +394,20 @@ function Brush:_beginStroke()
 	self.painting = true
 	self.strokeKeys = {}
 	self.strokeNewKeys = {}
+	self.strokeNewByGroup = {}
 	self.strokeGroups = {}
 	self.strokeErased = 0
 	self.recording = History.Begin(
 		self.tool == "Erase" and "KeyCapper: erase keys" or "KeyCapper: place keys"
 	)
+	-- The group this stroke works in (the zone's own, with zone groups on).
+	-- The panel follows it, so the style you edit next is the one you see.
+	local group = self:_groupFor(self.hoverZone)
 	if self.tool ~= "Erase" then
-		GroupRegistry.Ensure(self.currentGroup)
+		self:_ensureGroup(group)
+	end
+	if group ~= self.currentGroup and GroupRegistry.Get(group) and self.OnZoneGroup then
+		self.OnZoneGroup(group)
 	end
 	self:_refresh(true)
 end
@@ -322,8 +424,11 @@ function Brush:_endStroke()
 			-- that is what made painting slow down as the build grew.
 			-- GroupStyler decides: a gradient depends on the whole membership
 			-- and still forces the full pass, an erase always does.
-			local incremental = (self.strokeErased == 0) and group == self.currentGroup
-			GroupStyler.Apply(group, incremental and self.strokeNewKeys or nil)
+			-- Per group: a stroke can paint into several zone groups, and
+			-- each may only restyle the keys painted into it.
+			local newKeys = self.strokeNewByGroup[group]
+			local incremental = (self.strokeErased == 0) and newKeys ~= nil
+			GroupStyler.Apply(group, if incremental then newKeys else nil)
 		end
 		History.Commit(self.recording)
 		-- After the commit, not before: the counts must describe the board as
@@ -338,6 +443,7 @@ function Brush:_endStroke()
 	self.recording = nil
 	self.strokeKeys = {}
 	self.strokeNewKeys = {}
+	self.strokeNewByGroup = {}
 	self.strokeGroups = {}
 end
 

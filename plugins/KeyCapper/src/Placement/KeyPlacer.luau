@@ -8,6 +8,7 @@ local CollectionService = game:GetService("CollectionService")
 local Constants = require(script.Parent.Parent.Constants)
 local GuiFactory = require(script.Parent.Parent.RuntimeSource.Style.GuiFactory)
 local GroupRegistry = require(script.Parent.Parent.Core.GroupRegistry)
+local ZoneResolver = require(script.Parent.ZoneResolver)
 
 local KeyPlacer = {}
 
@@ -26,6 +27,23 @@ local function getKeysFolder(): Folder
 		folder.Parent = workspace
 	end
 	return folder :: Folder
+end
+
+-- StudsRNG: a zone's keys are filed under KeyCapperKeys/Zone<N>, so a zone's
+-- keyboard can be found (and hidden, selected, deleted) in one place. Still
+-- inside the keys folder: the brush's ray filter and OverlapGuard work on its
+-- descendants, so nothing else has to know.
+local function getZoneFolder(zone: number?): Instance
+	local keys = getKeysFolder()
+	if not zone then return keys end
+	local name = ZoneResolver.GroupName(zone)
+	local folder = keys:FindFirstChild(name)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = name
+		folder.Parent = keys
+	end
+	return folder :: Instance
 end
 
 -- The mesh ships inside the plugin (ServerStorage.KeyCapperPlugin.MeshTemplateSource),
@@ -47,7 +65,8 @@ end
 -- cframe: the final CFrame of the CAP (at rest). label: the displayed text.
 -- group: the group the key is born into; its look is applied by GroupStyler,
 -- not here, because a gradient depends on the whole group.
-function KeyPlacer.Place(cframe: CFrame, label: string, group: string): Model
+-- zone (StudsRNG): the game zone the key pays in (World = "007"), or nil.
+function KeyPlacer.Place(cframe: CFrame, label: string, group: string, zone: number?): Model
 	local model = Instance.new("Model")
 	model.Name = "Key_" .. label
 
@@ -82,7 +101,10 @@ function KeyPlacer.Place(cframe: CFrame, label: string, group: string): Model
 	model.PrimaryPart = hitbox
 	model:SetAttribute("Letter", label)
 	model:SetAttribute(Constants.ATTR_GROUP, group)
-	model.Parent = getKeysFolder()
+	if zone then
+		model:SetAttribute("World", ZoneResolver.Id(zone))
+	end
+	model.Parent = getZoneFolder(zone)
 
 	CollectionService:AddTag(hitbox, Constants.TAG_HITBOX)
 	CollectionService:AddTag(model, Constants.TAG_KEY)

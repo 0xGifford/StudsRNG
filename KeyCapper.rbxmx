@@ -44,6 +44,7 @@ local History = require(script.Parent.Core.History)
 local GroupRegistry = require(script.Parent.Core.GroupRegistry)
 local RestyleQueue = require(script.Parent.Edit.RestyleQueue)
 local Settings = require(script.Parent.RuntimeSource.Settings)
+local ZoneResolver = require(script.Parent.Placement.ZoneResolver) -- StudsRNG
 
 local toolbar = plugin:CreateToolbar("KeyCapper")
 local toolbarButton = toolbar:CreateButton(
@@ -170,6 +171,41 @@ local function settleGesture()
 	end)
 end
 
+-- StudsRNG zones. The zone list is re-read whenever it could have changed
+-- (panel opened, brush switched on): zones are Models the user builds.
+local function showZones()
+	local zones = ZoneResolver.List()
+	if brush.zoneLock == nil and zones[1] then
+		brush:SetZoneLock(zones[1])
+	end
+	panel:SetZones(zones, brush.zoneLock)
+end
+
+panel.OnZoneModeChanged = function(mode: string)
+	brush:SetZoneMode(mode)
+	showZones()
+end
+
+panel.OnZoneLockChanged = function(zone: number)
+	brush:SetZoneLock(zone)
+end
+
+panel.OnZoneGroupsChanged = function(enabled: boolean)
+	brush:SetZoneGroups(enabled)
+end
+
+brush.OnHoverZone = function(zone: number?)
+	panel:SetHoverZone(zone)
+end
+
+-- A stroke started in a zone with its own group: the panel follows, so the
+-- style shown (and edited next) is that zone's.
+brush.OnZoneGroup = function(name: string)
+	currentGroup = name
+	brush:SetGroup(name)
+	showGroup(name)
+end
+
 toolbarButton.Click:Connect(function()
 	panel:Toggle()
 	toolbarButton:SetActive(panel.widget.Enabled)
@@ -186,6 +222,7 @@ panel.OnBrushToggled = function(active: boolean)
 		GroupRegistry.Ensure(currentGroup)
 		showSettings()
 		showGroup(currentGroup)
+		showZones()
 		brush:Activate()
 		panel:SetStatus("Click or drag in the viewport. R to rotate.")
 	else
@@ -349,6 +386,7 @@ end)
 panel.widget:GetPropertyChangedSignal("Enabled"):Connect(function()
 	if panel.widget.Enabled then
 		showSettings()
+		showZones()
 	end
 end)
 
@@ -358,6 +396,7 @@ end)
 -- rule that keeps Installer.EnsureRuntime out of plugin load.
 showSettings()
 showGroup(currentGroup)
+showZones()
 
 -- The one exception to that rule, and it doesn't really break it: keys in the
 -- Workspace mean the user has already asked for the runtime, so this puts
@@ -1071,6 +1110,7 @@ local TextStyleSection = require(Sections.TextStyleSection)
 local SoundSection = require(Sections.SoundSection)
 local AnimationSection = require(Sections.AnimationSection)
 local OthersSection = require(Sections.OthersSection)
+local ZoneSection = require(Sections.ZoneSection) -- StudsRNG
 
 local Panel = {}
 Panel.__index = Panel
@@ -1108,6 +1148,10 @@ function Panel.new(pluginInstance: Plugin)
 	-- Not a group edit: these flip game-side settings shared by every group
 	-- (RuntimeSource.Settings), not a group's own Configuration.
 	self.OnSettingChanged = nil :: ((string, any) -> ())?
+	-- StudsRNG zones (see ZoneSection).
+	self.OnZoneModeChanged = nil :: ((string) -> ())?
+	self.OnZoneLockChanged = nil :: ((number) -> ())?
+	self.OnZoneGroupsChanged = nil :: ((boolean) -> ())?
 
 	self.brushActive = false
 	self.brushHovered = false
@@ -1386,15 +1430,28 @@ function Panel:_buildBody(background: Frame)
 	local toolBlock = Section.new(list, 1, "Tool")
 	self.tool = ToolSection.new(toolBlock.Content, 1)
 
+	-- StudsRNG: which game zone the painted keys pay in.
+	local zoneBlock = Section.new(list, 2, "Zone")
+	self.zone = ZoneSection.new(zoneBlock.Content, 1, self.overlay)
+	self.zone.OnModeChanged = function(value)
+		if self.OnZoneModeChanged then self.OnZoneModeChanged(value) end
+	end
+	self.zone.OnLockChanged = function(value)
+		if self.OnZoneLockChanged then self.OnZoneLockChanged(value) end
+	end
+	self.zone.OnGroupsChanged = function(value)
+		if self.OnZoneGroupsChanged then self.OnZoneGroupsChanged(value) end
+	end
+
 	-- Says out loud what the sections below are: edits to a GROUP, not to a
 	-- key. The whole plugin rests on that distinction.
-	local caption = Row.new(list, 2, nil, 16)
+	local caption = Row.new(list, 3, nil, 16)
 	local captionText = Theme.Text("", caption.Content)
 	captionText.TextColor3 = Theme.Color(Enum.StudioStyleGuideColor.DimmedText)
 	captionText.Font = Theme.FONT_BOLD
 	self.captionText = captionText
 
-	local capBlock = Section.new(list, 3, "Cap color")
+	local capBlock = Section.new(list, 4, "Cap color")
 	self.capChannel = ColorChannel.new(capBlock.Content, 1, self.overlay, {
 		ModeKey = "CapColorMode",
 		SolidKey = "Color",
@@ -1405,7 +1462,7 @@ function Panel:_buildBody(background: Frame)
 		ValueKey = "CapRandomValue",
 	})
 
-	local textBlock = Section.new(list, 4, "Label", false)
+	local textBlock = Section.new(list, 5, "Label", false)
 	self.textChannel = ColorChannel.new(textBlock.Content, 1, self.overlay, {
 		ModeKey = "TextColorMode",
 		SolidKey = "TextColor",
@@ -1417,15 +1474,15 @@ function Panel:_buildBody(background: Frame)
 	})
 	self.textStyle = TextStyleSection.new(textBlock.Content, ColorChannel.ROW_COUNT + 1, self.overlay)
 
-	local soundBlock = Section.new(list, 5, "Sound", false)
+	local soundBlock = Section.new(list, 6, "Sound", false)
 	self.sound = SoundSection.new(soundBlock.Content, 1)
 
-	local feelBlock = Section.new(list, 6, "Feel", false)
+	local feelBlock = Section.new(list, 7, "Feel", false)
 	self.animation = AnimationSection.new(feelBlock.Content, 1)
 
 	-- Not scoped to "STYLE OF <group>" above: it lives outside the group
 	-- system entirely, so it sits in its own section rather than under it.
-	local othersBlock = Section.new(list, 7, "Others", false)
+	local othersBlock = Section.new(list, 8, "Others", false)
 	self.others = OthersSection.new(othersBlock.Content, 1)
 	self.others.OnValueChanged = function(key, value)
 		if self.OnSettingChanged then
@@ -1582,6 +1639,16 @@ end
 -- something that changes when the current group does.
 function Panel:SetOthers(values: { [string]: any })
 	self.others:Show(values)
+end
+
+-- StudsRNG: the zones present in the place, and the one the brush is locked to.
+function Panel:SetZones(zones: { number }, locked: number?)
+	self.zone:SetZones(zones, locked)
+end
+
+-- StudsRNG: the zone under the cursor (nil = none).
+function Panel:SetHoverZone(zone: number?)
+	self.zone:SetHover(zone)
 end
 
 -- Rotation can come from the R key, not just from the panel.
@@ -1856,6 +1923,7 @@ local ICONS: { [string]: string } = {
 	AddSound = "rbxassetid://137367508279349",
 	Feel = "rbxassetid://138515805840658",
 	Others = "rbxassetid://106070793531050",
+	Zone = "rbxassetid://79689480999850", -- StudsRNG: the Group icon, reused
 	Discord = "rbxassetid://137626841590880",
 }
 -- Roblox's built-in "missing image" checker: shown for any slug not yet in
@@ -4919,9 +4987,105 @@ return GroupSection
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
+        <Item class="ModuleScript" referent="33">
+          <Properties>
+            <string name="Name">ZoneSection</string>
+            <string name="Source"><![CDATA[--!strict
+-- StudsRNG addition. Single responsibility: which game zone the brush paints
+-- for. Like ToolSection, these belong to the gesture, not to a group.
+--
+--   Zone         From surface (the zone of whatever the key lands on) |
+--                Locked (always the zone picked below) | None
+--   Locked to    Zone1 .. ZoneN, only shown when Locked
+--   Zone groups  paint each zone's keys into its own group (Zone7), so every
+--                zone's keyboard has its own look
+--   Under cursor the zone a key would pay in right now
+
+local Components = script.Parent.Parent.Components
+local Row = require(Components.Row)
+local Segmented = require(Components.Segmented)
+local Dropdown = require(Components.Dropdown)
+local Toggle = require(Components.Toggle)
+local Theme = require(Components.Theme)
+local Brush = require(script.Parent.Parent.Parent.Placement.Brush)
+
+local ZoneSection = {}
+ZoneSection.__index = ZoneSection
+
+function ZoneSection.new(parent: Instance, order: number, overlay: GuiObject)
+	local self = setmetatable({}, ZoneSection)
+
+	self.OnModeChanged = nil :: ((string) -> ())?
+	self.OnLockChanged = nil :: ((number) -> ())?
+	self.OnGroupsChanged = nil :: ((boolean) -> ())?
+
+	local modeRow = Row.new(parent, order, nil)
+	self.mode = Segmented.new(modeRow.Content, {
+		Options = Brush.ZONE_MODES,
+		Labels = { Auto = "From surface", Locked = "Locked", Off = "None" },
+		Value = "Auto",
+	})
+
+	local lockRow = Row.new(parent, order + 1, "Locked to")
+	self.lockRow = lockRow
+	self.lock = Dropdown.new(lockRow.Content, { Entries = {}, Overlay = overlay })
+	self.lock.Frame.Size = UDim2.fromScale(1, 1)
+	self.lock.OnChanged = function(value: string)
+		local n = tonumber(string.match(value, "%d+"))
+		if n and self.OnLockChanged then
+			self.OnLockChanged(n)
+		end
+	end
+
+	local groupsRow = Row.new(parent, order + 2, "Zone groups")
+	self.groups = Toggle.new(groupsRow.Content, { Value = true })
+	self.groups.OnChanged = function(value)
+		if self.OnGroupsChanged then self.OnGroupsChanged(value) end
+	end
+
+	local hintRow = Row.new(parent, order + 3, nil, 32)
+	local hint = Theme.Text("Each zone's keys go in their own group (Zone7) and pay in that zone.", hintRow.Content)
+	hint.TextColor3 = Theme.Color(Enum.StudioStyleGuideColor.DimmedText)
+	hint.TextWrapped = true
+	hint.TextYAlignment = Enum.TextYAlignment.Top
+	hint.TextSize = Theme.TEXT_SIZE - 2
+
+	local hoverRow = Row.new(parent, order + 4, "Under cursor")
+	self.hover = Theme.Text("-", hoverRow.Content)
+	self.hover.Font = Theme.FONT_BOLD
+
+	self.mode.OnChanged = function(value)
+		self.lockRow:SetVisible(value == "Locked")
+		if self.OnModeChanged then self.OnModeChanged(value) end
+	end
+	self.lockRow:SetVisible(false)
+
+	return self
+end
+
+ZoneSection.ROW_COUNT = 5
+
+-- zones: the zone numbers present in the place; current: the locked one.
+function ZoneSection:SetZones(zones: { number }, current: number?)
+	local entries = {}
+	for _, n in ipairs(zones) do
+		table.insert(entries, { Value = "Zone" .. n })
+	end
+	self.lock:SetEntries(entries, if current then "Zone" .. current else nil)
+end
+
+function ZoneSection:SetHover(zone: number?)
+	self.hover.Text = if zone then "Zone " .. zone else "No zone"
+	self.hover.TextColor3 = if zone then Theme.OK else Theme.Color(Enum.StudioStyleGuideColor.DimmedText)
+end
+
+return ZoneSection
+]]></string>
+          </Properties>
+        </Item>
       </Item>
     </Item>
-    <Item class="Model" referent="33">
+    <Item class="Model" referent="34">
       <Properties>
         <string name="Name">MeshTemplateSource</string>
         <BinaryString name="AttributesSerialize"></BinaryString>
@@ -4972,7 +5136,7 @@ return GroupSection
           </CFrame>
         </OptionalCoordinateFrame>
       </Properties>
-      <Item class="MeshPart" referent="34">
+      <Item class="MeshPart" referent="35">
         <Properties>
           <string name="Name">Cap</string>
           <SharedString name="AeroMeshData">rxNJufX5oaagQE3qNtzJSQ==</SharedString>
@@ -5114,7 +5278,7 @@ return GroupSection
         </Properties>
       </Item>
     </Item>
-    <Item class="Folder" referent="35">
+    <Item class="Folder" referent="36">
       <Properties>
         <string name="Name">RuntimeSource</string>
         <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5123,7 +5287,7 @@ return GroupSection
         <int64 name="SourceAssetId">-1</int64>
         <BinaryString name="Tags"></BinaryString>
       </Properties>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">Config</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5215,7 +5379,7 @@ return {
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">Settings</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5279,7 +5443,7 @@ return Settings
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="BindableEvent" referent="38">
+      <Item class="BindableEvent" referent="39">
         <Properties>
           <string name="Name">KeyPressed</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5289,7 +5453,7 @@ return Settings
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="Folder" referent="39">
+      <Item class="Folder" referent="40">
         <Properties>
           <string name="Name">Detection</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5298,7 +5462,7 @@ return Settings
           <int64 name="SourceAssetId">-1</int64>
           <BinaryString name="Tags"></BinaryString>
         </Properties>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">Keycap</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5443,7 +5607,7 @@ return Keycap
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="41">
+        <Item class="ModuleScript" referent="42">
           <Properties>
             <string name="Name">KeycapRegistry</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5577,7 +5741,7 @@ return KeycapRegistry
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="Script" referent="42">
+        <Item class="Script" referent="43">
           <Properties>
             <string name="Name">Client</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5788,7 +5952,7 @@ end
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="43">
+      <Item class="Folder" referent="44">
         <Properties>
           <string name="Name">Style</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5797,7 +5961,7 @@ end
           <int64 name="SourceAssetId">-1</int64>
           <BinaryString name="Tags"></BinaryString>
         </Properties>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">SoundId</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5866,7 +6030,7 @@ return SoundId
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">SoundGate</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -5924,7 +6088,7 @@ return SoundGate
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">GuiFactory</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6002,7 +6166,7 @@ return GuiFactory
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">AnimationPresets</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6147,7 +6311,7 @@ return AnimationPresets
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="48">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">FontPresets</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6203,7 +6367,7 @@ return FontPresets
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">GroupConfig</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6300,7 +6464,7 @@ return GroupConfig
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="50">
+      <Item class="Folder" referent="51">
         <Properties>
           <string name="Name">Points</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6309,7 +6473,7 @@ return GroupConfig
           <int64 name="SourceAssetId">-1</int64>
           <BinaryString name="Tags"></BinaryString>
         </Properties>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Counter</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6648,7 +6812,7 @@ return Counter
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">PointPopup</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6818,7 +6982,7 @@ return PointPopup
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">PointsUI</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -6933,7 +7097,7 @@ return PointsUI
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="Script" referent="54">
+        <Item class="Script" referent="55">
           <Properties>
             <string name="Name">Server</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7066,7 +7230,7 @@ end)
             <BinaryString name="Tags"></BinaryString>
           </Properties>
         </Item>
-        <Item class="RemoteEvent" referent="55">
+        <Item class="RemoteEvent" referent="56">
           <Properties>
             <string name="Name">PointsRemote</string>
             <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7078,7 +7242,7 @@ end)
         </Item>
       </Item>
     </Item>
-    <Item class="Folder" referent="56">
+    <Item class="Folder" referent="57">
       <Properties>
         <string name="Name">Placement</string>
         <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7087,7 +7251,7 @@ end)
         <int64 name="SourceAssetId">-1</int64>
         <BinaryString name="Tags"></BinaryString>
       </Properties>
-      <Item class="ModuleScript" referent="57">
+      <Item class="ModuleScript" referent="58">
         <Properties>
           <string name="Name">GhostPreview</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7200,7 +7364,7 @@ return GhostPreview
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="58">
+      <Item class="ModuleScript" referent="59">
         <Properties>
           <string name="Name">Brush</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7235,11 +7399,17 @@ local LabelSource = require(script.Parent.LabelSource)
 local Eraser = require(script.Parent.Eraser)
 local GroupRegistry = require(script.Parent.Parent.Core.GroupRegistry)
 local GroupStyler = require(script.Parent.Parent.Edit.GroupStyler)
+local ZoneResolver = require(script.Parent.ZoneResolver)
 
 local Brush = {}
 Brush.__index = Brush
 
 Brush.TOOLS = { "Paint", "Erase" }
+-- StudsRNG: how a painted key picks its game zone (see ZoneResolver).
+--   Auto    the zone of the surface it lands on
+--   Locked  always the zone picked in the panel
+--   Off     no zone (the key keeps no World attribute)
+Brush.ZONE_MODES = { "Auto", "Locked", "Off" }
 
 local PAINT_GHOST_COLOR = Color3.fromRGB(90, 200, 255)
 local ERASE_GHOST_COLOR = Color3.fromRGB(255, 90, 90)
@@ -7264,6 +7434,17 @@ function Brush.new(pluginInstance: Plugin)
 	self.currentGroup = Constants.DEFAULT_GROUP
 	self.tool = "Paint"
 	self.eraseScope = "Group"
+	-- StudsRNG zones. zoneGroups: paint each zone's keys into its own group
+	-- ("Zone7"), so every zone's keyboard can be styled on its own.
+	self.zoneMode = "Auto"
+	self.zoneLock = nil :: number?
+	self.zoneGroups = true
+	-- The zone the cursor is over right now (after zoneMode), for the panel.
+	self.hoverZone = nil :: number?
+	self._aimSurface = nil :: Instance?
+	self._aimPosition = nil :: Vector3?
+	-- The surface under each cell of the last solve, parallel to its frames.
+	self._cellSurfaces = {} :: { Instance }
 	self.ghost = nil :: any
 	self.connections = {}
 
@@ -7279,6 +7460,9 @@ function Brush.new(pluginInstance: Plugin)
 	-- style just those instead of the whole group when the group's look does
 	-- not depend on its membership.
 	self.strokeNewKeys = {} :: { Model }
+	-- The same keys by the group they were painted into: with zone groups one
+	-- stroke can paint into several groups, and each must only restyle its own.
+	self.strokeNewByGroup = {} :: { [string]: { Model } }
 	-- Groups the stroke changed the membership of, painted or erased: their
 	-- gradients are derived from the members, so they need a restyle at the
 	-- end of the stroke (once, not per key).
@@ -7293,6 +7477,11 @@ function Brush.new(pluginInstance: Plugin)
 	-- so this is the one moment they can go stale without anything else in the
 	-- UI moving. Carries nothing: the listener re-reads the counts itself.
 	self.OnStrokeEnded = nil :: (() -> ())?
+	-- StudsRNG: fired when the zone under the cursor changes (nil = none).
+	self.OnHoverZone = nil :: ((number?) -> ())?
+	-- StudsRNG: fired when a stroke starts in a zone whose group differs from
+	-- the current one, so the panel can switch to (and show) that group.
+	self.OnZoneGroup = nil :: ((string) -> ())?
 	return self
 end
 
@@ -7336,7 +7525,12 @@ function Brush:_cellFrames(snap: boolean): { CFrame }
 	local ignore = self:_rayFilter()
 
 	local hit = SurfaceProbe.Probe(unitRay.Origin, unitRay.Direction * 1000, ignore)
-	if not hit then return {} end
+	self._cellSurfaces = {}
+	if not hit then
+		self._aimSurface, self._aimPosition = nil, nil
+		return {}
+	end
+	self._aimSurface, self._aimPosition = hit.instance, hit.position
 
 	local anchor = snap
 		and GridSolver.Snap(hit.position, hit.origin, Constants.GRID_PITCH)
@@ -7373,6 +7567,7 @@ function Brush:_cellFrames(snap: boolean): { CFrame }
 			-- the key that lands is the rotation the player saw about to land.
 			local steps = self.rotationRandom and math.random(0, 3) or self.rotationSteps
 			table.insert(frames, GridSolver.BuildCFrame(resting, cellHit.frame, steps))
+			table.insert(self._cellSurfaces, cellHit.instance)
 		end
 	end
 
@@ -7387,6 +7582,14 @@ function Brush:_refresh(applyIfPainting: boolean)
 	self:_ensureGhost()
 	local frames = self:_cellFrames(self.tool ~= "Erase")
 	self.ghost:Show(frames)
+
+	local zone = if self._aimPosition then self:_zoneFor(self._aimSurface, self._aimPosition) else nil
+	if zone ~= self.hoverZone then
+		self.hoverZone = zone
+		if self.OnHoverZone then
+			self.OnHoverZone(zone)
+		end
+	end
 
 	if applyIfPainting and self.painting then
 		self:_applyTool(frames)
@@ -7449,6 +7652,50 @@ function Brush:SetGroup(name: string)
 	self.currentGroup = name
 end
 
+-- StudsRNG zones ---------------------------------------------------------
+
+function Brush:SetZoneMode(mode: string)
+	self.zoneMode = mode
+end
+
+function Brush:SetZoneLock(zone: number?)
+	self.zoneLock = zone
+end
+
+function Brush:SetZoneGroups(enabled: boolean)
+	self.zoneGroups = enabled
+end
+
+-- The zone a key landing on `surface` at `position` pays in.
+function Brush:_zoneFor(surface: Instance?, position: Vector3): number?
+	if self.zoneMode == "Off" then return nil end
+	if self.zoneMode == "Locked" then return self.zoneLock end
+	return ZoneResolver.Resolve(surface, position)
+end
+
+-- The group a key in `zone` is painted into.
+function Brush:_groupFor(zone: number?): string
+	if self.zoneGroups and zone then
+		return ZoneResolver.GroupName(zone)
+	end
+	return self.currentGroup
+end
+
+-- Creates a zone's group the first time it is painted into, starting from the
+-- current group's look rather than the plain defaults: the first key in a new
+-- zone looks like the keys you were just painting. Must run inside the
+-- stroke's recording, so undo removes the group with the keys.
+function Brush:_ensureGroup(name: string)
+	if GroupRegistry.Get(name) then return end
+	local template = GroupRegistry.Get(self.currentGroup)
+	local group = GroupRegistry.Ensure(name)
+	if template and template ~= group then
+		for key, value in pairs(template:GetAttributes()) do
+			group:SetAttribute(key, value)
+		end
+	end
+end
+
 function Brush:SetSize(size: number)
 	self.brushSize = math.max(1, math.floor(size))
 	-- Only refresh an existing preview: resizing while the brush is off must
@@ -7459,7 +7706,7 @@ function Brush:SetSize(size: number)
 end
 
 -- Places one cell. Returns the new key, or nil if the cell was left untouched.
-function Brush:_placeCell(cframe: CFrame): Model?
+function Brush:_placeCell(cframe: CFrame, surface: Instance?): Model?
 	local overlapping = OverlapGuard.FindOverlapping(cframe, Constants.KEY_SIZE)
 
 	for _, existing in ipairs(overlapping) do
@@ -7477,20 +7724,32 @@ function Brush:_placeCell(cframe: CFrame): Model?
 		existing:Destroy()
 	end
 
+	local zone = self:_zoneFor(surface, cframe.Position)
+	local group = self:_groupFor(zone)
+	self:_ensureGroup(group)
+	self.strokeGroups[group] = true
+
 	local label = LabelSource.Pick(self.labelMode, self.currentLetter, self.labelCharset)
-	local key = KeyPlacer.Place(cframe, label, self.currentGroup)
+	local key = KeyPlacer.Place(cframe, label, group, zone)
 	self.strokeKeys[key] = true
 	table.insert(self.strokeNewKeys, key)
+	local byGroup = self.strokeNewByGroup[group]
+	if not byGroup then
+		byGroup = {}
+		self.strokeNewByGroup[group] = byGroup
+	end
+	table.insert(byGroup, key)
 	return key
 end
 
 function Brush:_applyTool(frames: { CFrame })
 	if self.tool == "Erase" then
+		-- "This group" means the zone's own group when zone groups are on.
 		local touched, removed = Eraser.Erase(
 			frames,
 			Constants.KEY_SIZE,
 			self.eraseScope,
-			self.currentGroup
+			self:_groupFor(self.hoverZone)
 		)
 		for group in pairs(touched) do
 			self.strokeGroups[group] = true
@@ -7499,9 +7758,9 @@ function Brush:_applyTool(frames: { CFrame })
 		return
 	end
 
-	self.strokeGroups[self.currentGroup] = true
-	for _, cframe in ipairs(frames) do
-		self:_placeCell(cframe)
+	local surfaces = self._cellSurfaces
+	for index, cframe in ipairs(frames) do
+		self:_placeCell(cframe, surfaces[index])
 	end
 end
 
@@ -7511,13 +7770,20 @@ function Brush:_beginStroke()
 	self.painting = true
 	self.strokeKeys = {}
 	self.strokeNewKeys = {}
+	self.strokeNewByGroup = {}
 	self.strokeGroups = {}
 	self.strokeErased = 0
 	self.recording = History.Begin(
 		self.tool == "Erase" and "KeyCapper: erase keys" or "KeyCapper: place keys"
 	)
+	-- The group this stroke works in (the zone's own, with zone groups on).
+	-- The panel follows it, so the style you edit next is the one you see.
+	local group = self:_groupFor(self.hoverZone)
 	if self.tool ~= "Erase" then
-		GroupRegistry.Ensure(self.currentGroup)
+		self:_ensureGroup(group)
+	end
+	if group ~= self.currentGroup and GroupRegistry.Get(group) and self.OnZoneGroup then
+		self.OnZoneGroup(group)
 	end
 	self:_refresh(true)
 end
@@ -7534,8 +7800,11 @@ function Brush:_endStroke()
 			-- that is what made painting slow down as the build grew.
 			-- GroupStyler decides: a gradient depends on the whole membership
 			-- and still forces the full pass, an erase always does.
-			local incremental = (self.strokeErased == 0) and group == self.currentGroup
-			GroupStyler.Apply(group, incremental and self.strokeNewKeys or nil)
+			-- Per group: a stroke can paint into several zone groups, and
+			-- each may only restyle the keys painted into it.
+			local newKeys = self.strokeNewByGroup[group]
+			local incremental = (self.strokeErased == 0) and newKeys ~= nil
+			GroupStyler.Apply(group, if incremental then newKeys else nil)
 		end
 		History.Commit(self.recording)
 		-- After the commit, not before: the counts must describe the board as
@@ -7550,6 +7819,7 @@ function Brush:_endStroke()
 	self.recording = nil
 	self.strokeKeys = {}
 	self.strokeNewKeys = {}
+	self.strokeNewByGroup = {}
 	self.strokeGroups = {}
 end
 
@@ -7600,7 +7870,7 @@ return Brush
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="59">
+      <Item class="ModuleScript" referent="60">
         <Properties>
           <string name="Name">KeyPlacer</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7620,6 +7890,7 @@ local CollectionService = game:GetService("CollectionService")
 local Constants = require(script.Parent.Parent.Constants)
 local GuiFactory = require(script.Parent.Parent.RuntimeSource.Style.GuiFactory)
 local GroupRegistry = require(script.Parent.Parent.Core.GroupRegistry)
+local ZoneResolver = require(script.Parent.ZoneResolver)
 
 local KeyPlacer = {}
 
@@ -7638,6 +7909,23 @@ local function getKeysFolder(): Folder
 		folder.Parent = workspace
 	end
 	return folder :: Folder
+end
+
+-- StudsRNG: a zone's keys are filed under KeyCapperKeys/Zone<N>, so a zone's
+-- keyboard can be found (and hidden, selected, deleted) in one place. Still
+-- inside the keys folder: the brush's ray filter and OverlapGuard work on its
+-- descendants, so nothing else has to know.
+local function getZoneFolder(zone: number?): Instance
+	local keys = getKeysFolder()
+	if not zone then return keys end
+	local name = ZoneResolver.GroupName(zone)
+	local folder = keys:FindFirstChild(name)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = name
+		folder.Parent = keys
+	end
+	return folder :: Instance
 end
 
 -- The mesh ships inside the plugin (ServerStorage.KeyCapperPlugin.MeshTemplateSource),
@@ -7659,7 +7947,8 @@ end
 -- cframe: the final CFrame of the CAP (at rest). label: the displayed text.
 -- group: the group the key is born into; its look is applied by GroupStyler,
 -- not here, because a gradient depends on the whole group.
-function KeyPlacer.Place(cframe: CFrame, label: string, group: string): Model
+-- zone (StudsRNG): the game zone the key pays in (World = "007"), or nil.
+function KeyPlacer.Place(cframe: CFrame, label: string, group: string, zone: number?): Model
 	local model = Instance.new("Model")
 	model.Name = "Key_" .. label
 
@@ -7694,7 +7983,10 @@ function KeyPlacer.Place(cframe: CFrame, label: string, group: string): Model
 	model.PrimaryPart = hitbox
 	model:SetAttribute("Letter", label)
 	model:SetAttribute(Constants.ATTR_GROUP, group)
-	model.Parent = getKeysFolder()
+	if zone then
+		model:SetAttribute("World", ZoneResolver.Id(zone))
+	end
+	model.Parent = getZoneFolder(zone)
 
 	CollectionService:AddTag(hitbox, Constants.TAG_HITBOX)
 	CollectionService:AddTag(model, Constants.TAG_KEY)
@@ -7711,7 +8003,7 @@ return KeyPlacer
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="60">
+      <Item class="ModuleScript" referent="61">
         <Properties>
           <string name="Name">OverlapGuard</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7792,7 +8084,7 @@ return OverlapGuard
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">GridSolver</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7867,7 +8159,7 @@ return GridSolver
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">SurfaceProbe</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -7960,7 +8252,7 @@ return SurfaceProbe
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="63">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">LabelSource</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -8020,7 +8312,7 @@ return LabelSource
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="64">
+      <Item class="ModuleScript" referent="65">
         <Properties>
           <string name="Name">Eraser</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -8076,8 +8368,116 @@ return Eraser
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
+      <Item class="ModuleScript" referent="66">
+        <Properties>
+          <string name="Name">ZoneResolver</string>
+          <string name="Source"><![CDATA[--!strict
+-- StudsRNG addition. Single responsibility: which game zone a spot belongs to.
+--
+-- The game's zones are Models named Zone1 .. ZoneN under workspace.Zones (the
+-- Lobby sits there too and is not a zone). A key painted in Zone7 pays in
+-- zone "007": it carries that id as its World attribute, which the game reads.
+--
+-- Resolution, cheapest and surest first:
+--   1. the surface the key lands on sits inside a Zone<N> model;
+--   2. the spot is inside a zone's box (its Center / ZoneSize attributes, set
+--      by the ZoneManager plugin), else over its Ground part.
+-- Nothing found (the Lobby, scratch parts): nil, and the key gets no zone.
+
+local ZoneResolver = {}
+
+local ZONES_FOLDER = "Zones"
+
+-- "Zone7" / "zone 7" → 7
+function ZoneResolver.NumberOf(name: string): number?
+	return tonumber(string.match(string.lower(name), "^zone%s*(%d+)$"))
+end
+
+-- The id the game uses for zone n ("007").
+function ZoneResolver.Id(n: number): string
+	return string.format("%03d", n)
+end
+
+-- The KeyCapper group a zone's keys are painted into when zone groups are on.
+function ZoneResolver.GroupName(n: number): string
+	return "Zone" .. n
+end
+
+local function folder(): Instance?
+	return workspace:FindFirstChild(ZONES_FOLDER)
+end
+
+-- Every zone model present, by number.
+function ZoneResolver.Zones(): { [number]: Model }
+	local zones: { [number]: Model } = {}
+	local f = folder()
+	if not f then return zones end
+	for _, child in ipairs(f:GetChildren()) do
+		local n = ZoneResolver.NumberOf(child.Name)
+		if n and child:IsA("Model") then
+			zones[n] = child
+		end
+	end
+	return zones
+end
+
+-- Zone numbers present, ascending.
+function ZoneResolver.List(): { number }
+	local list: { number } = {}
+	for n in pairs(ZoneResolver.Zones()) do
+		table.insert(list, n)
+	end
+	table.sort(list)
+	return list
+end
+
+function ZoneResolver.FromInstance(instance: Instance?): number?
+	local f = folder()
+	local node = instance
+	while node and f and node ~= f and node ~= workspace do
+		if node.Parent == f then
+			return if node:IsA("Model") then ZoneResolver.NumberOf(node.Name) else nil
+		end
+		node = node.Parent
+	end
+	return nil
+end
+
+local function insideBox(zone: Model, position: Vector3): boolean
+	local center = zone:GetAttribute("Center")
+	local size = zone:GetAttribute("ZoneSize")
+	if typeof(center) == "Vector3" and typeof(size) == "Vector3" then
+		local offset = position - center
+		return math.abs(offset.X) <= size.X / 2 and math.abs(offset.Z) <= size.Z / 2
+			and offset.Y >= -10 and offset.Y <= size.Y - 10
+	end
+	local ground = zone:FindFirstChild("Ground")
+	if ground and ground:IsA("BasePart") then
+		local localPoint = ground.CFrame:PointToObjectSpace(position)
+		return math.abs(localPoint.X) <= ground.Size.X / 2 and math.abs(localPoint.Z) <= ground.Size.Z / 2
+	end
+	return false
+end
+
+function ZoneResolver.FromPosition(position: Vector3): number?
+	for n, zone in pairs(ZoneResolver.Zones()) do
+		if insideBox(zone, position) then
+			return n
+		end
+	end
+	return nil
+end
+
+function ZoneResolver.Resolve(surface: Instance?, position: Vector3): number?
+	return ZoneResolver.FromInstance(surface) or ZoneResolver.FromPosition(position)
+end
+
+return ZoneResolver
+]]></string>
+        </Properties>
+      </Item>
     </Item>
-    <Item class="Folder" referent="65">
+    <Item class="Folder" referent="67">
       <Properties>
         <string name="Name">Core</string>
         <BinaryString name="AttributesSerialize"></BinaryString>
@@ -8086,7 +8486,7 @@ return Eraser
         <int64 name="SourceAssetId">-1</int64>
         <BinaryString name="Tags"></BinaryString>
       </Properties>
-      <Item class="ModuleScript" referent="66">
+      <Item class="ModuleScript" referent="68">
         <Properties>
           <string name="Name">GroupRegistry</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -8270,7 +8670,7 @@ return GroupRegistry
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="67">
+      <Item class="ModuleScript" referent="69">
         <Properties>
           <string name="Name">History</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -8315,7 +8715,7 @@ return History
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="68">
+      <Item class="ModuleScript" referent="70">
         <Properties>
           <string name="Name">Installer</string>
           <BinaryString name="AttributesSerialize"></BinaryString>
@@ -8409,7 +8809,7 @@ return Installer
           <BinaryString name="Tags"></BinaryString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="69">
+      <Item class="ModuleScript" referent="71">
         <Properties>
           <string name="Name">Chunker</string>
           <BinaryString name="AttributesSerialize"></BinaryString>

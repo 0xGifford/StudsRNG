@@ -36,7 +36,7 @@
 	  other     Zone tag removed from things under Zones that aren't zones
 ]]
 
-type Report = { lines: { string }, problems: { string } }
+type Report = { lines: { string }, problems: { string }, keys: { [number]: number }? }
 
 return function(env: any)
 	local Instance = env.Instance
@@ -563,6 +563,43 @@ return function(env: any)
 				end
 			end
 		end
+
+		-- Keys (KeyCapper): each pays in the zone it sits in. KeyCapper sets
+		-- World when you brush; keys placed before that get it from where
+		-- they are. A key whose World names another zone is left alone.
+		local all: { Zone } = {}
+		for _, zone in zones do table.insert(all, zone) end
+		local keyCounts: { [number]: number } = {}
+		local stamped, loose = 0, 0
+		for _, key in workspace:GetDescendants() do
+			if not key:HasTag("KeyCapper_Key") then continue end
+			local hitbox = key:FindFirstChild("Hitbox")
+			local at = if hitbox and isPart(hitbox) then hitbox.CFrame.Position else nil
+			local world = key:GetAttribute("World")
+			local n = nil
+			if typeof(world) == "string" and world ~= "" then
+				n = tonumber(world)
+			elseif at then
+				local zone = zoneAt(all, at)
+				if zone then
+					n = zone.n
+					key:SetAttribute("World", zone.id)
+					stamped += 1
+				end
+			end
+			if n then
+				keyCounts[n] = (keyCounts[n] or 0) + 1
+			else
+				loose += 1
+			end
+		end
+		if stamped > 0 then
+			table.insert(report.lines, `{stamped} key(s) given the zone they sit in`)
+		end
+		if loose > 0 then
+			table.insert(report.problems, `{loose} key(s) aren't in any zone (in the Lobby?): they pay nothing`)
+		end
+		report.keys = keyCounts
 
 		local gateCount = 0
 		for _ in gates do gateCount += 1 end

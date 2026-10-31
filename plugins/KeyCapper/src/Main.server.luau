@@ -22,6 +22,7 @@ local History = require(script.Parent.Core.History)
 local GroupRegistry = require(script.Parent.Core.GroupRegistry)
 local RestyleQueue = require(script.Parent.Edit.RestyleQueue)
 local Settings = require(script.Parent.RuntimeSource.Settings)
+local ZoneResolver = require(script.Parent.Placement.ZoneResolver) -- StudsRNG
 
 local toolbar = plugin:CreateToolbar("KeyCapper")
 local toolbarButton = toolbar:CreateButton(
@@ -148,6 +149,41 @@ local function settleGesture()
 	end)
 end
 
+-- StudsRNG zones. The zone list is re-read whenever it could have changed
+-- (panel opened, brush switched on): zones are Models the user builds.
+local function showZones()
+	local zones = ZoneResolver.List()
+	if brush.zoneLock == nil and zones[1] then
+		brush:SetZoneLock(zones[1])
+	end
+	panel:SetZones(zones, brush.zoneLock)
+end
+
+panel.OnZoneModeChanged = function(mode: string)
+	brush:SetZoneMode(mode)
+	showZones()
+end
+
+panel.OnZoneLockChanged = function(zone: number)
+	brush:SetZoneLock(zone)
+end
+
+panel.OnZoneGroupsChanged = function(enabled: boolean)
+	brush:SetZoneGroups(enabled)
+end
+
+brush.OnHoverZone = function(zone: number?)
+	panel:SetHoverZone(zone)
+end
+
+-- A stroke started in a zone with its own group: the panel follows, so the
+-- style shown (and edited next) is that zone's.
+brush.OnZoneGroup = function(name: string)
+	currentGroup = name
+	brush:SetGroup(name)
+	showGroup(name)
+end
+
 toolbarButton.Click:Connect(function()
 	panel:Toggle()
 	toolbarButton:SetActive(panel.widget.Enabled)
@@ -164,6 +200,7 @@ panel.OnBrushToggled = function(active: boolean)
 		GroupRegistry.Ensure(currentGroup)
 		showSettings()
 		showGroup(currentGroup)
+		showZones()
 		brush:Activate()
 		panel:SetStatus("Click or drag in the viewport. R to rotate.")
 	else
@@ -327,6 +364,7 @@ end)
 panel.widget:GetPropertyChangedSignal("Enabled"):Connect(function()
 	if panel.widget.Enabled then
 		showSettings()
+		showZones()
 	end
 end)
 
@@ -336,6 +374,7 @@ end)
 -- rule that keeps Installer.EnsureRuntime out of plugin load.
 showSettings()
 showGroup(currentGroup)
+showZones()
 
 -- The one exception to that rule, and it doesn't really break it: keys in the
 -- Workspace mean the user has already asked for the runtime, so this puts

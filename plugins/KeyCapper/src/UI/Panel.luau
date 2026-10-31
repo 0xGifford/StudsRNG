@@ -29,6 +29,7 @@ local TextStyleSection = require(Sections.TextStyleSection)
 local SoundSection = require(Sections.SoundSection)
 local AnimationSection = require(Sections.AnimationSection)
 local OthersSection = require(Sections.OthersSection)
+local ZoneSection = require(Sections.ZoneSection) -- StudsRNG
 
 local Panel = {}
 Panel.__index = Panel
@@ -66,6 +67,10 @@ function Panel.new(pluginInstance: Plugin)
 	-- Not a group edit: these flip game-side settings shared by every group
 	-- (RuntimeSource.Settings), not a group's own Configuration.
 	self.OnSettingChanged = nil :: ((string, any) -> ())?
+	-- StudsRNG zones (see ZoneSection).
+	self.OnZoneModeChanged = nil :: ((string) -> ())?
+	self.OnZoneLockChanged = nil :: ((number) -> ())?
+	self.OnZoneGroupsChanged = nil :: ((boolean) -> ())?
 
 	self.brushActive = false
 	self.brushHovered = false
@@ -344,15 +349,28 @@ function Panel:_buildBody(background: Frame)
 	local toolBlock = Section.new(list, 1, "Tool")
 	self.tool = ToolSection.new(toolBlock.Content, 1)
 
+	-- StudsRNG: which game zone the painted keys pay in.
+	local zoneBlock = Section.new(list, 2, "Zone")
+	self.zone = ZoneSection.new(zoneBlock.Content, 1, self.overlay)
+	self.zone.OnModeChanged = function(value)
+		if self.OnZoneModeChanged then self.OnZoneModeChanged(value) end
+	end
+	self.zone.OnLockChanged = function(value)
+		if self.OnZoneLockChanged then self.OnZoneLockChanged(value) end
+	end
+	self.zone.OnGroupsChanged = function(value)
+		if self.OnZoneGroupsChanged then self.OnZoneGroupsChanged(value) end
+	end
+
 	-- Says out loud what the sections below are: edits to a GROUP, not to a
 	-- key. The whole plugin rests on that distinction.
-	local caption = Row.new(list, 2, nil, 16)
+	local caption = Row.new(list, 3, nil, 16)
 	local captionText = Theme.Text("", caption.Content)
 	captionText.TextColor3 = Theme.Color(Enum.StudioStyleGuideColor.DimmedText)
 	captionText.Font = Theme.FONT_BOLD
 	self.captionText = captionText
 
-	local capBlock = Section.new(list, 3, "Cap color")
+	local capBlock = Section.new(list, 4, "Cap color")
 	self.capChannel = ColorChannel.new(capBlock.Content, 1, self.overlay, {
 		ModeKey = "CapColorMode",
 		SolidKey = "Color",
@@ -363,7 +381,7 @@ function Panel:_buildBody(background: Frame)
 		ValueKey = "CapRandomValue",
 	})
 
-	local textBlock = Section.new(list, 4, "Label", false)
+	local textBlock = Section.new(list, 5, "Label", false)
 	self.textChannel = ColorChannel.new(textBlock.Content, 1, self.overlay, {
 		ModeKey = "TextColorMode",
 		SolidKey = "TextColor",
@@ -375,15 +393,15 @@ function Panel:_buildBody(background: Frame)
 	})
 	self.textStyle = TextStyleSection.new(textBlock.Content, ColorChannel.ROW_COUNT + 1, self.overlay)
 
-	local soundBlock = Section.new(list, 5, "Sound", false)
+	local soundBlock = Section.new(list, 6, "Sound", false)
 	self.sound = SoundSection.new(soundBlock.Content, 1)
 
-	local feelBlock = Section.new(list, 6, "Feel", false)
+	local feelBlock = Section.new(list, 7, "Feel", false)
 	self.animation = AnimationSection.new(feelBlock.Content, 1)
 
 	-- Not scoped to "STYLE OF <group>" above: it lives outside the group
 	-- system entirely, so it sits in its own section rather than under it.
-	local othersBlock = Section.new(list, 7, "Others", false)
+	local othersBlock = Section.new(list, 8, "Others", false)
 	self.others = OthersSection.new(othersBlock.Content, 1)
 	self.others.OnValueChanged = function(key, value)
 		if self.OnSettingChanged then
@@ -540,6 +558,16 @@ end
 -- something that changes when the current group does.
 function Panel:SetOthers(values: { [string]: any })
 	self.others:Show(values)
+end
+
+-- StudsRNG: the zones present in the place, and the one the brush is locked to.
+function Panel:SetZones(zones: { number }, locked: number?)
+	self.zone:SetZones(zones, locked)
+end
+
+-- StudsRNG: the zone under the cursor (nil = none).
+function Panel:SetHoverZone(zone: number?)
+	self.zone:SetHover(zone)
 end
 
 -- Rotation can come from the R key, not just from the panel.

@@ -232,6 +232,7 @@ local ICONS: { [string]: string } = {
 	AddSound = "rbxassetid://137367508279349",
 	Feel = "rbxassetid://138515805840658",
 	Others = "rbxassetid://106070793531050",
+	Zone = "rbxassetid://79689480999850", -- StudsRNG: the Group icon, reused
 	Discord = "rbxassetid://137626841590880",
 }
 -- Roblox's built-in "missing image" checker: shown for any slug not yet in
