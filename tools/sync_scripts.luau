@@ -26,7 +26,7 @@ assert(input and output, "usage: lune run tools/sync_scripts.luau <in.rbxl> <out
 local game = roblox.deserializePlace(fs.readFile(input))
 local project = serde.decode("json", fs.readFile("default.project.json"))
 
-local updated, created, models = 0, 0, 0
+local updated, created, models, removed = 0, 0, 0, 0
 
 local function scriptClass(file: string): (string?, string)
 	local name, kind = string.match(file, "^(.-)%.(server)%.luau?$")
@@ -65,6 +65,19 @@ local function setSource(instance: any, path: string)
 end
 
 local function syncDir(dir: string, target: any)
+	local keep = {}
+	for _, entry in fs.readDir(dir) do
+		local _, name = scriptClass(entry)
+		keep[name] = true
+		keep[entry] = true
+	end
+	for _, child in target:GetChildren() do
+		if child:IsA("LuaSourceContainer") and not keep[child.Name] then
+			print(`removed {child:GetFullName()} (no longer in src/)`)
+			child:Destroy()
+			removed += 1
+		end
+	end
 	for _, entry in fs.readDir(dir) do
 		local path = dir .. "/" .. entry
 		if fs.isDir(path) then
@@ -116,4 +129,4 @@ end
 
 syncNode(project.tree, game)
 fs.writeFile(output, roblox.serializePlace(game))
-print(`{updated} scripts updated, {created} created, {models} models added → {output}`)
+print(`{updated} scripts updated, {created} created, {removed} removed, {models} models added → {output}`)

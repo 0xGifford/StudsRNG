@@ -1,317 +1,1260 @@
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
-	<External>null</External>
-	<External>nil</External>
-	<Item class="Script" referent="RBX9668CB0F750542979A9D322FE4A538F7">
-		<Properties>
-			<ProtectedString name="Source"><![CDATA[-- Mosswake Zone Tools - local Roblox Studio plugin
--- Save as a .lua file in your Studio Plugins folder, or paste into a Plugin Script.
--- Tags, attributes, zone setup, EnemyGround marking and EnemySpawn scattering.
---!strict
+<roblox version="4">
+  <Item class="Script" referent="0">
+    <Properties>
+      <string name="Name">ZoneManager</string>
+      <string name="Source"><![CDATA[--[[
+	ZoneManager: Mosswake's Studio plugin for setting up StudsRNG zones.
+	Built from this folder by `lune run tools/build_plugin.luau` into
+	ZoneManager.rbxmx; drop that file into your Studio Plugins folder.
 
+	  Zones       every Zone<N> under workspace.Zones with what it still needs
+	              (keys, enemy spawns). Click a row to select the zone.
+	  Wire        one button that wires every zone for the game (ZoneWiring:
+	              ids, boxes, gates and barriers on the DividerLines, spawns,
+	              signs, EnemyGround on Ground). Safe to press again after
+	              you move things; Undo puts it all back.
+	  Active zone the zone your selection is in. Its tools: select Pit.Surf
+	              (where the keyboard goes), select the gate, assign selected
+	              keys to it, scatter / clear EnemySpawn markers, mark parts
+	              as EnemyGround.
+	  Tags / Attributes  add or remove any tag or attribute on the selection.
+]]
+
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local CollectionService = game:GetService("CollectionService")
 local Selection = game:GetService("Selection")
 local Workspace = game:GetService("Workspace")
-local ChangeHistoryService = game:GetService("ChangeHistoryService")
+
+local Wiring = require(script.ZoneWiring)({
+	Instance = Instance,
+	Vector3 = Vector3,
+	CFrame = CFrame,
+	Color3 = Color3,
+	Enum = Enum,
+})
+
+local ZONES_FOLDER = "Zones"
+local KEY_TAG = "KeyCapper_Key"
+local HITBOX_TAG = "KeyCapper_Hitbox"
+
+--------------------------------------------------------------------------
+-- Window
+--------------------------------------------------------------------------
 
 local toolbar = plugin:CreateToolbar("Mosswake")
-local toggle = toolbar:CreateButton("MosswakeZoneTools", "Open Mosswake Zone Tools", "", "Zone Tools")
+local toggle = toolbar:CreateButton("MosswakeZoneManager", "Open the Zone Manager", "rbxassetid://4458901886", "Zone Manager")
 toggle.ClickableWhenViewportHidden = true
-local widget = plugin:CreateDockWidgetPluginGui("MosswakeZoneTools", DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 360, 650, 300, 420))
-widget.Title = "Mosswake Zone Tools"
-toggle.Click:Connect(function() widget.Enabled = not widget.Enabled end)
-widget:GetPropertyChangedSignal("Enabled"):Connect(function() toggle:SetActive(widget.Enabled) end)
+local widget = plugin:CreateDockWidgetPluginGui("MosswakeZoneManager",
+	DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 380, 700, 300, 420))
+widget.Title = "Zone Manager"
+toggle.Click:Connect(function()
+	widget.Enabled = not widget.Enabled
+end)
+widget:GetPropertyChangedSignal("Enabled"):Connect(function()
+	toggle:SetActive(widget.Enabled)
+end)
 
 local C = {
 	bg = Color3.fromRGB(24, 26, 29), panel = Color3.fromRGB(32, 35, 39), input = Color3.fromRGB(19, 21, 24),
 	border = Color3.fromRGB(58, 63, 70), text = Color3.fromRGB(235, 238, 241), muted = Color3.fromRGB(158, 166, 175),
-	accent = Color3.fromRGB(132, 174, 139), danger = Color3.fromRGB(190, 92, 92),
+	accent = Color3.fromRGB(132, 174, 139), warn = Color3.fromRGB(222, 184, 104), danger = Color3.fromRGB(190, 92, 92),
 }
-local function make(className: string, props: {[string]: any}, parent: Instance): any
+
+local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local obj = Instance.new(className)
-	for k, v in pairs(props) do (obj :: any)[k] = v end
+	for k, v in props do
+		(obj :: any)[k] = v
+	end
 	obj.Parent = parent
 	return obj
 end
-local root = make("Frame", {BackgroundColor3=C.bg, BorderSizePixel=0, Size=UDim2.fromScale(1,1)}, widget)
-local scroll = make("ScrollingFrame", {BackgroundTransparency=1, BorderSizePixel=0, Size=UDim2.fromScale(1,1), AutomaticCanvasSize=Enum.AutomaticSize.Y, CanvasSize=UDim2.new(), ScrollBarThickness=5, ScrollBarImageColor3=C.border}, root)
-make("UIPadding", {PaddingTop=UDim.new(0,12), PaddingBottom=UDim.new(0,12), PaddingLeft=UDim.new(0,12), PaddingRight=UDim.new(0,12)}, scroll)
-local body = make("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y}, scroll)
-make("UIListLayout", {Padding=UDim.new(0,9), SortOrder=Enum.SortOrder.LayoutOrder}, body)
+
+local root = make("Frame", { BackgroundColor3 = C.bg, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, widget)
+local scroll = make("ScrollingFrame", {
+	BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 5, ScrollBarImageColor3 = C.border,
+}, root)
+make("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, scroll)
+local body = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, scroll)
+make("UIListLayout", { Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder }, body)
+
+local order = 0
+local function nextOrder(): number
+	order += 1
+	return order
+end
 
 local function text(parent: Instance, value: string, size: number?, color: Color3?): TextLabel
-	return make("TextLabel", {BackgroundTransparency=1, Font=Enum.Font.Gotham, Text=value, TextColor3=color or C.text, TextSize=size or 11, TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Center, TextWrapped=true, Size=UDim2.new(1,0,0,20), AutomaticSize=Enum.AutomaticSize.Y}, parent)
+	return make("TextLabel", {
+		BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = value, TextColor3 = color or C.text, TextSize = size or 11,
+		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, RichText = true,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder(),
+	}, parent)
 end
+
 local status: TextLabel
-local function report(message: string, bad: boolean?)
+local function report(message: string, kind: string?)
 	status.Text = message
-	status.TextColor3 = if bad then C.danger else C.accent
+	status.TextColor3 = if kind == "bad" then C.danger elseif kind == "warn" then C.warn else C.accent
 end
+
 local function section(title: string, description: string?): Frame
-	local f = make("Frame", {BackgroundColor3=C.panel, BorderSizePixel=0, Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y}, body)
-	make("UICorner", {CornerRadius=UDim.new(0,7)}, f)
-	make("UIStroke", {Color=C.border, Transparency=0.45}, f)
-	make("UIPadding", {PaddingTop=UDim.new(0,9), PaddingBottom=UDim.new(0,10), PaddingLeft=UDim.new(0,10), PaddingRight=UDim.new(0,10)}, f)
-	make("UIListLayout", {Padding=UDim.new(0,6), SortOrder=Enum.SortOrder.LayoutOrder}, f)
-	local h = text(f,title,13,C.accent); h.Font=Enum.Font.GothamBold
-	if description then text(f,description,10,C.muted) end
+	local f = make("Frame", { BackgroundColor3 = C.panel, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() }, body)
+	make("UICorner", { CornerRadius = UDim.new(0, 7) }, f)
+	make("UIStroke", { Color = C.border, Transparency = 0.45 }, f)
+	make("UIPadding", { PaddingTop = UDim.new(0, 9), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, f)
+	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, f)
+	local h = text(f, title, 13, C.accent)
+	h.Font = Enum.Font.GothamBold
+	if description then
+		text(f, description, 10, C.muted)
+	end
 	return f
 end
+
 local function box(parent: Instance, hint: string, initial: string?): TextBox
-	local b = make("TextBox", {BackgroundColor3=C.input, BorderSizePixel=0, ClearTextOnFocus=false, Font=Enum.Font.Code, PlaceholderText=hint, PlaceholderColor3=C.muted, Text=initial or "", TextColor3=C.text, TextSize=12, TextXAlignment=Enum.TextXAlignment.Left, Size=UDim2.new(1,0,0,30)}, parent)
-	make("UICorner", {CornerRadius=UDim.new(0,5)}, b)
-	make("UIPadding", {PaddingLeft=UDim.new(0,8), PaddingRight=UDim.new(0,8)}, b)
+	local b = make("TextBox", {
+		BackgroundColor3 = C.input, BorderSizePixel = 0, ClearTextOnFocus = false, Font = Enum.Font.Code, PlaceholderText = hint,
+		PlaceholderColor3 = C.muted, Text = initial or "", TextColor3 = C.text, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1, 0, 0, 30), LayoutOrder = nextOrder(),
+	}, parent)
+	make("UICorner", { CornerRadius = UDim.new(0, 5) }, b)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, b)
 	return b
 end
-local function button(parent: Instance, caption: string, callback: ()->(), width: number?): TextButton
-	local b = make("TextButton", {BackgroundColor3=C.input, BorderSizePixel=0, Font=Enum.Font.GothamMedium, Text=caption, TextColor3=C.text, TextSize=11, Size=UDim2.new(1,0,0,29)}, parent)
-	if width then b.Size=UDim2.new(width, -3, 1, 0) end
-	make("UICorner", {CornerRadius=UDim.new(0,5)}, b)
+
+local function button(parent: Instance, caption: string, callback: () -> (), width: number?, primary: boolean?): TextButton
+	local b = make("TextButton", {
+		BackgroundColor3 = if primary then C.accent else C.input, BorderSizePixel = 0, Font = Enum.Font.GothamMedium, Text = caption,
+		TextColor3 = if primary then C.bg else C.text, TextSize = 11, Size = UDim2.new(1, 0, 0, 29), LayoutOrder = nextOrder(), AutoButtonColor = true,
+	}, parent)
+	if width then
+		b.Size = UDim2.new(width, -4, 1, 0)
+	end
+	make("UICorner", { CornerRadius = UDim.new(0, 5) }, b)
 	b.Activated:Connect(callback)
 	return b
 end
+
 local function row(parent: Instance): Frame
-	local f=make("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,0,30)}, parent)
-	make("UIListLayout", {FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,6)}, f)
+	local f = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 29), LayoutOrder = nextOrder() }, parent)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, f)
 	return f
 end
-local function selected(): {Instance} return Selection:Get() end
-local function selectedParts(): {BasePart}
-	local out={}
-	for _,v in ipairs(selected()) do if v:IsA("BasePart") then table.insert(out,v) end end
-	return out
-end
-local function selectedModels(): {Model}
-	local out={}
-	for _,v in ipairs(selected()) do if v:IsA("Model") then table.insert(out,v) end end
-	return out
-end
-local function targets(descendants: boolean): {Instance}
-	local out, seen = {}, {}
-	for _,v in ipairs(selected()) do
-		if not seen[v] then seen[v]=true; table.insert(out,v) end
-		if descendants then for _,d in ipairs(v:GetDescendants()) do if not seen[d] then seen[d]=true; table.insert(out,d) end end end
+
+-- Runs `fn` as one undo step; reports its message, or the error.
+local function undoable(name: string, fn: () -> (string, string?))
+	local recording = ChangeHistoryService:TryBeginRecording(name)
+	local ok, message, kind = pcall(fn)
+	if recording then
+		ChangeHistoryService:FinishRecording(recording, if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel)
 	end
-	return out
-end
-
-local head=make("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,0,42)}, body)
-local brand=text(head,"MOSSWAKE",16,C.text); brand.Font=Enum.Font.GothamBold
-local sub=text(head,"Studio tagging and zone setup",10,C.muted); sub.Position=UDim2.fromOffset(0,22)
-
-local selectionPanel=section("Selection","Selection is read directly from Studio.")
-local selectionLabel=text(selectionPanel,"0 selected",10,C.muted)
-button(selectionPanel,"Refresh selection",function() selectionLabel.Text=#selected().." selected" end)
-Selection.SelectionChanged:Connect(function() selectionLabel.Text=#selected().." selected" end)
-
-local tagPanel=section("CollectionService tags","Add/remove a tag on selected instances or their descendants.")
-local tagBox=box(tagPanel,"Tag name (e.g. EnemyGround)")
-local includeDescendants=false
-local scopeButton: TextButton
-scopeButton=button(tagPanel,"Scope: selection only",function()
-	includeDescendants=not includeDescendants
-	scopeButton.Text=includeDescendants and "Scope: selection + descendants" or "Scope: selection only"
-end)
-local tagButtons=row(tagPanel)
-button(tagButtons,"Add tag",function()
-	local name=tagBox.Text; local list=targets(includeDescendants)
-	if name=="" or #list==0 then report("Enter a tag and select instances.",true); return end
-	ChangeHistoryService:SetWaypoint("Before adding tag")
-	local n=0
-	for _,v in ipairs(list) do if not CollectionService:HasTag(v,name) then CollectionService:AddTag(v,name); n+=1 end end
-	ChangeHistoryService:SetWaypoint("Added tag")
-	report(string.format("Added '%s' to %d instance(s).",name,n))
-end,0.5)
-button(tagButtons,"Remove tag",function()
-	local name=tagBox.Text; local list=targets(includeDescendants)
-	if name=="" or #list==0 then report("Enter a tag and select instances.",true); return end
-	ChangeHistoryService:SetWaypoint("Before removing tag")
-	local n=0
-	for _,v in ipairs(list) do if CollectionService:HasTag(v,name) then CollectionService:RemoveTag(v,name); n+=1 end end
-	ChangeHistoryService:SetWaypoint("Removed tag")
-	report(string.format("Removed '%s' from %d instance(s).",name,n))
-end,0.5)
-
-local attrPanel=section("Attributes","Set an attribute on every selected instance. Vector3: x, y, z. Color3: RGB 0-1 or 0-255.")
-local attrName=box(attrPanel,"Attribute name (e.g. ZoneId)")
-local attrValue=box(attrPanel,"Value")
-local attrType="string"
-local typeRow=row(attrPanel)
-for _,kind in ipairs({"string","number","boolean","Vector3","Color3"}) do
-	local b=button(typeRow,kind,function() attrType=kind; report("Attribute type: "..kind) end,0.2); b.TextSize=9
-end
-local function parseValue(): (boolean, any)
-	local raw=attrValue.Text
-	if attrType=="string" then return true,raw end
-	if attrType=="number" then local n=tonumber(raw); return n~=nil,n end
-	if attrType=="boolean" then if raw:lower()=="true" then return true,true elseif raw:lower()=="false" then return true,false end; return false,nil end
-	local a,b,c=string.match(raw,"^%s*([%+%-%.%d]+)%s*,%s*([%+%-%.%d]+)%s*,%s*([%+%-%.%d]+)%s*$")
-	if not a then return false,nil end
-	local x,y,z=tonumber(a),tonumber(b),tonumber(c)
-	if not x or not y or not z then return false,nil end
-	if attrType=="Vector3" then return true,Vector3.new(x,y,z) end
-	if attrType=="Color3" then
-		if x>1 or y>1 or z>1 then return true,Color3.fromRGB(math.clamp(math.round(x),0,255),math.clamp(math.round(y),0,255),math.clamp(math.round(z),0,255)) end
-		return true,Color3.new(math.clamp(x,0,1),math.clamp(y,0,1),math.clamp(z,0,1))
+	if ok then
+		report(message, kind)
+	else
+		report("Error: " .. tostring(message), "bad")
 	end
-	return false,nil
 end
-button(attrPanel,"Set attribute on selection",function()
-	local name=attrName.Text; local list=selected(); local ok,value=parseValue()
-	if name=="" or #list==0 or not ok then report("Check the attribute name, selection and value format.",true); return end
-	ChangeHistoryService:SetWaypoint("Before setting attribute")
-	for _,v in ipairs(list) do v:SetAttribute(name,value) end
-	ChangeHistoryService:SetWaypoint("Set attribute")
-	report(string.format("Set '%s' on %d instance(s).",name,#list))
-end)
-button(attrPanel,"Remove attribute from selection",function()
-	local name=attrName.Text; local list=selected()
-	if name=="" or #list==0 then report("Enter an attribute name and select instances.",true); return end
-	ChangeHistoryService:SetWaypoint("Before removing attribute")
-	local n=0; for _,v in ipairs(list) do if v:GetAttribute(name)~=nil then v:SetAttribute(name,nil); n+=1 end end
-	ChangeHistoryService:SetWaypoint("Removed attribute")
-	report(string.format("Removed '%s' from %d instance(s).",name,n))
-end)
 
-local zonePanel=section("Zone setup","Select a zone Model and a BasePart inside it to assign the Ground, or select only the zone to configure it.")
-local zoneIdBox=box(zonePanel,"ZoneId (must match your Zones.ById key)")
-local groundNameBox=box(zonePanel,"Ground part name","Ground")
-button(zonePanel,"Assign selected part as Ground",function()
-	local models,parts=selectedModels(),selectedParts()
-	if #models~=1 or #parts~=1 then report("Select exactly one zone Model and one BasePart.",true); return end
-	local zone,ground=models[1],parts[1]
-	if not ground:IsDescendantOf(zone) then report("The selected part must be inside the selected zone.",true); return end
-	ChangeHistoryService:SetWaypoint("Before assigning Ground")
-	ground.Name=if groundNameBox.Text~="" then groundNameBox.Text else "Ground"
-	zone.PrimaryPart=ground
-	zone:SetAttribute("Center",ground.Position)
-	zone:SetAttribute("ZoneSize",ground.Size)
-	CollectionService:AddTag(zone,"Zone")
-	if zoneIdBox.Text~="" then zone:SetAttribute("ZoneId",zoneIdBox.Text) end
-	ChangeHistoryService:SetWaypoint("Assigned Ground")
-	report("Assigned '"..ground.Name.."' as Ground and configured the zone.")
-end)
-button(zonePanel,"Configure selected zone from direct Ground child",function()
-	local models=selectedModels()
-	if #models~=1 then report("Select exactly one zone Model.",true); return end
-	local zone=models[1]; local ground=zone:FindFirstChild(if groundNameBox.Text~="" then groundNameBox.Text else "Ground")
-	if not ground or not ground:IsA("BasePart") then report("No direct BasePart Ground child found.",true); return end
-	ChangeHistoryService:SetWaypoint("Before zone setup")
-	zone.PrimaryPart=ground; zone:SetAttribute("Center",ground.Position); zone:SetAttribute("ZoneSize",ground.Size)
-	zone:SetAttribute("ZoneId",if zoneIdBox.Text~="" then zoneIdBox.Text else zone:GetAttribute("ZoneId"))
-	CollectionService:AddTag(zone,"Zone")
-	ChangeHistoryService:SetWaypoint("Configured zone")
-	report("Zone configured. ZoneId: "..tostring(zone:GetAttribute("ZoneId")))
-end)
-button(zonePanel,"Mark selected parts as EnemyGround",function()
-	local parts=selectedParts(); if #parts==0 then report("Select one or more BaseParts.",true); return end
-	ChangeHistoryService:SetWaypoint("Before EnemyGround tagging")
-	for _,p in ipairs(parts) do CollectionService:AddTag(p,"EnemyGround") end
-	ChangeHistoryService:SetWaypoint("Tagged EnemyGround")
-	report("Tagged "..#parts.." part(s) as EnemyGround.")
-end)
+--------------------------------------------------------------------------
+-- Zones
+--------------------------------------------------------------------------
 
-local spawnPanel=section("Enemy spawn scatter","Creates invisible anchored EnemySpawn marker Parts on the zone Ground and/or parts tagged EnemyGround.")
-local countBox=box(spawnPanel,"Spawn count","20")
-local spacingBox=box(spawnPanel,"Minimum spacing (studs)","8")
-local insetBox=box(spawnPanel,"Edge inset (studs)","4")
-local heightBox=box(spawnPanel,"Marker height above surface","0.15")
-local folderBox=box(spawnPanel,"Folder name","EnemySpawns")
-local includeZoneGround=true
-local includeEnemyGround=true
-local groundToggle: TextButton
-local taggedToggle: TextButton
-groundToggle=button(spawnPanel,"Include zone Ground: ON",function() includeZoneGround=not includeZoneGround; groundToggle.Text="Include zone Ground: "..(includeZoneGround and "ON" or "OFF") end)
-taggedToggle=button(spawnPanel,"Include EnemyGround tags: ON",function() includeEnemyGround=not includeEnemyGround; taggedToggle.Text="Include EnemyGround tags: "..(includeEnemyGround and "ON" or "OFF") end)
-local function numberFrom(b: TextBox, allowZero: boolean): number?
-	local n=tonumber(b.Text)
-	if not n or n~=n or n==math.huge or n==-math.huge or (allowZero and n<0) or (not allowZero and n<=0) then return nil end
-	return n
+local function zonesFolder(): Instance?
+	return Workspace:FindFirstChild(ZONES_FOLDER)
 end
-local function scatter(zone: Model): (boolean,string)
-	local count=numberFrom(countBox,false); local spacing=numberFrom(spacingBox,true); local inset=numberFrom(insetBox,true); local height=numberFrom(heightBox,true)
-	if not count or count%1~=0 or count>500 then return false,"Spawn count must be a whole number from 1 to 500." end
-	if not spacing or not inset or not height then return false,"Spacing, inset and height must be zero or greater." end
-	local zoneId=zone:GetAttribute("ZoneId")
-	if typeof(zoneId)~="string" or zoneId=="" then return false,"Set the zone's ZoneId before scattering." end
-	local surfaces: {BasePart}={}; local seen: {[Instance]:boolean}={}
-	local function add(p: Instance) if p:IsA("BasePart") and p:IsDescendantOf(zone) and not seen[p] then seen[p]=true; table.insert(surfaces,p) end end
-	if includeZoneGround then
-		if zone.PrimaryPart then add(zone.PrimaryPart) else add(zone:FindFirstChild(if groundNameBox.Text~="" then groundNameBox.Text else "Ground") or zone) end
+
+-- The Zone<N> model an instance is in.
+local function zoneOf(instance: Instance?): (Model?, number?)
+	local folder = zonesFolder()
+	local node = instance
+	while node and folder and node ~= folder and node ~= game do
+		if node.Parent == folder then
+			local n = Wiring.numberOf(node.Name)
+			if n and node:IsA("Model") then
+				return node, n
+			end
+			return nil, nil
+		end
+		node = node.Parent
 	end
-	if includeEnemyGround then for _,p in ipairs(CollectionService:GetTagged("EnemyGround")) do add(p) end end
-	if #surfaces==0 then return false,"No eligible Ground or EnemyGround surface found." end
-	local candidates={}
-	for _,p in ipairs(surfaces) do
-		local hx=p.Size.X/2-inset; local hz=p.Size.Z/2-inset
-		if hx>0 and hz>0 then table.insert(candidates,{part=p,hx=hx,hz=hz}) end
-	end
-	if #candidates==0 then return false,"Surfaces are too small for this edge inset." end
-	local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Include; params.FilterDescendantsInstances=surfaces; params.IgnoreWater=true
-	local positions: {Vector3}={}; local rng=Random.new()
-	for _=1,math.max(count*40,120) do
-		if #positions>=count then break end
-		local c=candidates[rng:NextInteger(1,#candidates)]; local p=c.part
-		local sample=p.CFrame:PointToWorldSpace(Vector3.new(rng:NextNumber(-c.hx,c.hx),p.Size.Y/2+25,rng:NextNumber(-c.hz,c.hz)))
-		local hit=Workspace:Raycast(sample+Vector3.new(0,40,0),Vector3.new(0,-600,0),params)
-		if hit and hit.Instance==p then
-			local pos=hit.Position+Vector3.new(0,height,0); local clear=true
-			for _,other in ipairs(positions) do local dx=pos.X-other.X; local dz=pos.Z-other.Z; if dx*dx+dz*dz<spacing*spacing then clear=false; break end end
-			if clear then table.insert(positions,pos) end
+	return nil, nil
+end
+
+local function activeZone(): (Model?, number?)
+	for _, instance in Selection:Get() do
+		local zone, n = zoneOf(instance)
+		if zone then
+			return zone, n
 		end
 	end
-	if #positions==0 then return false,"No valid positions found. Reduce inset or spacing." end
-	local folderName=if folderBox.Text~="" then folderBox.Text else "EnemySpawns"
-	local folder=zone:FindFirstChild(folderName)
-	if folder and not folder:IsA("Folder") then return false,"An object with the spawn folder name already exists." end
-	ChangeHistoryService:SetWaypoint("Before scattering EnemySpawns")
-	if not folder then folder=Instance.new("Folder"); folder.Name=folderName; folder.Parent=zone end
-	for i,pos in ipairs(positions) do
-		local marker=Instance.new("Part")
-		marker.Name=string.format("EnemySpawn_%03d",i); marker.Size=Vector3.new(1,0.2,1); marker.Position=pos
-		marker.Anchored=true; marker.CanCollide=false; marker.CanTouch=false; marker.CanQuery=false
-		marker.Transparency=1; marker.CastShadow=false
-		marker:SetAttribute("ZoneId",zoneId)
-		CollectionService:AddTag(marker,"EnemySpawn")
-		marker.Parent=folder
-	end
-	ChangeHistoryService:SetWaypoint("Scattered EnemySpawns")
-	return true,string.format("Created %d of %d requested EnemySpawn markers.",#positions,count)
+	return nil, nil
 end
-button(spawnPanel,"Scatter EnemySpawns in selected zone",function()
-	local models=selectedModels(); if #models~=1 then report("Select exactly one zone Model.",true); return end
-	local ok,message=scatter(models[1]); report(message,not ok)
+
+-- Key models (KeyCapper) inside / among the given instances.
+local function keysIn(roots: { Instance }): { Instance }
+	local keys, seen = {}, {}
+	local function add(model: Instance?)
+		if model and not seen[model] then
+			seen[model] = true
+			table.insert(keys, model)
+		end
+	end
+	local function visit(instance: Instance)
+		if CollectionService:HasTag(instance, KEY_TAG) then
+			add(instance)
+		elseif CollectionService:HasTag(instance, HITBOX_TAG) then
+			add(instance.Parent)
+		end
+	end
+	for _, r in roots do
+		visit(r)
+		for _, d in r:GetDescendants() do
+			visit(d)
+		end
+	end
+	return keys
+end
+
+local function countTagged(zone: Instance, tag: string): number
+	local n = 0
+	for _, d in zone:GetDescendants() do
+		if CollectionService:HasTag(d, tag) then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Keys anywhere that belong to zone `id` (World attribute or sitting in it).
+local function keysFor(zone: Instance, id: string): number
+	local n = 0
+	for _, key in CollectionService:GetTagged(KEY_TAG) do
+		local world = key:GetAttribute("World")
+		if world == id or (world == nil and key:IsDescendantOf(zone)) then
+			n += 1
+		end
+	end
+	return n
+end
+
+--------------------------------------------------------------------------
+-- Header
+--------------------------------------------------------------------------
+
+local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() }, body)
+make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, head)
+local brand = text(head, "MOSSWAKE · ZONE MANAGER", 16, C.text)
+brand.Font = Enum.Font.GothamBold
+text(head, "Lobby → Zone1 … ZoneN under workspace.Zones", 10, C.muted)
+
+local footer = make("Frame", { BackgroundColor3 = C.input, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() }, body)
+make("UICorner", { CornerRadius = UDim.new(0, 6) }, footer)
+make("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7) }, footer)
+status = text(footer, "", 10, C.accent)
+
+--------------------------------------------------------------------------
+-- Wire
+--------------------------------------------------------------------------
+
+local wirePanel = section("Wire all zones",
+	"Ids, zone boxes, a barrier on every DividerLine (price + BUY show on it in game), a spawn past each gate, the Lobby SpawnLocation, signs and EnemyGround. Press again after moving things; Undo reverts it.")
+local wireLog = text(wirePanel, "", 10, C.muted)
+local refreshZones: () -> ()
+
+button(wirePanel, "Wire all zones", function()
+	undoable("Wire zones", function()
+		local result = Wiring.wire(Workspace)
+		local lines = {}
+		for _, problem in result.problems do
+			table.insert(lines, `<font color="#DE6464">✗ {problem}</font>`)
+		end
+		for _, line in result.lines do
+			table.insert(lines, "· " .. line)
+		end
+		wireLog.Text = table.concat(lines, "\n")
+		refreshZones()
+		if #result.problems > 0 then
+			return `Wired, with {#result.problems} thing(s) to fix (see the list).`, "warn"
+		end
+		return "Wired every zone."
+	end)
+end, nil, true)
+
+--------------------------------------------------------------------------
+-- Zone list
+--------------------------------------------------------------------------
+
+local listPanel = section("Zones", "Click a zone to select it. Keys and enemy spawns are yours to place.")
+button(listPanel, "Refresh", function()
+	refreshZones()
 end)
-button(spawnPanel,"Delete tagged EnemySpawns in selected zone",function()
-	local models=selectedModels(); if #models~=1 then report("Select exactly one zone Model.",true); return end
-	local zone=models[1]; local remove={}
-	for _,d in ipairs(zone:GetDescendants()) do if d:IsA("BasePart") and CollectionService:HasTag(d,"EnemySpawn") then table.insert(remove,d) end end
-	ChangeHistoryService:SetWaypoint("Before deleting EnemySpawns")
-	for _,p in ipairs(remove) do p:Destroy() end
-	ChangeHistoryService:SetWaypoint("Deleted EnemySpawns")
-	report("Deleted "..#remove.." tagged EnemySpawn marker(s).")
+local list = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() }, listPanel)
+make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+
+refreshZones = function()
+	for _, child in list:GetChildren() do
+		if child:IsA("GuiObject") then child:Destroy() end
+	end
+	local folder = zonesFolder()
+	if not folder then
+		text(list, "No workspace.Zones folder.", 10, C.danger)
+		return
+	end
+	local zones = {}
+	for _, child in folder:GetChildren() do
+		local n = Wiring.numberOf(child.Name)
+		if n then table.insert(zones, { n = n, model = child }) end
+	end
+	table.sort(zones, function(a, b) return a.n < b.n end)
+	for _, entry in zones do
+		local model, n = entry.model, entry.n
+		local id = Wiring.idOf(n)
+		local keys = keysFor(model, id)
+		local spawns = countTagged(model, "EnemySpawn")
+		local wired = model:GetAttribute("ZoneId") == id and countTagged(model, "ZoneBarrier") > 0
+		local surf = model:FindFirstChild("Stuff") and model.Stuff:FindFirstChild("Pit") and model.Stuff.Pit:FindFirstChild("Surf")
+		local function mark(ok: boolean): string
+			return if ok then `<font color="#84AE8B">✓</font>` else `<font color="#DEB868">○</font>`
+		end
+		local line = make("TextButton", {
+			BackgroundColor3 = C.input, BorderSizePixel = 0, Font = Enum.Font.Code, RichText = true, TextSize = 11, TextColor3 = C.text,
+			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = n,
+			Text = string.format("  %-7s %s wired  %s %d keys  %s %d spawns%s", "Zone" .. n, mark(wired), mark(keys > 0), keys,
+				mark(spawns > 0), spawns, if surf then "" else "  <font color=\"#DE6464\">no Pit.Surf</font>"),
+		}, list)
+		make("UICorner", { CornerRadius = UDim.new(0, 4) }, line)
+		line.Activated:Connect(function()
+			Selection:Set({ model })
+		end)
+	end
+end
+
+--------------------------------------------------------------------------
+-- Active zone
+--------------------------------------------------------------------------
+
+local zonePanel = section("Active zone", "The zone your selection is in.")
+local activeLabel = text(zonePanel, "", 12, C.text)
+activeLabel.Font = Enum.Font.GothamBold
+
+local function needZone(): (Model?, number?)
+	local zone, n = activeZone()
+	if not zone then
+		report("Select something inside a Zone<N> model first.", "bad")
+	end
+	return zone, n
+end
+
+local nav = row(zonePanel)
+button(nav, "Select Pit.Surf", function()
+	local zone = needZone()
+	if not zone then return end
+	local surf = zone:FindFirstChild("Stuff") and zone.Stuff:FindFirstChild("Pit") and zone.Stuff.Pit:FindFirstChild("Surf")
+	if surf then
+		Selection:Set({ surf })
+		report("Selected Pit.Surf: brush the keyboard onto it with KeyCapper.")
+	else
+		report(zone.Name .. " has no Stuff.Pit.Surf.", "bad")
+	end
+end, 0.5)
+button(nav, "Select gate", function()
+	local zone = needZone()
+	if not zone then return end
+	local gate = zone:FindFirstChild("Gate")
+	if gate then
+		Selection:Set(gate:GetChildren())
+		report("Selected the barrier and spawn. Run Wire again after moving the DividerLine.")
+	else
+		report(zone.Name .. " isn't wired yet: press Wire all zones.", "warn")
+	end
+end, 0.5)
+
+button(zonePanel, "Assign selected keys to this zone", function()
+	local zone, n = needZone()
+	if not zone or not n then return end
+	local keys = keysIn(Selection:Get())
+	if #keys == 0 then
+		report("Select KeyCapper keys (or a folder of them) inside the zone.", "bad")
+		return
+	end
+	undoable("Assign keys", function()
+		local id = Wiring.idOf(n)
+		for _, key in keys do
+			key:SetAttribute("World", id)
+		end
+		refreshZones()
+		return `{#keys} key(s) now pay in {zone.Name} ({id}).`
+	end)
 end)
 
-local footer=make("Frame", {BackgroundColor3=C.input, BorderSizePixel=0, Size=UDim2.new(1,0,0,46)}, body)
-make("UICorner", {CornerRadius=UDim.new(0,6)}, footer)
-make("UIPadding", {PaddingLeft=UDim.new(0,9), PaddingRight=UDim.new(0,9), PaddingTop=UDim.new(0,5), PaddingBottom=UDim.new(0,5)}, footer)
-status=text(footer,"Ready. Select instances in the Explorer or viewport.",10,C.accent)
-status.Size=UDim2.new(1,0,1,0)
-report("Ready. Select a zone or parts to begin.")
-]]></ProtectedString>
-			<bool name="Disabled">false</bool>
-			<Content name="LinkedSource"><null></null></Content>
-			<token name="RunContext">0</token>
-			<string name="ScriptGuid">{56CCD26B-0A3A-4A4F-AA93-3E1FE9E92E78}</string>
-			<BinaryString name="AttributesSerialize"></BinaryString>
-			<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
-			<bool name="DefinesCapabilities">false</bool>
-			<string name="Name">ZoneManager</string>
-			<BinaryString name="SerializedOverrides"></BinaryString>
-			<int64 name="SourceAssetId">-1</int64>
-			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
-		</Properties>
-	</Item>
-	<SharedStrings>
-		<SharedString md5="yuZpQdnvvUBOTYh1jqZ2cA=="></SharedString>
-	</SharedStrings>
+button(zonePanel, "Mark selected parts as EnemyGround", function()
+	local parts = {}
+	for _, v in Selection:Get() do
+		if v:IsA("BasePart") then table.insert(parts, v) end
+	end
+	if #parts == 0 then
+		report("Select the parts enemies may walk on (blobs, ramps).", "bad")
+		return
+	end
+	undoable("Tag EnemyGround", function()
+		for _, p in parts do
+			CollectionService:AddTag(p, "EnemyGround")
+		end
+		return `Tagged {#parts} part(s) EnemyGround.`
+	end)
+end)
+
+-- Enemy spawn scatter
+text(zonePanel, "<b>Enemy spawns</b>: markers on Ground and EnemyGround in this zone, away from the pit, gate and props.", 10, C.muted)
+local countBox = box(zonePanel, "How many", "16")
+local spacingBox = box(zonePanel, "Minimum spacing (studs)", "10")
+local insetBox = box(zonePanel, "Edge inset (studs)", "6")
+
+local function numberFrom(b: TextBox): number?
+	local n = tonumber(b.Text)
+	return if n and n == n and n >= 0 and n < math.huge then n else nil
+end
+
+local function scatter(zone: Model, n: number): (string, string?)
+	local count, spacing, inset = numberFrom(countBox), numberFrom(spacingBox), numberFrom(insetBox)
+	if not count or count < 1 or count > 200 or count % 1 ~= 0 then return "How many: a whole number from 1 to 200.", "bad" end
+	if not spacing or not inset then return "Spacing and inset must be numbers.", "bad" end
+
+	local surfaces: { BasePart } = {}
+	local isSurface: { [Instance]: boolean } = {}
+	for _, d in zone:GetDescendants() do
+		if d:IsA("BasePart") and (d.Name == "Ground" and d.Parent == zone or CollectionService:HasTag(d, "EnemyGround")) then
+			table.insert(surfaces, d)
+			isSurface[d] = true
+		end
+	end
+	if #surfaces == 0 then return zone.Name .. " has no Ground or EnemyGround parts.", "bad" end
+
+	local folder = zone:FindFirstChild("EnemySpawns")
+	local existing: { Vector3 } = {}
+	if folder then
+		for _, d in folder:GetChildren() do
+			if d:IsA("BasePart") then table.insert(existing, d.Position) end
+		end
+	end
+	local gate = zone:FindFirstChild("Gate")
+	local barrier = gate and gate:FindFirstChild("Barrier")
+	local pit = zone:FindFirstChild("Stuff") and zone.Stuff:FindFirstChild("Pit")
+
+	-- Ray down from above: the first collidable thing hit must be a surface,
+	-- so spots under trees, rocks, the pit and the keyboard are skipped.
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = if folder then { folder } else {}
+	params.RespectCanCollide = true
+	params.IgnoreWater = true
+
+	local function nearPit(p: Vector3): boolean
+		if not pit then return false end
+		for _, d in pit:GetDescendants() do
+			if d:IsA("BasePart") then
+				local offset = d.CFrame:PointToObjectSpace(p)
+				local half = d.Size / 2 + Vector3.new(4, 0, 4)
+				if math.abs(offset.X) <= half.X and math.abs(offset.Z) <= half.Z then return true end
+			end
+		end
+		return false
+	end
+
+	local rng = Random.new()
+	local made: { Vector3 } = {}
+	for _ = 1, count * 60 do
+		if #made >= count then break end
+		local s = surfaces[rng:NextInteger(1, #surfaces)]
+		local hx, hz = s.Size.X / 2 - inset, s.Size.Z / 2 - inset
+		if hx <= 0 or hz <= 0 then continue end
+		local sample = s.CFrame:PointToWorldSpace(Vector3.new(rng:NextNumber(-hx, hx), s.Size.Y / 2, rng:NextNumber(-hz, hz)))
+		local hit = Workspace:Raycast(sample + Vector3.new(0, 60, 0), Vector3.new(0, -120, 0), params)
+		if not (hit and isSurface[hit.Instance]) then continue end
+		local pos = hit.Position
+		if nearPit(pos) then continue end
+		-- Not right by the gate, where players walk in.
+		if barrier and math.abs(barrier.CFrame:PointToObjectSpace(pos).Z) < 14 then continue end
+		local clear = true
+		for _, list in { existing, made } do
+			for _, other in list do
+				if (Vector3.new(pos.X - other.X, 0, pos.Z - other.Z)).Magnitude < spacing then
+					clear = false
+					break
+				end
+			end
+			if not clear then break end
+		end
+		if clear then table.insert(made, pos) end
+	end
+	if #made == 0 then return "No clear spots found: lower the spacing or inset.", "bad" end
+
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "EnemySpawns"
+		folder.Parent = zone
+	end
+	local id = Wiring.idOf(n)
+	local base = #existing
+	for i, pos in made do
+		local marker = Instance.new("Part")
+		marker.Name = string.format("EnemySpawn_%03d", base + i)
+		marker.Size = Vector3.new(1, 0.2, 1)
+		marker.CFrame = CFrame.new(pos + Vector3.new(0, 0.1, 0))
+		marker.Anchored = true
+		marker.CanCollide = false
+		marker.CanTouch = false
+		marker.CanQuery = false
+		marker.Transparency = 1
+		marker.CastShadow = false
+		marker:SetAttribute("ZoneId", id)
+		CollectionService:AddTag(marker, "EnemySpawn")
+		marker.Parent = folder
+	end
+	local kind = if #made < count then "warn" else nil
+	return `Added {#made} of {count} EnemySpawn markers to {zone.Name}.`, kind
+end
+
+local spawnRow = row(zonePanel)
+button(spawnRow, "Scatter EnemySpawns", function()
+	local zone, n = needZone()
+	if not zone or not n then return end
+	undoable("Scatter EnemySpawns", function()
+		local message, kind = scatter(zone, n)
+		refreshZones()
+		return message, kind
+	end)
+end, 0.5)
+button(spawnRow, "Clear EnemySpawns", function()
+	local zone = needZone()
+	if not zone then return end
+	undoable("Clear EnemySpawns", function()
+		local removed = 0
+		for _, d in zone:GetDescendants() do
+			if d:IsA("BasePart") and CollectionService:HasTag(d, "EnemySpawn") then
+				d:Destroy()
+				removed += 1
+			end
+		end
+		refreshZones()
+		return `Removed {removed} EnemySpawn marker(s).`
+	end)
+end, 0.5)
+
+--------------------------------------------------------------------------
+-- Tags and attributes (any instance)
+--------------------------------------------------------------------------
+
+local tagPanel = section("Tags", "Add or remove a tag on the selection (and, optionally, everything inside it).")
+local tagBox = box(tagPanel, "Tag name (e.g. EnemyGround)")
+local includeDescendants = false
+local scopeButton: TextButton
+scopeButton = button(tagPanel, "Scope: selection only", function()
+	includeDescendants = not includeDescendants
+	scopeButton.Text = if includeDescendants then "Scope: selection + descendants" else "Scope: selection only"
+end)
+local function targets(): { Instance }
+	local out, seen = {}, {}
+	for _, v in Selection:Get() do
+		if not seen[v] then seen[v] = true; table.insert(out, v) end
+		if includeDescendants then
+			for _, d in v:GetDescendants() do
+				if not seen[d] then seen[d] = true; table.insert(out, d) end
+			end
+		end
+	end
+	return out
+end
+local tagRow = row(tagPanel)
+button(tagRow, "Add tag", function()
+	local name, list = tagBox.Text, targets()
+	if name == "" or #list == 0 then report("Enter a tag and select instances.", "bad") return end
+	undoable("Add tag", function()
+		local n = 0
+		for _, v in list do
+			if not CollectionService:HasTag(v, name) then CollectionService:AddTag(v, name); n += 1 end
+		end
+		return `Added '{name}' to {n} instance(s).`
+	end)
+end, 0.5)
+button(tagRow, "Remove tag", function()
+	local name, list = tagBox.Text, targets()
+	if name == "" or #list == 0 then report("Enter a tag and select instances.", "bad") return end
+	undoable("Remove tag", function()
+		local n = 0
+		for _, v in list do
+			if CollectionService:HasTag(v, name) then CollectionService:RemoveTag(v, name); n += 1 end
+		end
+		return `Removed '{name}' from {n} instance(s).`
+	end)
+end, 0.5)
+
+local attrPanel = section("Attributes", "Vector3 / Color3: x, y, z (Color3 as 0-1 or 0-255).")
+local attrName = box(attrPanel, "Attribute name (e.g. Subtitle)")
+local attrValue = box(attrPanel, "Value")
+local attrType = "string"
+local typeRow = row(attrPanel)
+local typeButtons: { [string]: TextButton } = {}
+local function pickType(kind: string)
+	attrType = kind
+	for k, b in typeButtons do
+		b.BackgroundColor3 = if k == kind then C.border else C.input
+	end
+end
+for _, kind in { "string", "number", "boolean", "Vector3", "Color3" } do
+	local b = button(typeRow, kind, function() pickType(kind) end, 0.2)
+	b.TextSize = 9
+	typeButtons[kind] = b
+end
+pickType("string")
+local function parseValue(): (boolean, any)
+	local raw = attrValue.Text
+	if attrType == "string" then return true, raw end
+	if attrType == "number" then local n = tonumber(raw); return n ~= nil, n end
+	if attrType == "boolean" then
+		if raw:lower() == "true" then return true, true elseif raw:lower() == "false" then return true, false end
+		return false, nil
+	end
+	local a, b, c = string.match(raw, "^%s*([%+%-%.%d]+)%s*,%s*([%+%-%.%d]+)%s*,%s*([%+%-%.%d]+)%s*$")
+	local x, y, z = tonumber(a), tonumber(b), tonumber(c)
+	if not x or not y or not z then return false, nil end
+	if attrType == "Vector3" then return true, Vector3.new(x, y, z) end
+	if x > 1 or y > 1 or z > 1 then
+		return true, Color3.fromRGB(math.clamp(math.round(x), 0, 255), math.clamp(math.round(y), 0, 255), math.clamp(math.round(z), 0, 255))
+	end
+	return true, Color3.new(x, y, z)
+end
+local attrRow = row(attrPanel)
+button(attrRow, "Set", function()
+	local name, list = attrName.Text, Selection:Get()
+	local ok, value = parseValue()
+	if name == "" or #list == 0 or not ok then report("Check the name, the selection and the value.", "bad") return end
+	undoable("Set attribute", function()
+		for _, v in list do v:SetAttribute(name, value) end
+		return `Set '{name}' on {#list} instance(s).`
+	end)
+end, 0.5)
+button(attrRow, "Remove", function()
+	local name, list = attrName.Text, Selection:Get()
+	if name == "" or #list == 0 then report("Enter a name and select instances.", "bad") return end
+	undoable("Remove attribute", function()
+		local n = 0
+		for _, v in list do
+			if v:GetAttribute(name) ~= nil then v:SetAttribute(name, nil); n += 1 end
+		end
+		return `Removed '{name}' from {n} instance(s).`
+	end)
+end, 0.5)
+
+-- Keep the status footer last.
+footer.LayoutOrder = nextOrder()
+
+--------------------------------------------------------------------------
+-- Live
+--------------------------------------------------------------------------
+
+local function refreshActive()
+	local zone, n = activeZone()
+	if zone and n then
+		activeLabel.Text = `{zone.Name}  ·  id {Wiring.idOf(n)}`
+		activeLabel.TextColor3 = C.text
+	else
+		activeLabel.Text = "Nothing selected in a zone"
+		activeLabel.TextColor3 = C.muted
+	end
+end
+Selection.SelectionChanged:Connect(refreshActive)
+widget:GetPropertyChangedSignal("Enabled"):Connect(function()
+	if widget.Enabled then
+		refreshZones()
+		refreshActive()
+	end
+end)
+refreshActive()
+refreshZones()
+report("Ready. Press Wire all zones after building or moving zones.")
+]]></string>
+    </Properties>
+    <Item class="ModuleScript" referent="1">
+      <Properties>
+        <string name="Name">ZoneWiring</string>
+        <string name="Source"><![CDATA[--[[
+	ZoneWiring: wires the hand-built zones under workspace.Zones for the game.
+	Shared by the ZoneManager Studio plugin and tools/wire_zones.luau (Lune),
+	so it only uses what both have: pass the Roblox types in as `env`.
+
+	  local Wiring = require(ZoneWiring)(env)   -- env: Instance, Vector3, CFrame, Color3, Enum
+	  local report = Wiring.wire(workspace, options)
+
+	The map it expects:
+	  workspace.Zones.Lobby              the start area: no price, keyboard or enemies
+	  workspace.Zones.Zone1 .. ZoneN     a Model per zone, unlocked in number order
+	    Ground                           the floor Part (sets the zone's box)
+	    Ground.DividerLine               invisible ground-sized Part with two
+	                                     Attachments (and a Beam) marking the
+	                                     line players cross to ENTER this zone
+	    Stuff.Pit.Surf                   where the keyboard goes (placed by hand)
+	    Stuff.Decorations.signage        a sign whose TextLabel names a zone
+
+	What it does (safe to run again: it rebuilds what it made):
+	  zones     ZoneId "001".. from the name, tag Zone, Center / ZoneSize from
+	            the Ground (cut at the gate lines so boxes don't overlap),
+	            Ground tagged EnemyGround
+	  gates     each DividerLine is matched to the zones on either side of it
+	            (by position, not by which model it sits in), and gates the
+	            higher one. A zone with no DividerLine gets one made from the
+	            ground seam with the previous zone (reported).
+	  barriers  Zone<N>.Gate.Barrier: ground-wide, up from the line, tagged
+	            ZoneBarrier with ZoneId; the game shows the price and BUY button
+	            on it and removes it once the zone is owned (the Beam stays)
+	  spawns    Zone<N>.Gate.Spawn (tagged ZoneSpawn): a clear spot just past
+	            the gate, where the Teleporter puts players. One SpawnLocation
+	            in the Lobby; SpawnLocations inside zones are turned off.
+	  signs     every signage TextLabel in Zone<N> reads "Zone N", and the
+	            sign is tagged ZoneSign (the game keeps the text in step with
+	            Shared/Zones)
+	  other     Zone tag removed from things under Zones that aren't zones
+]]
+
+type Report = { lines: { string }, problems: { string } }
+
+return function(env: any)
+	local Instance = env.Instance
+	local Vector3 = env.Vector3
+	local CFrame = env.CFrame
+	local Color3 = env.Color3
+	local Enum = env.Enum
+
+	local Wiring = {}
+
+	Wiring.Defaults = {
+		ZonesFolder = "Zones",
+		Lobby = "Lobby",
+		BarrierHeight = 40,
+		BarrierThickness = 1.5,
+		BarrierColor = Color3.fromRGB(25, 25, 35),
+		BarrierTransparency = 0.5,
+		BarrierMaterial = "SmoothPlastic",
+		SpawnDepth = 12, -- studs past the gate line
+		BoxHeight = 100, -- ZoneSize.Y
+		-- What a sign says for zone n.
+		NameOf = function(n: number): string
+			return `Zone {n}`
+		end,
+	}
+
+	local UP = Vector3.new(0, 1, 0)
+
+	-- "Zone7" / "zone 7" → 7
+	function Wiring.numberOf(name: string): number?
+		return tonumber(string.match(string.lower(name), "^zone%s*(%d+)$"))
+	end
+
+	function Wiring.idOf(n: number): string
+		return string.format("%03d", n)
+	end
+
+	-- World-space axis-aligned box of a part.
+	local function aabb(part: any): (any, any)
+		local cf, size = part.CFrame, part.Size
+		local half = Vector3.new(
+			math.abs(cf.XVector.X) * size.X + math.abs(cf.YVector.X) * size.Y + math.abs(cf.ZVector.X) * size.Z,
+			math.abs(cf.XVector.Y) * size.X + math.abs(cf.YVector.Y) * size.Y + math.abs(cf.ZVector.Y) * size.Z,
+			math.abs(cf.XVector.Z) * size.X + math.abs(cf.YVector.Z) * size.Y + math.abs(cf.ZVector.Z) * size.Z
+		) / 2
+		local p = cf.Position
+		return p - half, p + half
+	end
+
+	local function flat(v: any): any
+		return Vector3.new(v.X, 0, v.Z)
+	end
+
+	local function insideXZ(lo: any, hi: any, p: any, pad: number?): boolean
+		local m = pad or 0
+		return p.X >= lo.X - m and p.X <= hi.X + m and p.Z >= lo.Z - m and p.Z <= hi.Z + m
+	end
+
+	local function isPart(i: any): boolean
+		return i:IsA("BasePart")
+	end
+
+	local function findDescendant(root: any, name: string): { any }
+		local out = {}
+		for _, d in root:GetDescendants() do
+			if d.Name == name then
+				table.insert(out, d)
+			end
+		end
+		return out
+	end
+
+	--------------------------------------------------------------------------
+	-- Zones
+	--------------------------------------------------------------------------
+
+	type Zone = {
+		n: number, -- 0 = Lobby
+		id: string?,
+		model: any,
+		ground: any?,
+		lo: any, -- footprint (Ground + its DividerLines)
+		hi: any,
+		boxLo: any, -- the zone's box, cut at gate lines
+		boxHi: any,
+	}
+
+	local function footprint(model: any, ground: any?): (any?, any?)
+		local lo, hi = nil, nil
+		local function add(part: any)
+			local a, b = aabb(part)
+			lo = if lo then lo:Min(a) else a
+			hi = if hi then hi:Max(b) else b
+		end
+		if ground then add(ground) end
+		for _, d in findDescendant(model, "DividerLine") do
+			if isPart(d) then add(d) end
+		end
+		return lo, hi
+	end
+
+	function Wiring.collectZones(folder: any): ({ [number]: Zone }, Zone?, { any })
+		local zones: { [number]: Zone } = {}
+		local lobby: Zone? = nil
+		local others = {}
+		for _, child in folder:GetChildren() do
+			local n = Wiring.numberOf(child.Name)
+			local ground = child:FindFirstChild("Ground")
+			if ground and not isPart(ground) then ground = nil end
+			if n or child.Name == Wiring.Defaults.Lobby then
+				local lo, hi = footprint(child, ground)
+				if lo then
+					local zone: Zone = {
+						n = n or 0, id = if n then Wiring.idOf(n) else nil, model = child, ground = ground,
+						lo = lo, hi = hi, boxLo = lo, boxHi = hi,
+					}
+					if n then zones[n] = zone else lobby = zone end
+				else
+					table.insert(others, child)
+				end
+			else
+				table.insert(others, child)
+			end
+		end
+		return zones, lobby, others
+	end
+
+	-- The zone whose footprint holds p; the nearest centre wins when they overlap.
+	local function zoneAt(all: { Zone }, p: any): Zone?
+		local best, bestScore = nil, math.huge
+		for _, zone in all do
+			if insideXZ(zone.lo, zone.hi, p) then
+				local c = (zone.lo + zone.hi) / 2
+				local half = (zone.hi - zone.lo) / 2
+				local score = math.abs(p.X - c.X) / math.max(half.X, 1) + math.abs(p.Z - c.Z) / math.max(half.Z, 1)
+				if score < bestScore then
+					best, bestScore = zone, score
+				end
+			end
+		end
+		return best
+	end
+
+	--------------------------------------------------------------------------
+	-- Gates
+	--------------------------------------------------------------------------
+
+	type Gate = {
+		zone: Zone, -- gated (entered by crossing the line)
+		from: Zone?, -- the side players come from
+		a: any, -- line ends (world)
+		b: any,
+		dir: any, -- unit, along the line (flat)
+		inward: any, -- unit, flat, pointing into `zone`
+		length: number, -- barrier length (ground width)
+		center: any, -- middle of the barrier on the line
+		y: number, -- line height
+		line: any?, -- the DividerLine part (nil when made up)
+	}
+
+	local function attachmentsOf(line: any): { any }
+		local out = {}
+		for _, c in line:GetChildren() do
+			if c:IsA("Attachment") then
+				table.insert(out, (line.CFrame * c.CFrame).Position)
+			end
+		end
+		return out
+	end
+
+	-- A part's extent along a flat unit direction.
+	local function extentAlong(part: any, dir: any): number
+		local cf, size = part.CFrame, part.Size
+		return math.abs(cf.XVector:Dot(dir)) * size.X + math.abs(cf.YVector:Dot(dir)) * size.Y + math.abs(cf.ZVector:Dot(dir)) * size.Z
+	end
+
+	local function makeGate(zone: Zone, from: Zone?, a: any, b: any, line: any?): Gate
+		local dir = flat(b - a).Unit
+		local mid = (a + b) / 2
+		local normal = Vector3.new(-dir.Z, 0, dir.X)
+		local zc = (zone.lo + zone.hi) / 2
+		if flat(zc - mid):Dot(normal) < 0 then
+			normal = -normal
+		end
+		local length, center = (b - a).Magnitude, mid
+		if line then
+			-- As wide as the ground: the DividerLine part's extent along the line.
+			length = extentAlong(line, dir)
+			local along = (line.CFrame.Position - mid):Dot(dir)
+			center = mid + dir * along
+		end
+		return {
+			zone = zone, from = from, a = a, b = b, dir = dir, inward = normal,
+			length = length, center = Vector3.new(center.X, mid.Y, center.Z), y = mid.Y, line = line,
+		}
+	end
+
+	-- The line between two touching footprints (prev → zone), from their seam.
+	local function seamGate(zone: Zone, prev: Zone): Gate?
+		local d = (zone.lo + zone.hi) / 2 - (prev.lo + prev.hi) / 2
+		local y = prev.hi.Y
+		if math.abs(d.X) >= math.abs(d.Z) then
+			local x = if d.X > 0 then prev.hi.X else prev.lo.X
+			local z0, z1 = math.max(prev.lo.Z, zone.lo.Z), math.min(prev.hi.Z, zone.hi.Z)
+			if z1 - z0 < 4 then return nil end
+			return makeGate(zone, prev, Vector3.new(x, y, z0), Vector3.new(x, y, z1), nil)
+		else
+			local z = if d.Z > 0 then prev.hi.Z else prev.lo.Z
+			local x0, x1 = math.max(prev.lo.X, zone.lo.X), math.min(prev.hi.X, zone.hi.X)
+			if x1 - x0 < 4 then return nil end
+			return makeGate(zone, prev, Vector3.new(x0, y, z), Vector3.new(x1, y, z), nil)
+		end
+	end
+
+	function Wiring.findGates(folder: any, zones: { [number]: Zone }, lobby: Zone?, report: Report): { [number]: Gate }
+		local all: { Zone } = {}
+		for _, zone in zones do table.insert(all, zone) end
+		if lobby then table.insert(all, lobby) end
+
+		local gates: { [number]: Gate } = {}
+		for _, line in findDescendant(folder, "DividerLine") do
+			if not isPart(line) then continue end
+			local ends = attachmentsOf(line)
+			if #ends < 2 then
+				table.insert(report.problems, `{line:GetFullName()} needs two Attachments (found {#ends})`)
+				continue
+			end
+			local a, b = ends[1], ends[2]
+			local mid = (a + b) / 2
+			local dir = flat(b - a).Unit
+			local normal = Vector3.new(-dir.Z, 0, dir.X)
+			local one, two = zoneAt(all, mid + normal * 10), zoneAt(all, mid - normal * 10)
+			if not one or not two or one == two then
+				table.insert(report.problems, `{line:GetFullName()} isn't between two zones (is it on a zone edge?)`)
+				continue
+			end
+			local gated, from = one, two
+			if two.n > one.n then gated, from = two, one end
+			if gated.n == 0 then continue end
+			if from.n ~= gated.n - 1 then
+				table.insert(report.problems, `{line:GetFullName()} joins Zone{from.n} to Zone{gated.n}: zones should join in order`)
+			end
+			local existing = gates[gated.n]
+			if existing then
+				-- Keep the one that sits in the zone it gates.
+				local mine = line:IsDescendantOf(gated.model)
+				if mine and not (existing.line and existing.line:IsDescendantOf(gated.model)) then
+					gates[gated.n] = makeGate(gated, from, a, b, line)
+				end
+				table.insert(report.lines, `Zone{gated.n} has two DividerLines; using {gates[gated.n].line:GetFullName()}`)
+				continue
+			end
+			gates[gated.n] = makeGate(gated, from, a, b, line)
+			if not line:IsDescendantOf(gated.model) then
+				table.insert(report.lines, `Zone{gated.n}'s entrance is {line:GetFullName()} (it sits in another zone's model; that's fine)`)
+			end
+		end
+
+		for n, zone in zones do
+			if not gates[n] then
+				local prev = if n == 1 then lobby else zones[n - 1]
+				local gate = if prev then seamGate(zone, prev) else nil
+				if gate then
+					gates[n] = gate
+					table.insert(report.problems, `Zone{n} has no DividerLine at its entrance: made the gate from the ground seam with {prev.model.Name}. Add a DividerLine there to place it yourself`)
+				else
+					table.insert(report.problems, `Zone{n} has no DividerLine and doesn't touch {if prev then prev.model.Name else "the previous zone"}: no gate`)
+				end
+			end
+		end
+		return gates
+	end
+
+	--------------------------------------------------------------------------
+	-- Spawns
+	--------------------------------------------------------------------------
+
+	-- Collidable parts that could be in the way, with their boxes.
+	type Solid = { part: any, lo: any, hi: any }
+	local function solidsOf(roots: { any }, skip: { [any]: boolean }): { Solid }
+		local out = {}
+		for _, root in roots do
+			for _, d in root:GetDescendants() do
+				if isPart(d) and d.CanCollide and not skip[d] and d.Name ~= "DividerLine" then
+					local lo, hi = aabb(d)
+					table.insert(out, { part = d, lo = lo, hi = hi })
+				end
+			end
+		end
+		return out
+	end
+
+	-- The top of whatever a player would stand on at (x, z), at or below `below`.
+	local function floorAt(solids: { Solid }, p: any, below: number): number?
+		local best = nil
+		for _, s in solids do
+			if insideXZ(s.lo, s.hi, p) and s.hi.Y <= below and (best == nil or s.hi.Y > best) then
+				-- Thin floors only (a pillar's top isn't a floor).
+				if s.hi.Y - s.lo.Y <= 12 or s.part.Name == "Ground" then
+					best = s.hi.Y
+				end
+			end
+		end
+		return best
+	end
+
+	local function blocked(solids: { Solid }, feet: any, radius: number): boolean
+		local lo = feet + Vector3.new(-radius, 0.6, -radius)
+		local hi = feet + Vector3.new(radius, 6, radius)
+		for _, s in solids do
+			if s.lo.X < hi.X and s.hi.X > lo.X and s.lo.Y < hi.Y and s.hi.Y > lo.Y and s.lo.Z < hi.Z and s.hi.Z > lo.Z then
+				return true
+			end
+		end
+		return false
+	end
+
+	-- A clear standing spot near `origin`, trying offsets across / along.
+	local function clearSpot(solids: { Solid }, origin: any, across: any, along: any, top: number): any?
+		for _, depth in { 0, 4, 8, 12, 16 } do
+			for _, side in { 0, 6, -6, 12, -12, 18, -18, 24, -24 } do
+				local p = origin + along * depth + across * side
+				local y = floorAt(solids, p, top)
+				if y then
+					local feet = Vector3.new(p.X, y, p.Z)
+					if not blocked(solids, feet, 2.5) then
+						return feet
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function spawnPart(parent: any, name: string, feet: any, facing: any, className: string?): any
+		local part = Instance.new(className or "Part")
+		part.Name = name
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.Transparency = 1
+		part.CastShadow = false
+		part.Size = Vector3.new(6, 1, 6)
+		part.CFrame = CFrame.lookAt(feet + Vector3.new(0, 0.5, 0), feet + Vector3.new(0, 0.5, 0) + facing)
+		part.Parent = parent
+		return part
+	end
+
+	--------------------------------------------------------------------------
+	-- Wire
+	--------------------------------------------------------------------------
+
+	function Wiring.wire(workspace: any, options: any?): Report
+		local o = table.clone(Wiring.Defaults)
+		for k, v in options or {} do o[k] = v end
+		local report: Report = { lines = {}, problems = {} }
+
+		local folder = workspace:FindFirstChild(o.ZonesFolder)
+		if not folder then
+			table.insert(report.problems, `workspace.{o.ZonesFolder} is missing`)
+			return report
+		end
+		local zones, lobby, others = Wiring.collectZones(folder)
+		local count = 0
+		for n in zones do count = math.max(count, n) end
+		for n = 1, count do
+			if not zones[n] then
+				table.insert(report.problems, `Zone{n} is missing (or has no Ground part)`)
+			end
+		end
+
+		-- Not zones: the game would see unknown zone ids.
+		for _, other in others do
+			if other:HasTag("Zone") then
+				other:RemoveTag("Zone")
+				table.insert(report.lines, `untagged {other.Name} (under {o.ZonesFolder} but not a zone)`)
+			end
+		end
+		if lobby and lobby.model:HasTag("Zone") then
+			lobby.model:RemoveTag("Zone")
+		end
+
+		local gates = Wiring.findGates(folder, zones, lobby, report)
+
+		-- Zone boxes, cut at the gate lines so neighbours don't overlap.
+		for _, gate in gates do
+			local axisX = math.abs(gate.inward.X) > 0.99
+			local axisZ = math.abs(gate.inward.Z) > 0.99
+			for _, zone in { gate.zone, gate.from } do
+				if zone and zone.n > 0 then
+					local into = if zone == gate.zone then gate.inward else -gate.inward
+					if axisX then
+						if into.X > 0 then
+							zone.boxLo = Vector3.new(math.max(zone.boxLo.X, gate.center.X), zone.boxLo.Y, zone.boxLo.Z)
+						else
+							zone.boxHi = Vector3.new(math.min(zone.boxHi.X, gate.center.X), zone.boxHi.Y, zone.boxHi.Z)
+						end
+					elseif axisZ then
+						if into.Z > 0 then
+							zone.boxLo = Vector3.new(zone.boxLo.X, zone.boxLo.Y, math.max(zone.boxLo.Z, gate.center.Z))
+						else
+							zone.boxHi = Vector3.new(zone.boxHi.X, zone.boxHi.Y, math.min(zone.boxHi.Z, gate.center.Z))
+						end
+					end
+				end
+			end
+		end
+
+		-- SpawnLocations: only the Lobby's.
+		for _, d in folder:GetDescendants() do
+			if d:IsA("SpawnLocation") and d.Name ~= "LobbySpawn" and d.Enabled then
+				d.Enabled = false
+				table.insert(report.lines, `turned off {d:GetFullName()}`)
+			end
+		end
+
+		for n = 1, count do
+			local zone = zones[n]
+			if not zone then continue end
+			local model = zone.model
+			model:SetAttribute("ZoneId", zone.id)
+			model:AddTag("Zone")
+			local lo, hi = zone.boxLo, zone.boxHi
+			model:SetAttribute("Center", Vector3.new((lo.X + hi.X) / 2, lo.Y, (lo.Z + hi.Z) / 2))
+			model:SetAttribute("ZoneSize", Vector3.new(hi.X - lo.X, o.BoxHeight, hi.Z - lo.Z))
+			if zone.ground and not zone.ground:HasTag("EnemyGround") then
+				zone.ground:AddTag("EnemyGround")
+			end
+
+			-- Rebuild what we made last time.
+			local old = model:FindFirstChild("Gate")
+			if old then old:Destroy() end
+			local gate = gates[n]
+			if not gate then continue end
+			local holder = Instance.new("Folder")
+			holder.Name = "Gate"
+			holder.Parent = model
+
+			-- Barrier: from the lower floor beside the line up to line + height.
+			local floorBelow = gate.y
+			for _, side in { gate.zone, gate.from } do
+				if side and side.ground then
+					local _, top = aabb(side.ground)
+					floorBelow = math.min(floorBelow, top.Y)
+				end
+			end
+			local bottom = floorBelow
+			local top = gate.y + o.BarrierHeight
+			local barrier = Instance.new("Part")
+			barrier.Name = "Barrier"
+			barrier.Anchored = true
+			barrier.CanCollide = true
+			barrier.CanTouch = false
+			barrier.CanQuery = true -- the BUY button on it needs clicks to land
+			barrier.CastShadow = false
+			barrier.Color = o.BarrierColor
+			barrier.Transparency = o.BarrierTransparency
+			barrier.Material = Enum.Material[o.BarrierMaterial]
+			barrier.Size = Vector3.new(gate.length, top - bottom, o.BarrierThickness)
+			local at = Vector3.new(gate.center.X, (top + bottom) / 2, gate.center.Z)
+			-- X along the line, Z across it: the sign faces both ways.
+			barrier.CFrame = CFrame.fromMatrix(at, gate.dir, UP)
+			barrier:SetAttribute("ZoneId", zone.id)
+			barrier:AddTag("ZoneBarrier")
+			barrier.Parent = holder
+
+			-- Spawn: just past the line, somewhere clear.
+			local skip = { [barrier] = true }
+			local solids = solidsOf({ model }, skip)
+			if gate.from then
+				for _, s in solidsOf({ gate.from.model }, skip) do table.insert(solids, s) end
+			end
+			local origin = gate.center + gate.inward * o.SpawnDepth
+			local groundTop = if zone.ground then select(2, aabb(zone.ground)).Y else gate.y
+			local feet = clearSpot(solids, origin, gate.dir, gate.inward, math.max(gate.y, groundTop) + 6)
+			if not feet then
+				feet = Vector3.new(origin.X, groundTop, origin.Z)
+				table.insert(report.problems, `Zone{n}: no clear spot past the gate for the spawn; put Gate.Spawn somewhere clear`)
+			end
+			local spawn = spawnPart(holder, "Spawn", feet, gate.inward)
+			spawn:SetAttribute("ZoneId", zone.id)
+			spawn:AddTag("ZoneSpawn")
+		end
+
+		-- The Lobby's SpawnLocation (where everyone joins).
+		if lobby then
+			local existing = lobby.model:FindFirstChild("LobbySpawn")
+			if existing then existing:Destroy() end
+			local solids = solidsOf({ lobby.model }, {})
+			local center = (lobby.lo + lobby.hi) / 2
+			local toward = Vector3.new(1, 0, 0)
+			if zones[1] then
+				toward = flat((zones[1].lo + zones[1].hi) / 2 - center).Unit
+			end
+			local feet = clearSpot(solids, center, Vector3.new(-toward.Z, 0, toward.X), toward, lobby.hi.Y + 6)
+				or Vector3.new(center.X, lobby.hi.Y, center.Z)
+			local spawn = spawnPart(lobby.model, "LobbySpawn", feet, toward, "SpawnLocation")
+			spawn.Neutral = true
+			spawn.Duration = 0
+			spawn.Enabled = true
+			table.insert(report.lines, string.format("Lobby spawn at (%.0f, %.0f, %.0f)", feet.X, feet.Y, feet.Z))
+		else
+			table.insert(report.problems, `{o.ZonesFolder}.{o.Lobby} is missing: nowhere for players to join`)
+		end
+
+		-- Signs: each names the zone whose model it sits in.
+		local signs = 0
+		for n = 1, count do
+			local zone = zones[n]
+			if not zone then continue end
+			for _, sign in findDescendant(zone.model, "signage") do
+				local labels = 0
+				for _, d in sign:GetDescendants() do
+					if d:IsA("TextLabel") then
+						d.Text = o.NameOf(n)
+						labels += 1
+					end
+				end
+				if labels > 0 then
+					sign:SetAttribute("ZoneId", zone.id)
+					sign:AddTag("ZoneSign")
+					signs += 1
+				end
+			end
+		end
+
+		local gateCount = 0
+		for _ in gates do gateCount += 1 end
+		table.insert(report.lines, `{count} zones, {gateCount} gates, {signs} signs`)
+		return report
+	end
+
+	return Wiring
+end
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
 </roblox>

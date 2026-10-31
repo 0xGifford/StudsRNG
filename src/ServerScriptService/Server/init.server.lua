@@ -25,7 +25,7 @@ Net.setup()
 local ORDER = {
 	"PlayerData",
 	"StateSync",
-	"MapBuilder",
+	"World",
 	"Modifiers",
 	"PressTracker",
 	"Inventory",
@@ -46,8 +46,14 @@ local ORDER = {
 	"DevCommands",
 }
 
+-- Systems that were removed from the game. A place synced with Rojo keeps
+-- old modules around ($ignoreUnknownInstances), so never load these.
+local RETIRED = {
+	MapBuilder = true, -- the generated map; the map is built by hand now (Systems/World)
+}
+
 local systems: { { name: string, module: any } } = {}
-local seen: { [string]: boolean } = {}
+local seen: { [string]: boolean } = table.clone(RETIRED)
 
 local function load(module: Instance)
 	if not module:IsA("ModuleScript") or seen[module.Name] then return end

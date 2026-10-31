@@ -1,5 +1,5 @@
 --[[
-	Compiles every Luau file under src/ and tools/ and reports syntax errors.
+	Compiles every Luau file under src/, tools/ and plugins/ and reports syntax errors.
 	Run from the project root:  lune run tools/check.luau
 ]]
 
@@ -25,7 +25,7 @@ local function walk(dir: string)
 	end
 end
 
-for _, root in { "src", "tools" } do
+for _, root in { "src", "tools", "plugins" } do
 	if fs.isDir(root) then
 		walk(root)
 	end

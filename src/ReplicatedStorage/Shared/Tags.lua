@@ -11,18 +11,20 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Every CollectionService tag and attribute the game reads from the world
 -- and the UI. Build anything by hand in Studio, tag it, set its attributes,
--- and the game picks it up (MapBuilder's generated map uses the same tags,
--- so generated and hand-built pieces behave identically). Attributes are
--- read live: change one in a running test and the game follows.
+-- and the game picks it up (tools/wire_zones.luau and the ZoneManager plugin
+-- set up the zones this way). Attributes are read live: change one in a
+-- running test and the game follows.
 --
 -- WORLD
---   Zone          Model / Folder / Part covering one zone.
---                   ZoneId    string   Shared/Zones id (default: its Name)
+--   Zone          Model / Folder / Part covering one zone (workspace.Zones.ZoneN).
+--                   ZoneId    string   Shared/Zones id, "001".. (default: from
+--                                      its Name, Zone7 → "007")
 --                   Center    Vector3  middle of the zone floor   } default: the
 --                   ZoneSize  Vector3  extents of the zone        } bounding box
 --                 Anything inside it belongs to that zone.
 --   ZoneSpawn     BasePart players teleport to (the Teleporter, and when
 --                 falling off the map; buying a zone never teleports).
+--                 Players join at the Lobby's SpawnLocation.
 --                   ZoneId    string   default: the Zone it sits in
 --   ZoneBarrier   BasePart (or a Model of them) blocking a zone's entrance.
 --                 Opens locally once the zone is owned. Until then a sign on
@@ -32,6 +34,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                   ShowPrompt      boolean  show the sign (default true)
 --                   PromptDistance  number   studs the sign renders from (default 150)
 --                   Title           string   sign title (default: emoji + zone name)
+--   ZoneSign      TextLabel (or a Model / SurfaceGui holding one) that shows
+--                 a zone's name ("Zone 7"); filled in at runtime.
+--                   ZoneId    string   default: the Zone it sits in
 --   ZoneGate      Decoration around a barrier (arch, pillars). Hidden locally
 --                 once the zone is owned when HideWhenOwned is true.
 --                   ZoneId          string
@@ -73,11 +78,14 @@ Copyright © 2026. Mosswake, all rights reserved.
 
 local CollectionService = game:GetService("CollectionService")
 
+local Zones = require(script.Parent.Zones)
+
 local Tags = {
 	Zone = "Zone",
 	ZoneSpawn = "ZoneSpawn",
 	ZoneBarrier = "ZoneBarrier",
 	ZoneGate = "ZoneGate",
+	ZoneSign = "ZoneSign",
 	Keyboard = "Keyboard",
 	MenuTrigger = "MenuTrigger",
 	EnemySpawn = "EnemySpawn",
@@ -137,9 +145,10 @@ function Tags.ancestorWith(instance: Instance, tag: string): Instance?
 	return nil
 end
 
--- The id of a Zone-tagged instance: its ZoneId, else its Name.
+-- The id of a Zone-tagged instance: its ZoneId, else "007" for a model
+-- named Zone7, else its Name.
 function Tags.idOfZone(zone: Instance): string
-	return Tags.string(zone, Attr.ZoneId) or zone.Name
+	return Tags.string(zone, Attr.ZoneId) or Zones.idFromName(zone.Name) or zone.Name
 end
 
 -- Which zone an instance belongs to: its own ZoneId, else the Zone it sits in.

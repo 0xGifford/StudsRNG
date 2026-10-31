@@ -11,12 +11,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Knows which zone the local player stands in (Zone-tagged instances: their
 -- Center/ZoneSize attributes, or their bounding box, see Shared/Tags) and
--- makes it feel different (its Zone's ClockTime / Ambient / OutdoorAmbient /
--- FogColor / FogEnd / AtmosphereColor / AtmosphereDensity / Gravity /
--- Subtitle attributes, as tools/ZoneKit sets them, else Shared/MapThemes):
--- lighting, fog and
--- atmosphere blend to Shared/MapThemes, gravity changes locally (Heaven is
--- floaty) and a title card announces the zone.
+-- makes it feel different. Set any of these attributes on a zone Model and
+-- they blend in when the player walks in (zones without them keep the
+-- place's own Lighting): ClockTime, Ambient, OutdoorAmbient, FogColor,
+-- FogEnd, AtmosphereColor, AtmosphereDensity, Gravity, and Subtitle (under
+-- the title card that announces the zone).
 
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
@@ -26,7 +25,6 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Zones = require(Shared.Zones)
-local MapThemes = require(Shared.MapThemes)
 local Signal = require(Shared.Util.Signal)
 local Tags = require(Shared.Tags)
 
@@ -88,15 +86,9 @@ local LOOK_FIELDS = {
 }
 local DEFAULT_GRAVITY = 196.2
 
--- A zone's look: its Zone instance's attributes over its MapThemes entry.
+-- A zone's look: its Zone instance's attributes.
 local function lookOf(zoneId: string): { [string]: any }
 	local look: { [string]: any } = {}
-	local theme = MapThemes[zoneId]
-	if theme then
-		for _, field in LOOK_FIELDS do
-			look[field] = (theme :: any)[field]
-		end
-	end
 	local zone = Tags.forZone(Tags.Zone, zoneId)[1]
 	if zone then
 		for _, field in LOOK_FIELDS do

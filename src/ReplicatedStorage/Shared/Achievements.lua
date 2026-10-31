@@ -64,7 +64,7 @@ local list: { AchievementDef } = {
 	-- Exploring
 	{ Id = "Zones5", Name = "Explorer", Text = "Own 5 zones", Stat = "Zones", Target = 5, Reward = { Kind = "Clacks", Amount = 25_000 } },
 	{ Id = "Zones20", Name = "Voyager", Text = "Own 20 zones", Stat = "Zones", Target = 20, Reward = { Kind = "Spins", Amount = 3 }, Title = "Voyager", TitleColor = CYAN },
-	{ Id = "Zones50", Name = "World Walker", Text = "Own all 50 zones", Stat = "Zones", Target = 50, Reward = { Kind = "Luck", Amount = 3 }, Title = "World Walker", TitleColor = CYAN },
+	{ Id = "Zones50", Name = "World Walker", Text = "Own all 34 zones", Stat = "Zones", Target = 34, Reward = { Kind = "Luck", Amount = 3 }, Title = "World Walker", TitleColor = CYAN },
 	-- Collecting
 	{ Id = "Index25", Name = "Collector", Text = "Find 25 Index entries", Stat = "Index", Target = 25, Reward = { Kind = "FreeRolls", Amount = 15 } },
 	{ Id = "Index100", Name = "Curator", Text = "Find 100 Index entries", Stat = "Index", Target = 100, Reward = { Kind = "Spins", Amount = 3 }, Title = "Curator", TitleColor = PURPLE },

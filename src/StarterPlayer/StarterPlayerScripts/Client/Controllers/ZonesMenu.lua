@@ -172,7 +172,7 @@ local function makeRow(def: Zones.ZoneDef): Frame
 	number.Size = UDim2.fromScale(0.07, 0.5)
 	number.Parent = row
 
-	local name = Kit.label(`{def.Emoji} {def.Name}`)
+	local name = Kit.label(Zones.title(def))
 	name.Name = "ZoneName"
 	name.AnchorPoint = Vector2.new(0, 0.5)
 	name.Position = UDim2.fromScale(0.13, 0.4)
@@ -389,7 +389,7 @@ local function updateSign(blocker: Blocker)
 	local clacks = State.get("Clacks") or 0
 	local short = clacks < price
 	for _, face in blocker.sign :: { Face } do
-		face.title.Text = Tags.string(blocker.root, Tags.Attr.Title) or `{def.Emoji} {def.Name}`
+		face.title.Text = Tags.string(blocker.root, Tags.Attr.Title) or Zones.title(def)
 		face.title.TextColor3 = def.Color
 		local outline = face.panel:FindFirstChild("Outline")
 		if outline and outline:IsA("UIStroke") then
