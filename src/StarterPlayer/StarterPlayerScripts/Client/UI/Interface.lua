@@ -9,21 +9,24 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- Shared plumbing for every UI controller: references to the HUD/Menu
--- ScreenGuis and UI assets, sounds, the kit's button feel (hover shrink +
--- click pop), menu open/close (blur, HUD slides away, canvas fade) and toasts.
+-- Shared plumbing for every UI controller: references to the HUD ScreenGui
+-- and UI assets, sounds, the kit's button feel (hover shrink + click pop),
+-- menus and toasts.
 --
--- Menus are the windows under Menu.Canva, plus "custom" menus that draw
--- their own ScreenGui (Interface.registerMenu, e.g. the upgrade tree). Only
--- one menu of either kind is open at a time.
+-- Menus are MenuSystem menus (ReplicatedStorage.MenuSystem): each is its own
+-- ScreenGui (tagged "Menu", its window marked MenuPanel = true), opened and
+-- closed by MenuController with the kit's blur, scale-in and HUD slide
+-- (PackShared, HudSlide). Interface.open / close / toggle / isOpen and the
+-- MenuOpened / MenuClosed signals are a thin layer over MenuController, plus
+-- "custom" menus that run their own gui (Interface.registerMenu, e.g. the
+-- upgrade tree). Only one menu of either kind is open at a time.
 --
--- Menus run off attributes too (Shared/Tags): any GuiButton or kit button
--- Frame under PlayerGui with a Menu attribute opens / toggles / closes that
--- menu (MenuAction), and a window's Blur / HideHUD attributes decide whether
--- the world blurs and the HUD slides away while it's open.
+-- Buttons open menus by attribute, MenuSystem style: a GuiButton (for a kit
+-- button, its "Button") with Menu = "Store" toggles it; MenuAction = "open" /
+-- "close" / "closeAll" (MenuSystem's ButtonBinder). A ScreenGui's Backdrop =
+-- false skips the blur, KeepHud = true leaves the HUD in place.
 
 local CollectionService = game:GetService("CollectionService")
-local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
@@ -31,7 +34,9 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Signal = require(Shared.Util.Signal)
-local Tags = require(Shared.Tags)
+
+local MenuSystem = ReplicatedStorage:WaitForChild("MenuSystem")
+local MenuController = require(MenuSystem.Menus.MenuController)
 
 local UIConfig = require(script.Parent.UIConfig)
 
@@ -49,18 +54,12 @@ Interface.MenuClosed = Signal.new() :: Signal.Signal<string>
 
 -- Filled by Interface.setup()
 Interface.HUD = (nil :: any) :: ScreenGui
-Interface.Menu = (nil :: any) :: ScreenGui
-Interface.Canva = (nil :: any) :: CanvasGroup
 Interface.Templates = (nil :: any) :: Folder
 Interface.SFX = (nil :: any) :: SoundGroup
 Interface.Music = (nil :: any) :: SoundGroup
 
 local ready = false
 local sounds: { [string]: Sound } = {}
-local currentOpen: string? = nil
-local animating = false
-local hudHome: { [GuiObject]: UDim2 } = {}
-local blur: BlurEffect? = nil
 local toastGui: ScreenGui? = nil
 local toastTemplate: Frame? = nil
 
@@ -114,8 +113,6 @@ function Interface.setup()
 
 	local playerGui = player:WaitForChild("PlayerGui")
 	Interface.HUD = playerGui:WaitForChild("HUD") :: ScreenGui
-	Interface.Menu = playerGui:WaitForChild("Menu") :: ScreenGui
-	Interface.Canva = Interface.Menu:WaitForChild("Canva") :: CanvasGroup
 
 	local assets = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("UI")
 	Interface.Templates = assets:WaitForChild("Templates") :: Folder
@@ -149,33 +146,30 @@ function Interface.setup()
 		end
 	end
 
-	Interface.Canva.Visible = false
-	for _, child in Interface.Canva:GetChildren() do
-		if child:IsA("Frame") then
-			child.Visible = false
-		end
-	end
+	-- MenuController's menus are Interface's menus.
+	MenuController.Opened:Connect(function(name: string)
+		Interface.MenuOpened:Fire(name)
+	end)
+	MenuController.Closed:Connect(function(name: string)
+		Interface.MenuClosed:Fire(name)
+	end)
 
 	ready = true
+end
 
-	-- Exit buttons on every menu window.
-	for _, window in Interface.Canva:GetChildren() do
-		local top = window:FindFirstChild("Top")
-		local exit = top and top:FindFirstChild("Exit")
-		if exit and exit:IsA("GuiObject") then
-			Interface.bindButton(exit, function()
-				Interface.close(window.Name)
-			end)
+-- A menu's window (its MenuPanel frame), e.g. Interface.window("Store").
+-- Yields until it has replicated.
+function Interface.window(name: string): GuiObject
+	local playerGui = player:WaitForChild("PlayerGui")
+	local gui = playerGui:WaitForChild(name)
+	while true do
+		for _, descendant in gui:GetDescendants() do
+			if descendant:GetAttribute("MenuPanel") == true and descendant:IsA("GuiObject") then
+				return descendant
+			end
 		end
+		task.wait(0.1)
 	end
-
-	-- Menu buttons by attribute, now and whenever gui is added.
-	Interface.bindMenuAttributes(playerGui)
-	playerGui.DescendantAdded:Connect(function(descendant)
-		if descendant:IsA("GuiObject") then
-			Interface.bindMenuButton(descendant)
-		end
-	end)
 end
 
 --------------------------------------------------------------------------
@@ -272,86 +266,10 @@ function Interface.bindButton(frame: GuiObject, onActivated: () -> (), hoverFact
 end
 
 --------------------------------------------------------------------------
--- HUD slide in/out (ported from the kit's Shared module)
---------------------------------------------------------------------------
-
-local function hudFrames(): { GuiObject }
-	local frames: { GuiObject } = {}
-	for _, folder in Interface.HUD:GetChildren() do
-		if folder:IsA("Folder") then
-			for _, frame in folder:GetChildren() do
-				if frame:IsA("GuiObject") and frame.Visible then
-					table.insert(frames, frame)
-				end
-			end
-		end
-	end
-	return frames
-end
-
-local function exitPosition(frame: GuiObject): UDim2
-	local camera = workspace.CurrentCamera
-	local screen = if camera then camera.ViewportSize else Vector2.new(1920, 1080)
-	local pos, size = frame.AbsolutePosition, frame.AbsoluteSize
-	local home = hudHome[frame] or frame.Position
-	local px, py = home.X.Scale, home.Y.Scale
-	if screen.X == 0 or screen.Y == 0 then
-		return UDim2.new(px, 0, py + 1.5, 0)
-	end
-	local left, right = pos.X, screen.X - (pos.X + size.X)
-	local topDist, bottom = pos.Y, screen.Y - (pos.Y + size.Y)
-	local nearest = math.min(left, right, topDist, bottom)
-	if nearest == left then
-		return UDim2.new(px - (pos.X + size.X) / screen.X - 0.5, 0, py, 0)
-	elseif nearest == right then
-		return UDim2.new(px + (screen.X - pos.X) / screen.X + 0.5, 0, py, 0)
-	elseif nearest == topDist then
-		return UDim2.new(px, 0, py - (pos.Y + size.Y) / screen.Y - 0.5, 0)
-	end
-	return UDim2.new(px, 0, py + (screen.Y - pos.Y) / screen.Y + 0.5, 0)
-end
-
-local function slideHUD(show: boolean)
-	for _, frame in hudFrames() do
-		if not hudHome[frame] then
-			hudHome[frame] = frame.Position
-		end
-		local target = if show then hudHome[frame] else exitPosition(frame)
-		TweenService:Create(frame, if show then FAST else SLOW, { Position = target }):Play()
-	end
-end
-
-local function setBlur(on: boolean)
-	if not blur then
-		local effect = Instance.new("BlurEffect")
-		effect.Name = "MenuBlur"
-		effect.Size = 0
-		effect.Parent = Lighting
-		blur = effect
-	end
-	TweenService:Create(blur :: BlurEffect, FAST, { Size = if on then UIConfig.BlurSize else 0 }):Play()
-end
-
-local function fadeCanvas(open: boolean)
-	local canva = Interface.Canva
-	if open then
-		canva.Size = UDim2.fromScale(0.92, 0.92)
-		canva.GroupTransparency = 1
-		canva.Visible = true
-	end
-	local tween = TweenService:Create(canva, FAST, {
-		Size = if open then UDim2.fromScale(1, 1) else UDim2.fromScale(0.92, 0.92),
-		GroupTransparency = if open then 0 else 1,
-	})
-	tween:Play()
-	tween.Completed:Wait()
-end
-
---------------------------------------------------------------------------
 -- Menus
 --------------------------------------------------------------------------
 
--- A menu that draws its own full-screen gui instead of a Canva window.
+-- A menu that runs its own gui instead of being a MenuSystem menu.
 function Interface.registerMenu(name: string, menu: CustomMenu)
 	customMenus[name] = menu
 end
@@ -380,50 +298,26 @@ function Interface.isOpen(name: string?): boolean
 		if menu then
 			return menu.isOpen()
 		end
-		return currentOpen == name
+		return MenuController.IsOpen(name)
 	end
-	return currentOpen ~= nil or customOpen()
+	return #MenuController.OpenMenus() > 0 or customOpen()
 end
 
 function Interface.open(name: string)
 	local custom = customMenus[name]
 	if custom then
-		if custom.isOpen() or animating then return end
-		if currentOpen then
-			Interface.close()
-		end
+		if custom.isOpen() then return end
+		MenuController.CloseAll()
 		closeCustomMenus(name)
 		custom.open()
 		Interface.MenuOpened:Fire(name)
 		return
 	end
-
-	if currentOpen == name or animating then return end
-	local window = Interface.Canva:FindFirstChild(name)
-	if not (window and window:IsA("GuiObject")) then return end
 	closeCustomMenus(nil)
-	animating = true
-
-	if currentOpen then
-		local previous = Interface.Canva:FindFirstChild(currentOpen)
-		local previousName = currentOpen
-		currentOpen = nil
-		fadeCanvas(false)
-		if previous and previous:IsA("GuiObject") then previous.Visible = false end
-		Interface.MenuClosed:Fire(previousName :: string)
-	end
-	setBlur(Tags.read(window, Tags.Attr.Blur, true))
-	slideHUD(not Tags.read(window, Tags.Attr.HideHUD, true))
-
-	Interface.Menu.Enabled = true
-	window.Visible = true
-	currentOpen = name
-	Interface.MenuOpened:Fire(name)
-	fadeCanvas(true)
-	animating = false
+	MenuController.Open(name)
 end
 
--- Closes the named menu, or whichever is open when name is nil.
+-- Closes the named menu, or every open one when name is nil.
 function Interface.close(name: string?)
 	if name and customMenus[name] then
 		local custom = customMenus[name]
@@ -435,22 +329,10 @@ function Interface.close(name: string?)
 	end
 	if not name then
 		closeCustomMenus(nil)
+		MenuController.CloseAll()
+		return
 	end
-	if animating or not currentOpen then return end
-	if name and currentOpen ~= name then return end
-	animating = true
-	local closing = currentOpen :: string
-	currentOpen = nil
-
-	setBlur(false)
-	slideHUD(true)
-	fadeCanvas(false)
-
-	local window = Interface.Canva:FindFirstChild(closing)
-	if window and window:IsA("GuiObject") then window.Visible = false end
-	Interface.Canva.Visible = false
-	Interface.MenuClosed:Fire(closing)
-	animating = false
+	MenuController.Close(name)
 end
 
 function Interface.toggle(name: string)
@@ -461,54 +343,15 @@ function Interface.toggle(name: string)
 	end
 end
 
--- Runs a Menu / MenuAction pair (as set on a button or a MenuTrigger).
+-- Runs a Menu / MenuAction pair (as set on a MenuTrigger part).
 function Interface.runMenuAction(menu: string, action: string?)
-	if action == "Open" then
+	local verb = if action then string.lower(action) else "toggle"
+	if verb == "open" then
 		Interface.open(menu)
-	elseif action == "Close" then
-		Interface.close(if menu == "" then nil else menu)
+	elseif verb == "close" or verb == "closeall" then
+		Interface.close(if menu == "" or verb == "closeall" then nil else menu)
 	else
 		Interface.toggle(menu)
-	end
-end
-
--- Wires every gui object under root (and root itself) that has a Menu
--- attribute: a GuiButton directly, a kit button Frame through its Button.
--- The attributes are read on click, so they can change at any time.
-local menuBound: { [GuiObject]: boolean } = setmetatable({}, { __mode = "k" }) :: any
-
-local function bindMenuButton(object: GuiObject)
-	if menuBound[object] or object:GetAttribute(Tags.Attr.Menu) == nil then return end
-	local function run()
-		local menu = Tags.read(object, Tags.Attr.Menu, "")
-		local action = Tags.string(object, Tags.Attr.MenuAction)
-		if menu ~= "" or action == "Close" then
-			Interface.runMenuAction(menu, action)
-		end
-	end
-	local child = object:FindFirstChild("Button")
-	if child and child:IsA("GuiButton") then
-		menuBound[object] = true
-		Interface.bindButton(object, run)
-	elseif object:IsA("GuiButton") then
-		menuBound[object] = true
-		object.Activated:Connect(function()
-			Interface.play("Click")
-			run()
-		end)
-	end
-end
-
-Interface.bindMenuButton = bindMenuButton
-
-function Interface.bindMenuAttributes(root: Instance)
-	if root:IsA("GuiObject") then
-		bindMenuButton(root)
-	end
-	for _, descendant in root:GetDescendants() do
-		if descendant:IsA("GuiObject") then
-			bindMenuButton(descendant)
-		end
 	end
 end
 

@@ -46,7 +46,17 @@ Kit.PANEL = Color3.fromRGB(18, 18, 24)
 Kit.ROW = Color3.fromRGB(32, 32, 42)
 
 local uiAssets = roblox.deserializeModel(fs.readFile("src/ReplicatedStorage/Assets/UI.rbxm"))[1]
-local menu = roblox.deserializeModel(fs.readFile("src/StarterGui/Menu.rbxm"))[1]
+
+-- The window every new menu copies: the Zones menu's (a MenuSystem menu,
+-- src/StarterGui/Zones.rbxm), read only when a screen asks for a window.
+local WINDOW_SOURCE = "src/StarterGui/Zones.rbxm"
+local windowGui: any = nil
+local function sourceWindowGui(): any
+	if not windowGui then
+		windowGui = roblox.deserializeModel(fs.readFile(WINDOW_SOURCE))[1]
+	end
+	return windowGui
+end
 
 function Kit.new(className: string, props: { [string]: any }?, parent: any?): any
 	local instance = Instance.new(className)
@@ -193,10 +203,10 @@ function Kit.list(props: { [string]: any }?): any
 	return scroll
 end
 
--- A full-screen container shaped like the Menu ScreenGui's Canva (same
--- aspect ratio), so windows built here size exactly like the game's menus.
+-- A full-screen container shaped like the menus' Canva (same aspect ratio),
+-- so windows built here size exactly like the game's menus.
 function Kit.canvas(name: string): any
-	local source = menu:FindFirstChild("Canva")
+	local source = sourceWindowGui():FindFirstChild("Canva")
 	local canvas = Kit.new("Frame", {
 		Name = name,
 		BackgroundTransparency = 1,
@@ -211,11 +221,13 @@ function Kit.canvas(name: string): any
 	return canvas
 end
 
--- A menu window: the Menu ScreenGui's own window frame (Top bar with title,
--- Exit button, Main panel), emptied. Its Main.Items is removed: fill Main.
+-- A menu window: the game's own window frame (Top bar with title, Exit
+-- button with MenuAction = "close", Main panel), emptied, MenuPanel = true.
+-- Its Main.Items is removed: fill Main. Put it in Kit.menu(...).
 function Kit.window(name: string, title: string): any
-	local source = menu.Canva:FindFirstChild("Zones")
-	assert(source, "Menu.Canva.Zones (the window to copy) is missing")
+	local canva = sourceWindowGui():FindFirstChild("Canva")
+	local source = canva and canva:FindFirstChild("Zones")
+	assert(source, `{WINDOW_SOURCE} has no Canva.Zones window to copy`)
 	local window = source:Clone()
 	window.Name = name
 	window.Visible = false
@@ -232,6 +244,25 @@ function Kit.window(name: string, title: string): any
 	local items = main:FindFirstChild("Items")
 	if items then items:Destroy() end
 	return window
+end
+
+-- A MenuSystem menu ScreenGui (tagged Menu, Scale = false) holding `window`
+-- in a Canva frame, like the migrated menus.
+function Kit.menu(window: any): any
+	local gui = Kit.new("ScreenGui", {
+		Name = window.Name,
+		ResetOnSpawn = false,
+		Enabled = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+	gui:AddTag("Menu")
+	gui:SetAttribute("Scale", false)
+	local canvas = Kit.canvas("Canva")
+	window.Visible = true
+	window.Parent = canvas
+	canvas.Parent = gui
+	return gui
 end
 
 -- Writes a ScreenGui to src/StarterGui/<name>.rbxm.

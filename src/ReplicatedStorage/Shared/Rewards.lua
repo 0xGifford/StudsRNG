@@ -59,7 +59,7 @@ local playtime: { PlaytimeReward } = {
 	{ At = 60, Kind = "Clacks", Amount = 50_000 },
 }
 
--- Wheel segments 1-8 match the numbered folders under Menu.Canva.Wheel.Main.Wheel.
+-- Wheel segments 1-8 match the numbered folders under the Wheel menu (Wheel.Canva.Wheel.Main.Wheel).
 local wheel: { WheelPrize } = {
 	{ Title = "Clacks", Kind = "Clacks", Amount = 5_000, Weight = 33 },
 	{ Title = "5 Rolls", Kind = "FreeRolls", Amount = 5, Weight = 20 },

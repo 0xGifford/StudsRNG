@@ -64,7 +64,11 @@ function SideButtons.add(menu: string, label: string, icon: string, order: numbe
 	frame.Name = menu
 	frame.Visible = true
 	frame.LayoutOrder = order or (source.LayoutOrder + 50)
-	frame:SetAttribute("Menu", menu)
+	-- MenuSystem's ButtonBinder opens it (the kit Frame bounces).
+	local hit = frame:FindFirstChild("Button")
+	if hit and hit:IsA("GuiButton") then
+		hit:SetAttribute("Menu", menu)
+	end
 	Interface.setText(frame, label)
 	local alert = frame:FindFirstChild("Alert")
 	if alert and alert:IsA("GuiObject") then
@@ -75,7 +79,6 @@ function SideButtons.add(menu: string, label: string, icon: string, order: numbe
 		Kit.setIcon(image, icon)
 	end
 	frame.Parent = buttons
-	Interface.bindMenuButton(frame)
 	return frame
 end
 

@@ -473,12 +473,17 @@ local function makeTopBar(root: Frame)
 	clacksLabel = clacks
 
 	-- The kit's red X, borrowed from a menu window.
-	local exitSource = Interface.Canva:FindFirstChild("Store")
+	local exitSource = Interface.window("Store")
 	exitSource = exitSource and exitSource:FindFirstChild("Top")
 	exitSource = exitSource and exitSource:FindFirstChild("Exit")
 	local exit: Frame
 	if exitSource and exitSource:IsA("Frame") then
 		exit = exitSource:Clone()
+		-- Its MenuAction belongs to the Store window; this one is bound below.
+		for _, d in exit:GetDescendants() do
+			d:SetAttribute("MenuAction", nil)
+			d:SetAttribute("Menu", nil)
+		end
 	else
 		exit = Kit.button("Sunset", "X")
 	end

@@ -161,7 +161,7 @@ end
 
 function DailyMenu.start()
 	Interface.setup()
-	local window = Interface.Canva:WaitForChild(MENU)
+	local window = Interface.window(MENU)
 	local main = window:WaitForChild("Main")
 	local folder = main:WaitForChild("Days")
 

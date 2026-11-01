@@ -56,7 +56,6 @@ local FUNCTIONS = {
 	"StopFight",
 	"SetTitle",
 	"ClaimPass",
-	"Admin", -- (action, ...) admins only, permission-checked (Systems/Admin)
 }
 
 -- Server → client (RemoteEvent).
@@ -67,7 +66,6 @@ local EVENTS = {
 	"Drop", -- { RollResult }: a boss dropped a stud for you (Systems/Drops)
 	"Leaderboards", -- { [board]: { { Rank, Name, UserId, Value } } } (Systems/Leaderboards)
 	"ZoneBoss", -- { Phase: "Warning"|"Spawn"|"Board"|"Result"|"Defeated"|"Escaped", ... } (Systems/Combat)
-	"Broadcast", -- { Text, From, Color, Seconds, Global }: an admin announcement (Systems/Admin)
 }
 
 local Net = {}

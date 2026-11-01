@@ -14,6 +14,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 
 local ORDER = {
 	"State",
+	"MenuSystem", -- boots ReplicatedStorage.MenuSystem in its init()
+	"AutoSliceScale",
 	"StudFollowers",
 	"RollReveal",
 	"Hud",

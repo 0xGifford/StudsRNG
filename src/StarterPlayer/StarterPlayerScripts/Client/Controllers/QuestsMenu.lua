@@ -141,7 +141,7 @@ end
 
 function QuestsMenu.start()
 	Interface.setup()
-	local window = Interface.Canva:WaitForChild(MENU)
+	local window = Interface.window(MENU)
 	items = window:WaitForChild("Main"):WaitForChild("Items") :: ScrollingFrame
 
 	Interface.MenuOpened:Connect(function(name)

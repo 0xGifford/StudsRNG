@@ -480,7 +480,8 @@ Config.Dev = {
 	AllowedUserIds = {} :: { number },
 }
 
--- Admin panel (Systems/Admin, Controllers/AdminPanel). Who gets which role:
+-- Admin panel (Systems/Admin; the panel's tabs and actions are
+-- Shared/AdminConfig, its UI the Admin ScreenGui). Who gets which role:
 -- the game's creator (or the owning group's rank 255) is CreatorRole, then
 -- Users by UserId, then Groups by rank. In Studio, every tester is StudioRole.
 -- A role can only act on players of a LOWER rank (the top role on anyone).
@@ -523,8 +524,6 @@ Config.Admin = {
 	},
 	-- Kept by "Reset player" / "Reset all" (purchase receipts must survive).
 	KeepOnReset = { "PurchaseIds", "Bought", "Epochs" },
-	AnnounceSeconds = 6, -- how long an announcement stays up
-	MaxAnnounceLength = 200,
 }
 
 return Config
