@@ -65,7 +65,7 @@ function Roles.all(root: Instance, attribute: string): { [string]: any }
 	return found
 end
 
-local templates: { [Instance]: { [string]: GuiObject } } = setmetatable({}, { __mode = "k" }) :: any
+local templates: { [Instance]: { [string]: Instance } } = setmetatable({}, { __mode = "k" }) :: any
 
 -- A visible copy of the template UITemplate = name under root.
 function Roles.template(root: Instance, name: string): any
@@ -78,12 +78,18 @@ function Roles.template(root: Instance, name: string): any
 	if not template or not template.Parent then
 		template = Roles.find(root, "UITemplate", name)
 		assert(template, `{root:GetFullName()} has no template UITemplate = "{name}"`)
-		template.Visible = false
+		-- BillboardGui / SurfaceGui templates have no Visible (they live in a
+		-- disabled ScreenGui, where they never draw in 3D anyway).
+		if template:IsA("GuiObject") then
+			template.Visible = false
+		end
 		cache[name] = template
 	end
-	local copy = (template :: GuiObject):Clone()
+	local copy = (template :: Instance):Clone()
 	copy:SetAttribute("UITemplate", nil)
-	copy.Visible = true
+	if copy:IsA("GuiObject") then
+		copy.Visible = true
+	end
 	return copy
 end
 
