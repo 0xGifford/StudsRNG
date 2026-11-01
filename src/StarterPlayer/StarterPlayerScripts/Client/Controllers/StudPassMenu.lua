@@ -35,6 +35,8 @@ local Juice = require(UI.Juice)
 local Robux = require(UI.Robux)
 local SideButtons = require(UI.SideButtons)
 
+local ProgressBar = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("ProgressBar"))
+
 local StudPassMenu = {}
 
 local MENU = "StudPass"
@@ -258,10 +260,7 @@ local function render()
 
 	tierText.Text = if reached >= #PassDefs.Tiers then "MAX TIER!" else `Tier {reached} → {reached + 1}`
 	pointsText.Text = `{Format.number(into)} / {Format.number(perTier)} points`
-	local size = progressFill.Size
-	TweenService:Create(progressFill, TweenInfo.new(0.3), {
-		Size = UDim2.new(math.clamp(into / perTier, 0, 1), 0, size.Y.Scale, size.Y.Offset),
-	}):Play()
+	ProgressBar.Set(progressFill, { Progress = into / perTier })
 	unlockButton.Visible = not premium
 
 	for tier, column in columns do

@@ -3,7 +3,7 @@
 	ZoneBossHud). BossRole marks what the code fills:
 	  Chip   "👹 TITANS IN 12:34"           Panel  the raid panel (shown near a Titan)
 	  Name   the Titan's name               Time   time left
-	  Fill   the health bar's fill (Size X = health)
+	  Fill   the health bar's fill (its Progress attribute = health share)
 	  Hp     "1.2M / 4M"                     Mine   your rank / damage
 	  Row    the top-damage rows, BossRow = 1..5
 	The panel's UIScale is set to fit the screen width.
@@ -53,6 +53,7 @@ local back = Kit.new("Frame", {
 Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, back)
 local fill = Kit.new("Frame", { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = RED }, back)
 fill:SetAttribute("BossRole", "Fill")
+fill:SetAttribute("Progress", 1) -- MenuSystem's ProgressBar sizes it
 Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, fill)
 local hp = text("Hp", back, "", Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.85), UDim2.fromScale(0.5, 0.5))
 hp.ZIndex = 3

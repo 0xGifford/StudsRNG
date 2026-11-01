@@ -11,7 +11,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Boots ReplicatedStorage.MenuSystem (the attribute / tag driven UI system:
 -- menus, buttons, tabs, toggles, purchases, tooltips, data labels, motion,
--- effects, HUD slide, admin panel, announcements) and plugs the game's client
+-- effects, HUD slide, admin panel, announcements, and the attribute
+-- components: StudView, ZoneView, ProgressBar, KitColor, IconImage) and plugs the game's client
 -- State into it (MenuSystem/Data). Runs in init(), before any controller's
 -- start(), so every menu is registered by the time controllers open them.
 --
@@ -45,6 +46,12 @@ local BOOT = {
 	"PackShared",
 	"PriceTag",
 	"DataLabel",
+	-- Attribute components (Menus/Component): views, bars, colours, icons.
+	"StudView",
+	"ZoneView",
+	"ProgressBar",
+	"KitColor",
+	"IconImage",
 	"Motion",
 }
 

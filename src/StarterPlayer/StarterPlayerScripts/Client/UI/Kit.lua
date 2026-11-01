@@ -14,11 +14,18 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Kit.card      a "Store Item" card (icon, title, description, price)
 --   Kit.button    one of Templates.Buttons (Orange, Green, Blue, Purple, Sunset)
 --   Kit.label     a white outlined title label
---   Kit.setIcon   an ImageLabel showing an asset id, or an emoji drawn as text
+--   Kit.setIcon   sets an image's Icon attribute (MenuSystem IconImage)
+--   Kit.paint     sets a kit frame's KitColor attribute (MenuSystem KitColor)
 --   Kit.list      prepares a window's Items ScrollingFrame; rows added with
 --                 Kit.row keep their aspect ratio as the window scales
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local Interface = require(script.Parent.Interface)
+
+local Menus = ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus")
+local IconImage = require(Menus:WaitForChild("IconImage"))
+local KitColor = require(Menus:WaitForChild("KitColor"))
 
 local Kit = {}
 
@@ -44,53 +51,21 @@ end
 -- Pieces
 --------------------------------------------------------------------------
 
--- An asset id → shown as the image. Anything else (an emoji) → drawn by a
--- TextLabel child named "Emoji" with the image hidden.
+-- An icon on an image: a Config.Icons name, an asset id or an emoji
+-- (MenuSystem's IconImage draws it from the Icon attribute).
 function Kit.setIcon(image: ImageLabel, icon: string)
-	local emoji = image:FindFirstChild("Emoji")
-	if string.find(icon, "^rbxasset") then
-		image.Image = icon
-		image.ImageTransparency = 0
-		if emoji then emoji:Destroy() end
-		return
-	end
-	image.ImageTransparency = 1
-	local label: TextLabel
-	if emoji and emoji:IsA("TextLabel") then
-		label = emoji
-	else
-		label = Kit.template("Emoji") :: TextLabel
-		label.Name = "Emoji"
-		label.ZIndex = image.ZIndex + 1
-		label.Parent = image
-	end
-	label.Text = icon
+	IconImage.Set(image, { Icon = icon })
 end
 
--- Recolours a kit frame (card or button) with a Templates.Buttons palette.
+-- Recolours a kit frame (card or button) with a Templates.Buttons palette
+-- (MenuSystem's KitColor draws it from the KitColor attribute).
 function Kit.paint(frame: GuiObject, color: string)
-	local source = buttonTemplate(color)
-	frame.BackgroundColor3 = source.BackgroundColor3
-
-	local sourceGradient = source:FindFirstChild("Gradient")
-	local targetGradient = frame:FindFirstChild("Gradient")
-	if not (sourceGradient and targetGradient) then return end
-	local fill = sourceGradient:FindFirstChildOfClass("UIGradient")
-	local targetFill = targetGradient:FindFirstChildOfClass("UIGradient")
-	if fill and targetFill then
-		targetFill.Color = fill.Color
-	end
-	local stroke = sourceGradient:FindFirstChildOfClass("UIStroke")
-	local targetStroke = targetGradient:FindFirstChildOfClass("UIStroke")
-	local strokeGradient = stroke and stroke:FindFirstChildOfClass("UIGradient")
-	local targetStrokeGradient = targetStroke and targetStroke:FindFirstChildOfClass("UIGradient")
-	if strokeGradient and targetStrokeGradient then
-		targetStrokeGradient.Color = strokeGradient.Color
-	end
+	KitColor.Set(frame, { KitColor = color })
 end
 
 function Kit.button(color: string, text: string): Frame
 	local frame = buttonTemplate(color):Clone()
+	frame:SetAttribute("KitColor", color)
 	frame.LayoutOrder = 0
 	Interface.setText(frame, text)
 	return frame

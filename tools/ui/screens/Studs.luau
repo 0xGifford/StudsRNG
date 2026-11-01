@@ -18,7 +18,8 @@
 	                Fuse, Delete, Deselect
 	Cell templates (UITemplate = "BackpackCell" / "EquippedCell"): Viewport,
 	Odds, Count, Level, Badge (rich text), Check (equipped tick), Button,
-	and a UIStroke named Edge (white while selected).
+	and a UIStroke named MainStroke (StatePreset = "Selected": white while
+	picked, MenuSystem StateStyle). Viewports: StudView (Stud attribute).
 	The ✕ has MenuAction = "close".
 ]]
 
@@ -66,8 +67,9 @@ end
 local function cell(parent: any, template: string, size: any): any
 	local frame = Kit.new("Frame", { Name = template, BackgroundColor3 = CARD, Size = size, Visible = false }, parent)
 	frame:SetAttribute("UITemplate", template)
+	frame:SetAttribute("StatePreset", "Selected") -- MenuSystem's StateStyle: MainStroke turns white when picked
 	round(frame, 0.1)
-	outline(frame, EDGE, 2).Name = "Edge"
+	outline(frame, EDGE, 2).Name = "MainStroke"
 	Kit.viewport({ Position = UDim2.fromScale(0.5, 0.46), Size = UDim2.fromScale(0.82, 0.82), ZIndex = 2, Parent = frame })
 	text(frame, "Odds", "1/2", ODDS, UDim2.fromScale(0.95, 0.22), UDim2.fromScale(0.025, 0.76))
 	text(frame, "Count", "x2", WHITE, UDim2.fromScale(0.36, 0.18), UDim2.fromScale(0.62, 0.03), Enum.TextXAlignment.Right)

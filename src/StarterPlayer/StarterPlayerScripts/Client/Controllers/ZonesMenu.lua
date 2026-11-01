@@ -43,6 +43,8 @@ local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
 local CombatFx = require(UI.CombatFx)
 
+local ZoneView = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("ZoneView"))
+
 local ZonesMenu = {}
 
 local MENU = "Zones"
@@ -92,6 +94,11 @@ local function updateCard(def: Zones.ZoneDef)
 	local button = row:FindFirstChild("Action")
 	if not (button and button:IsA("Frame")) then return end
 	local nextZone = Zones.nextFor(State.get("UnlockedWorlds") or {})
+	-- The row's zone viewport (ZoneView): dark until the zone is yours.
+	local view = Roles.find(row, "ZoneRole", "View")
+	if view then
+		ZoneView.Set(view, { Zone = def.Id, ViewSilhouette = not owned(def.Id) })
+	end
 	if owned(def.Id) then
 		Kit.paint(button, "Green")
 		Interface.setText(button, "Teleport")
@@ -150,7 +157,7 @@ local function onZone(def: Zones.ZoneDef)
 end
 
 -- One Teleporter row: a copy of StarterGui.Templates.ZoneRow (ZoneRole:
--- Number, ZoneName, Info, Action).
+-- Number, View (a ZoneView viewport), ZoneName, Info, Action).
 local function makeRow(def: Zones.ZoneDef): Frame
 	local row = Kit.template("ZoneRow") :: Frame
 	row.Name = def.Id
@@ -424,7 +431,18 @@ function ZonesMenu.start()
 	Interface.setup()
 	playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 	local window = Interface.window(MENU)
-	items = window:WaitForChild("Main"):WaitForChild("Items") :: ScrollingFrame
+	-- The rows go in the window's list: ZoneRole = "List", else its Items.
+	local list = Roles.find(window, "ZoneRole", "List")
+	while not list do
+		for _, d in window:GetDescendants() do
+			if d.Name == "Items" and d:IsA("ScrollingFrame") then
+				list = d
+				break
+			end
+		end
+		if not list then task.wait(0.2) end
+	end
+	items = list :: ScrollingFrame
 
 	Interface.MenuOpened:Connect(function(name)
 		if name == MENU then

@@ -83,7 +83,9 @@ local back = Kit.new("Frame", {
 	Name = "Bar", Size = UDim2.new(0.55, 0, 0, 14), Position = UDim2.new(0, 14, 0, 60), BackgroundColor3 = Color3.fromRGB(18, 18, 24), ZIndex = 2,
 }, card)
 round(back, 0.5)
-round(Kit.new("Frame", { Name = "Fill", Size = UDim2.fromScale(0.4, 1), BackgroundColor3 = GREEN, ZIndex = 2 }, back), 0.5)
+local fill = Kit.new("Frame", { Name = "Fill", Size = UDim2.fromScale(0.4, 1), BackgroundColor3 = GREEN, ZIndex = 2 }, back)
+fill:SetAttribute("Progress", 0.4) -- MenuSystem's ProgressBar sizes it
+round(fill, 0.5)
 text(card, "Progress", "40 / 100", WHITE, UDim2.new(0.2, 0, 0, 16), UDim2.new(0.58, 0, 0, 59))
 local wear = pill(card, "Wear", "WEAR « Title »", Color3.fromRGB(70, 130, 255))
 wear:SetAttribute("WearingColor", Color3.fromRGB(60, 170, 90))

@@ -118,11 +118,8 @@ local function copy(name: string, cellHeight: number?): any
 end
 
 local function viewportIn(root: Instance): ViewportFrame
-	local viewport = root:FindFirstChildWhichIsA("ViewportFrame", true) :: ViewportFrame
+	local viewport = (if root:IsA("ViewportFrame") then root else root:FindFirstChildWhichIsA("ViewportFrame", true)) :: ViewportFrame
 	assert(viewport, `{root:GetFullName()} needs a ViewportFrame`)
-	if not viewport.CurrentCamera then
-		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
-	end
 	return viewport
 end
 

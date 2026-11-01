@@ -19,7 +19,6 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- window is opened.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local AchievementDefs = require(Shared.Achievements)
@@ -31,6 +30,8 @@ local Interface = require(UI.Interface)
 local Roles = require(UI.Roles)
 local Format = require(UI.Format)
 local SideButtons = require(UI.SideButtons)
+
+local ProgressBar = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("ProgressBar"))
 
 local AchievementsMenu = {}
 
@@ -100,7 +101,7 @@ local function makeCard(gui: ScreenGui, def: AchievementDefs.AchievementDef): Ca
 	child(frame, "Text").Text = def.Text
 	child(frame, "Reward").Text = `🎁 {Format.reward(def.Reward)}`
 	local fill = child(frame, "Fill") :: GuiObject
-	fill.Size = UDim2.fromScale(0, 1)
+	ProgressBar.Set(fill, { Progress = 0 })
 	local wear = child(frame, "Wear") :: GuiButton
 	local wearLabel = (wear:FindFirstChild("Label", true) or wear) :: any
 	wear.Visible = false
@@ -176,7 +177,7 @@ local function render()
 		local card = cards[row.def.Id]
 		card.frame.LayoutOrder = position
 		card.frame.BackgroundColor3 = if row.finished then card.doneColor else card.color
-		TweenService:Create(card.fill, TweenInfo.new(0.25), { Size = UDim2.fromScale(row.share, 1) }):Play()
+		ProgressBar.Set(card.fill, { Progress = row.share })
 		local shown = if row.def.Stat == "BestRoll" then `1 in {Format.number(math.min(row.value, row.def.Target))}` else Format.number(math.min(row.value, row.def.Target))
 		card.progress.Text = if row.finished then "✓ Done" else `{shown} / {Format.number(row.def.Target)}`
 		card.wear.Visible = row.finished and row.def.Title ~= nil
