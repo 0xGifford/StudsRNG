@@ -23,6 +23,7 @@ local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local AchievementDefs = require(Shared.Achievements)
 
@@ -79,6 +80,11 @@ local function applyTitle(player: Player)
 	tag.Name = "TitleTag"
 	tag:SetAttribute("UITemplate", nil)
 	tag.Enabled = true
+	-- MaxDistance is from the camera; with the isometric camera that sits
+	-- far away, so add its distance (the template's value means "from you").
+	if Config.Camera.Enabled and tag.MaxDistance > 0 then
+		tag.MaxDistance += math.ceil(Config.Camera.Distance * Config.Camera.MaxZoom)
+	end
 	for _, d in tag:GetDescendants() do
 		if d:GetAttribute("TitleRole") == "Text" and d:IsA("TextLabel") then
 			d.Text = `« {def.Title} »`

@@ -83,7 +83,7 @@ end
 local function pick()
 	local camera = workspace.CurrentCamera
 	if not (camera and look) then return end
-	local origin = camera.CFrame.Position
+	local origin = camera.Focus.Position -- around you, not the (far) isometric lens
 	local found: { { cap: BasePart, distance: number } } = {}
 	for _, hitbox in CollectionService:GetTagged(Config.Press.HitboxTag) do
 		if hitbox:IsA("BasePart") then
@@ -225,7 +225,7 @@ local function followCamera()
 	local part = ambientPart
 	local camera = workspace.CurrentCamera
 	if not (part and camera and ambientEmitter and ambientEmitter.Enabled) then return end
-	local position = camera.CFrame.Position
+	local position = camera.Focus.Position
 	part.CFrame = CFrame.new(position + Vector3.new(0, if ambientRise then -18 else 30, 0))
 end
 

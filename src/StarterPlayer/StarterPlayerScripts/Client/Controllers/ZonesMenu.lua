@@ -12,7 +12,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- The Teleporter window (numbered zone rows, Slime RNG style: teleport to
 -- owned zones, buy the next one with Clacks) and the zone barriers in the
 -- world (Shared/Tags):
---   ZoneBarrier  opens (locally) once its zone is owned. Until then a sign
+--   ZoneBarrier  opens (locally) once its zone is owned. With
+--                Config.ZoneUnlock.BarrierSigns (or ShowPrompt on it) a sign
 --                (SurfaceGui, both faces of its biggest part) shows the
 --                zone's title, its price in Clacks and a BUY button you click
 --                right on the barrier. Buying never teleports: the barrier
@@ -30,6 +31,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local Tags = require(Shared.Tags)
 
@@ -231,7 +233,7 @@ local function makeFace(part: BasePart, face: Enum.NormalId, maxDistance: number
 	gui.Name = "ZoneSign"
 	gui.Adornee = part
 	gui.Face = face
-	gui.MaxDistance = maxDistance
+	gui.MaxDistance = maxDistance + Roles.distanceBonus -- from you, not the far-off camera
 	local pixels = gui.PixelsPerStud
 	local panel = Roles.get(gui, "SignRole", "Panel") :: Frame
 	-- Lifted off the barrier's bottom, scaled down to fit a narrow barrier.
@@ -270,7 +272,7 @@ local function updateSign(blocker: Blocker)
 	local def = if zone then Zones.ById[zone] else nil
 	local part = signPartOf(blocker)
 	if blocker.tag ~= Tags.ZoneBarrier or not def or owned(def.Id) or not part
-		or not Tags.read(blocker.root, Tags.Attr.ShowPrompt, true) then
+		or not Tags.read(blocker.root, Tags.Attr.ShowPrompt, Config.ZoneUnlock.BarrierSigns) then
 		clearSign(blocker)
 		return
 	end
@@ -468,5 +470,10 @@ function ZonesMenu.start()
 	watchTag(Tags.ZoneBarrier)
 	watchTag(Tags.ZoneGate)
 end
+
+-- For the unlock prompt (Controllers/ZonePrompt): the same buy / teleport
+-- as a Teleporter row, and the price after discounts.
+ZonesMenu.buy = onZone
+ZonesMenu.priceOf = priceOf
 
 return ZonesMenu

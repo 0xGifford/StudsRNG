@@ -31,6 +31,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local ZoneAmbience = require(Controllers.ZoneAmbience)
+local IsoCamera = require(Controllers.IsoCamera)
 local Interface = require(UI.Interface)
 local Juice = require(UI.Juice)
 local Roles = require(UI.Roles)
@@ -112,7 +113,10 @@ local function play()
 	local hudWasEnabled = Interface.HUD.Enabled
 	Interface.HUD.Enabled = false
 	ZoneAmbience.Quiet = true
+	-- The isometric camera hands over; the flight uses a normal lens.
+	IsoCamera.setSuspended(true)
 	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfView = 70
 
 	local function pause(seconds: number)
 		local deadline = os.clock() + seconds
@@ -186,7 +190,9 @@ local function play()
 	for _, bar in bars do
 		TweenService:Create(bar, TweenInfo.new(0.5, Enum.EasingStyle.Quart), { BackgroundTransparency = 1 }):Play()
 	end
+	-- Back to the game's camera (the isometric one blends in from here).
 	camera.CameraType = Enum.CameraType.Custom
+	IsoCamera.setSuspended(false)
 	Interface.HUD.Enabled = hudWasEnabled
 	ZoneAmbience.Quiet = false
 	local currentZone = ZoneAmbience.current()
@@ -217,6 +223,7 @@ function Intro.start()
 		if not ok then
 			warn("[Intro]", err)
 			workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+			IsoCamera.setSuspended(false)
 			Interface.HUD.Enabled = true
 			ZoneAmbience.Quiet = false
 			finish()

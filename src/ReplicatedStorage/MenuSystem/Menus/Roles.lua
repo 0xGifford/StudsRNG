@@ -63,6 +63,12 @@ end
 
 local templates: { [Instance]: { [string]: Instance } } = setmetatable({}, { __mode = "k" }) :: any
 
+-- Studs added to a copied BillboardGui / SurfaceGui's MaxDistance. A
+-- template's MaxDistance means "from the player"; MaxDistance is measured
+-- from the camera, so a camera parked far away (the isometric one sets
+-- this to its distance) would otherwise hide everything.
+Roles.distanceBonus = 0
+
 -- A visible copy of the template UITemplate = name under root.
 function Roles.template(root: Instance, name: string): any
 	local cache = templates[root]
@@ -85,6 +91,8 @@ function Roles.template(root: Instance, name: string): any
 	copy:SetAttribute("UITemplate", nil)
 	if copy:IsA("GuiObject") then
 		copy.Visible = true
+	elseif (copy:IsA("BillboardGui") or copy:IsA("SurfaceGui")) and copy.MaxDistance > 0 then
+		copy.MaxDistance += Roles.distanceBonus
 	end
 	return copy
 end
