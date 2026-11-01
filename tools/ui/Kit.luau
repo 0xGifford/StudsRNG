@@ -163,7 +163,8 @@ function Kit.kitLabel(text: string, props: { [string]: any }?): any
 	return label
 end
 
--- A 3D stud preview, like Templates.StudViewport (UI/StudCell fills it).
+-- A 3D stud preview, like Templates.StudViewport: set its Stud attribute
+-- (and StudVariant, ViewSilhouette...) and MenuSystem's StudView draws it.
 function Kit.viewport(props: { [string]: any }?): any
 	local viewport = Kit.new("ViewportFrame", {
 		Name = "Viewport", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
@@ -176,9 +177,20 @@ function Kit.viewport(props: { [string]: any }?): any
 		CFrame = roblox.CFrame.lookAt(roblox.Vector3.new(0, 0, 3.4), roblox.Vector3.new(0, 0, 0)),
 	}, viewport)
 	viewport.CurrentCamera = camera
+	-- MenuSystem's StudView draws the stud named by this attribute.
+	viewport:SetAttribute("Stud", "")
 	for key, value in props or {} do
 		viewport[key] = value
 	end
+	return viewport
+end
+
+-- A 3D zone preview: MenuSystem's ZoneView draws the zone named by Zone.
+function Kit.zoneViewport(props: { [string]: any }?): any
+	local viewport = Kit.viewport(props)
+	viewport.Name = "ZoneView"
+	viewport:SetAttribute("Stud", nil)
+	viewport:SetAttribute("Zone", "")
 	return viewport
 end
 
@@ -313,8 +325,14 @@ function Kit.menu(window: any): any
 	return gui
 end
 
--- Writes a ScreenGui to src/StarterGui/<name>.rbxm.
+-- Bump when the screens change in a way places need (new attributes, new
+-- pieces): tools/ui/migrate.luau replaces a place's copy of a built screen
+-- whose UIBuild is lower (unless it has UIKeep = true).
+Kit.BUILD = 2
+
+-- Writes a ScreenGui to src/StarterGui/<name>.rbxm, stamped UIBuild.
 function Kit.save(gui: any)
+	gui:SetAttribute("UIBuild", Kit.BUILD)
 	local path = `src/StarterGui/{gui.Name}.rbxm`
 	fs.writeFile(path, roblox.serializeModel({ gui }))
 	print(`built {path}`)

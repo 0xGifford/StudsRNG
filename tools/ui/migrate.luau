@@ -25,8 +25,10 @@
 	    true), side buttons for the Pass and Badges menus, and the combo
 	    meter label under the Clacks counter (HudRole = "Combo") and the layer
 	    the Clacks popups fly across (HudRole = "ClackPopups").
-	  * Menus whose UI used to be built in code (Index, ...) get the repo's
-	    StarterGui build in place of the kit pack's old window (REPLACED).
+	  * Screens built by tools/ui/screens get the repo's newest build when
+	    the place's copy is older (UIBuild), unless it has UIKeep = true.
+	  * Menus split from a "Canva" get Scale = false, and only the innermost
+	    MenuPanel keeps the attribute.
 ]]
 
 local fs = require("@lune/fs")
@@ -370,10 +372,12 @@ local function addDailyStreak(starterGui: any, log: { string })
 	table.insert(log, "Daily: added the week streak label (DailyRole = WeekStreak)")
 end
 
--- Menus whose code-built UI moved into StarterGui: the repo's build
--- (src/StarterGui/<name>.rbxm) replaces a ScreenGui of that name that has
--- none of the role attribute (the kit pack's unused placeholder window), or
--- is added when there's none. Keyed by the role attribute its code finds.
+-- Screens built by tools/ui/screens (src/StarterGui/<name>.rbxm, stamped
+-- UIBuild by Kit.save) replace the place's copy when it's older (a lower or
+-- missing UIBuild), or is the kit pack's placeholder window (no role
+-- attribute, REPLACED below), and are added when missing. A ScreenGui with
+-- UIKeep = true is never replaced: set it on a screen you've restyled and
+-- carry new pieces over by hand.
 local REPLACED = {
 	Index = "IndexRole",
 	Achievements = "AchievementRole",
@@ -390,17 +394,29 @@ local function hasRole(root: any, attribute: string): boolean
 end
 
 local function replaceBuilt(starterGui: any, log: { string })
-	for name, attribute in REPLACED do
+	for _, entry in fs.readDir("src/StarterGui") do
+		if not string.match(entry, "%.rbxm$") then continue end
+		local built = roblox.deserializeModel(fs.readFile("src/StarterGui/" .. entry))[1]
+		local build = built and built:GetAttribute("UIBuild")
+		if typeof(build) ~= "number" then continue end -- not a built screen (HUD, Store, Zones...)
+		local name = built.Name
 		local old = starterGui:FindFirstChild(name)
-		if old and hasRole(old, attribute) then continue end
-		local path = `src/StarterGui/{name}.rbxm`
-		if not fs.isFile(path) then continue end
-		local built = roblox.deserializeModel(fs.readFile(path))[1]
+		if old == built then continue end
+		if old and old:GetAttribute("UIKeep") == true then
+			local placeBuild = old:GetAttribute("UIBuild") or 0
+			if placeBuild < build then
+				table.insert(log, `{name}: kept (UIKeep = true) although the repo's build {build} is newer than its {placeBuild}`)
+			end
+			continue
+		end
+		local placeBuild = if old then (old:GetAttribute("UIBuild") or 0) else -1
+		local placeholder = old and REPLACED[name] and not hasRole(old, REPLACED[name])
+		if old and placeBuild >= build and not placeholder then continue end
 		if old then
 			old:Destroy()
 		end
 		built.Parent = starterGui
-		table.insert(log, `{name}: {if old then "replaced the old window with" else "added"} the repo build ({attribute})`)
+		table.insert(log, if old then `{name}: updated to build {build} (was {if placeBuild > 0 then placeBuild else "unstamped"})` else `{name}: added (build {build})`)
 	end
 end
 

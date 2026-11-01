@@ -38,6 +38,8 @@ local Format = require(UI.Format)
 local Juice = require(UI.Juice)
 local CombatFx = require(UI.CombatFx)
 
+local StateStyle = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("StateStyle"))
+
 type StudDef = Types.StudDef
 type VariantDef = Types.VariantDef
 
@@ -183,9 +185,6 @@ local function makeCell(parent: Instance, template: string, key: string, count: 
 
 	local viewport = frame:FindFirstChildWhichIsA("ViewportFrame", true)
 	if viewport then
-		if not viewport.CurrentCamera then
-			viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
-		end
 		StudCell.setViewport(viewport, def, variant)
 	end
 	local odds = frame:FindFirstChild("Odds", true)
@@ -286,12 +285,8 @@ local function render()
 	if selected and not cells[selected] then
 		selected = nil
 	end
-	if selected and cells[selected] then
-		local edge = cells[selected]:FindFirstChild("Edge")
-		if edge and edge:IsA("UIStroke") then
-			edge.Color = Color3.new(1, 1, 1)
-			edge.Thickness += 1
-		end
+	for key, cell in cells do
+		StateStyle.Apply(cell, key == selected, true)
 	end
 	renderCard()
 
@@ -442,9 +437,6 @@ local function bind(): boolean
 	local viewport = part("CardViewport") :: ViewportFrame
 	if not viewport:IsA("ViewportFrame") then
 		viewport = viewport:FindFirstChildWhichIsA("ViewportFrame", true) :: ViewportFrame
-	end
-	if not viewport.CurrentCamera then
-		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
 	end
 	cardParts.viewport = viewport
 	cardParts.name = part("CardName")

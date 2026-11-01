@@ -84,6 +84,42 @@ Config.Attributes = {
 	TooltipShadowColor = "TooltipShadowColor",
 	TooltipDelay = "TooltipDelay",
 	TooltipGroup = "TooltipGroup",             -- false to bind only the instance
+
+	-- Components: set these on an instance and it draws itself; change
+	-- them and it redraws (Menus/Component and the modules named below).
+	Stud = "Stud",                   -- ViewportFrame: a stud's Id (StudView)
+	StudVariant = "StudVariant",     --   Normal | Big | Huge | Jumbo | Shiny | Inverted
+	StudFit = "StudFit",             --   size it draws at, default by variant
+	Zone = "Zone",                   -- ViewportFrame: a zone's Id (ZoneView)
+	ZoneShow = "ZoneShow",           --   Preview | Enemy | Stud, default first found
+	ViewTurn = "ViewTurn",           -- both views: Vector3 degrees
+	ViewSpin = "ViewSpin",           -- both views: degrees per second
+	ViewZoom = "ViewZoom",           -- ZoneView: 1 = snug, less = closer
+	ViewSilhouette = "ViewSilhouette", -- both views: dark shape ("not found yet")
+	ViewSilhouetteColor = "ViewSilhouetteColor",
+	Progress = "Progress",           -- a bar's fill: 0 to 1 (ProgressBar)
+	ProgressAxis = "ProgressAxis",   --   X | Y
+	ProgressTween = "ProgressTween", --   seconds, 0 = instant
+	KitColor = "KitColor",           -- kit button / card: palette name (KitColor)
+	Icon = "Icon",                   -- ImageLabel: Config.Icons name, asset or emoji (IconImage)
+	UITemplate = "UITemplate",       -- a template the code copies (Roles.template)
+}
+
+--------------------------------------------------------------------
+-- ICONS (IconImage: Icon = "<name>")
+--------------------------------------------------------------------
+-- An asset id shows as the image; anything else (an emoji) is drawn as
+-- text. Add your own and use them anywhere with the Icon attribute.
+Config.Icons = {
+	Clacks = "rbxassetid://117187305699068",
+	FreeRolls = "🎲",
+	Spins = "rbxassetid://72974128962815",
+	Luck = "🍀",
+	MegaRoll = "🎰",
+	Bundle = "🎁",
+	Boost = "rbxassetid://131975246594329",
+	Event = "rbxassetid://119611914627070",
+	ServerLuck = "rbxassetid://119611914627070",
 }
 
 --------------------------------------------------------------------
@@ -328,6 +364,15 @@ Config.State = {
 			ActiveHoverBackground = Color3.fromRGB(60, 215, 255),
 		},
 
+
+		-- A selectable card or slot (Index tabs and cells, Backpack cells):
+		-- its outline (a UIStroke named MainStroke) turns white when picked.
+		Selected = {
+			InactiveStroke = Color3.fromRGB(12, 12, 16),
+			InactiveHoverStroke = Color3.fromRGB(110, 110, 125),
+			ActiveStroke = Color3.fromRGB(255, 255, 255),
+			ActiveHoverStroke = Color3.fromRGB(255, 255, 255),
+		},
 
 		-- Stud UI tab: inactive tabs tint their Face CanvasGroup grey
 		-- (kit motion-and-sound: #9696A6), the active one shows full colour

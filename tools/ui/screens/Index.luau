@@ -3,15 +3,17 @@
 	MenuSystem menu (MenuPanel = the "Index" frame). IndexRole marks what the
 	code fills; templates (UITemplate) are copied per variant / per stud:
 	  Tabs            the tab column (a layout); copies of IndexTab go here
-	  IndexTab        template: a variant tab: Viewport, Label (the variant),
-	                  its UIStroke shows which tab is open
+	  IndexTab        template: a variant tab: Viewport, Label (the variant);
+	                  StatePreset = "Selected": its MainStroke shows the open tab
 	  Grid            the stud grid (a ScrollingFrame + UIGridLayout); copies of
 	                  IndexCell: Name, Viewport, Odds, Button (select)
 	  Detail*         the selected stud: DetailViewport, DetailName, DetailOdds,
 	                  DetailRarity, DetailStrength, DetailHealth, DetailRolls
-	  ProgressFill / ProgressText   "Unlocks Needed" bar
+	  ProgressFill / ProgressText   "Unlocks Needed" bar (the fill's Progress
+	                attribute sizes it: MenuSystem ProgressBar)
 	  RewardLuck / RewardClacks     the tab reward amounts
-	  Claim           the claim button (kit button)
+	  Claim           the claim button (kit button; KitColor = its colour)
+	Viewports carry Stud / StudVariant / ViewSilhouette (MenuSystem StudView).
 	The ✕ has MenuAction = "close".
 ]]
 
@@ -65,8 +67,9 @@ local tab = Kit.new("TextButton", {
 	Name = "IndexTab", Text = "", AutoButtonColor = false, BackgroundColor3 = CARD, Size = UDim2.fromScale(1, 0.15), Visible = false,
 }, tabColumn)
 tab:SetAttribute("UITemplate", "IndexTab")
+tab:SetAttribute("StatePreset", "Selected") -- MenuSystem's StateStyle: its MainStroke turns white when picked
 round(tab, 0.12)
-outline(tab, DARK, 2)
+outline(tab, DARK, 2).Name = "MainStroke"
 local tabView = Kit.viewport({ Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromScale(0.72, 0.72) })
 tabView.Parent = tab
 text(tab, "Label", "Normal", Color3.new(1, 1, 1), UDim2.fromScale(0.95, 0.26), UDim2.fromScale(0.5, 0.85))
@@ -89,8 +92,9 @@ local grid = role(Kit.new("ScrollingFrame", {
 Kit.new("UIGridLayout", { CellSize = UDim2.new(0.18, 0, 0, 100), CellPadding = UDim2.new(0.02, 0, 0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 local cell = Kit.new("Frame", { Name = "IndexCell", BackgroundColor3 = CARD, BorderSizePixel = 0, Visible = false }, grid)
 cell:SetAttribute("UITemplate", "IndexCell")
+cell:SetAttribute("StatePreset", "Selected")
 round(cell, 0.1)
-outline(cell, DARK, 2)
+outline(cell, DARK, 2).Name = "MainStroke"
 text(cell, "Name", "???", Color3.new(1, 1, 1), UDim2.fromScale(0.92, 0.17), UDim2.fromScale(0.5, 0.13))
 local cellView = Kit.viewport({ Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromScale(0.62, 0.62) })
 cellView.Parent = cell
@@ -105,6 +109,7 @@ local barBack = box(main, "Progress", UDim2.fromScale(0.55, 0.075), UDim2.fromSc
 round(barBack, 1)
 outline(barBack, Color3.fromRGB(8, 8, 10), 3)
 local fill = role(box(barBack, "Fill", UDim2.fromScale(0, 1), UDim2.new(), Color3.fromRGB(40, 150, 255)), "ProgressFill")
+fill:SetAttribute("Progress", 0) -- MenuSystem's ProgressBar sizes it
 round(fill, 1)
 Kit.new("UIGradient", { Color = Kit.ColorSequence.new(Color3.fromRGB(40, 220, 210), Color3.fromRGB(40, 120, 255)) }, fill)
 role(text(barBack, "Text", "0/0", Color3.new(1, 1, 1), UDim2.fromScale(0.5, 0.85), UDim2.fromScale(0.5, 0.5)), "ProgressText").ZIndex = 4
@@ -141,6 +146,7 @@ for i, reward in { { "Luck", "🍀" }, { "Clacks", "" } } do
 end
 local claim = Kit.button("Green", "CLAIM", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.83), Size = UDim2.fromScale(0.7, 0.26) })
 claim.Name = "Claim"
+claim:SetAttribute("KitColor", "Green") -- MenuSystem's KitColor paints it
 role(claim, "Claim").Parent = rewards
 
 -- Close.

@@ -23,7 +23,6 @@ Copyright © 2026. Mosswake, all rights reserved.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -39,6 +38,8 @@ local Format = require(UI.Format)
 local Juice = require(UI.Juice)
 local CombatFx = require(UI.CombatFx)
 local Roles = require(UI.Roles)
+
+local ProgressBar = require(game:GetService("ReplicatedStorage"):WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("ProgressBar"))
 
 local ZoneBossHud = {}
 
@@ -142,7 +143,7 @@ local function updatePanel()
 	local max = titan:GetAttribute("MaxHealth")
 	if typeof(health) == "number" and typeof(max) == "number" and max > 0 then
 		local share = math.clamp(health / max, 0, 1)
-		TweenService:Create(panelFill, TweenInfo.new(0.2), { Size = UDim2.fromScale(share, 1) }):Play()
+		ProgressBar.Set(panelFill, { Progress = share, ProgressTween = 0.2 })
 		panelHp.Text = `{Format.number(math.max(0, health))} / {Format.number(max)}`
 	end
 

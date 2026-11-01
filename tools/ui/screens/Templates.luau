@@ -13,10 +13,11 @@
 	  Paragraph  wrapped body text (Kit.paragraph)
 	  GridRow    a row of side-by-side cells (Kit.gridRow)
 	  OddsRow    a row of the Odds menu's table: 4 cells (OddsCell = 1..4)
-	  ZoneRow    a Teleporter row (ZonesMenu), ZoneRole: Number, ZoneName,
-	             Info, Action (the kit button: Teleport / price / Locked)
-	  StudViewport  the 3D stud preview (UI/StudCell): a ViewportFrame with its
-	             Camera (keep the stud centred at the origin in front of it)
+	  ZoneRow    a Teleporter row (ZonesMenu), ZoneRole: Number, View (a
+	             ZoneView viewport: Zone = the zone's Id), ZoneName, Info,
+	             Action (the kit button: Teleport / price / Locked; KitColor)
+	  StudViewport  the 3D stud preview: a ViewportFrame with its Camera and
+	             Stud = "" (MenuSystem's StudView draws the stud it names)
 ]]
 
 local fs = require("@lune/fs")
@@ -95,12 +96,17 @@ local function zoneText(name: string, value: string, props: { [string]: any })
 	l:SetAttribute("ZoneRole", name)
 	l.Parent = zoneRow
 end
-zoneText("Number", "1", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.065, 0.5), Size = UDim2.fromScale(0.07, 0.5) })
-zoneText("ZoneName", "Zone 1", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.13, 0.4), Size = UDim2.fromScale(0.52, 0.46), TextXAlignment = Enum.TextXAlignment.Left })
-zoneText("Info", "x1 Clacks per key", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.13, 0.78), Size = UDim2.fromScale(0.52, 0.24), TextXAlignment = Enum.TextXAlignment.Left })
+zoneText("Number", "1", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.05, 0.5), Size = UDim2.fromScale(0.06, 0.5) })
+local zoneView = Kit.zoneViewport({ AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.09, 0.5), Size = UDim2.fromScale(0.2, 0.9), ZIndex = 2 })
+zoneView:SetAttribute("ZoneRole", "View")
+zoneView:SetAttribute("ViewSpin", 20)
+zoneView.Parent = zoneRow
+zoneText("ZoneName", "Zone 1", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.21, 0.4), Size = UDim2.fromScale(0.47, 0.46), TextXAlignment = Enum.TextXAlignment.Left })
+zoneText("Info", "x1 Clacks per key", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.21, 0.78), Size = UDim2.fromScale(0.47, 0.24), TextXAlignment = Enum.TextXAlignment.Left })
 local action = Kit.button("Green", "Teleport", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(0.97, 0.5), Size = UDim2.fromScale(0.27, 0.62) })
 action.Name = "Action"
 action:SetAttribute("ZoneRole", "Action")
+action:SetAttribute("KitColor", "Green")
 action.Parent = zoneRow
 
 -- The 3D stud preview (StudCell.viewport).
@@ -116,5 +122,6 @@ local camera = Kit.new("Camera", {
 	CFrame = roblox2.CFrame.lookAt(roblox2.Vector3.new(0, 0, CAMERA_DISTANCE), roblox2.Vector3.new(0, 0, 0)),
 }, viewport)
 viewport.CurrentCamera = camera
+viewport:SetAttribute("Stud", "")
 
 Kit.save(gui)

@@ -72,7 +72,9 @@ role(text(root, "Points", "0 / 100 points", Color3.fromRGB(200, 200, 230), UDim2
 
 local barBack = Kit.new("Frame", { Name = "Progress", Position = UDim2.new(0, 20, 0, 80), Size = UDim2.new(0.55, 0, 0, 12), BackgroundColor3 = Color3.fromRGB(14, 14, 20) }, root)
 round(barBack, 0.5)
-round(role(Kit.new("Frame", { Name = "Fill", Size = UDim2.fromScale(0.3, 1), BackgroundColor3 = GOLD }, barBack), "ProgressFill"), 0.5)
+local fill = role(Kit.new("Frame", { Name = "Fill", Size = UDim2.fromScale(0.3, 1), BackgroundColor3 = GOLD }, barBack), "ProgressFill")
+fill:SetAttribute("Progress", 0.3) -- MenuSystem's ProgressBar sizes it
+round(fill, 0.5)
 
 local claimAll = role(button(root, "ClaimAll", "CLAIM ALL", Color3.fromRGB(60, 180, 90)), "ClaimAll")
 claimAll.AnchorPoint = Vector2.new(1, 0)

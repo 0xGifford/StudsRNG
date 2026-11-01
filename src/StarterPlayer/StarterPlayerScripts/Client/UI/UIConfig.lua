@@ -11,6 +11,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- Client-only UI tunables. Set a feature to false to hide its HUD entry.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MenuConfig = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Config"))
+
 return {
 	Features = {
 		Store = true,
@@ -60,17 +63,9 @@ return {
 
 	-- Images for reward / boost / event icons. Anything that isn't an
 	-- rbxassetid:// is drawn as text (emoji).
-	Icons = {
-		Clacks = "rbxassetid://117187305699068",
-		FreeRolls = "🎲",
-		Spins = "rbxassetid://72974128962815",
-		Luck = "🍀",
-		MegaRoll = "🎰",
-		Bundle = "🎁",
-		Boost = "rbxassetid://131975246594329",
-		Event = "rbxassetid://119611914627070",
-		ServerLuck = "rbxassetid://119611914627070",
-	} :: { [string]: string },
+	-- The icon table lives in the MenuSystem (Config.Icons), so the Icon
+	-- attribute and the code use the same names.
+	Icons = MenuConfig.Icons :: { [string]: string },
 
 	-- Friendly text for server error codes. Codes mapped to "" stay silent.
 	Errors = {

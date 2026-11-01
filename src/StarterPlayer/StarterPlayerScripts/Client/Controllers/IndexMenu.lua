@@ -20,7 +20,6 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   * bottom: "Unlocks Needed" for the tab
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -39,13 +38,16 @@ local Kit = require(UI.Kit)
 local StudCell = require(UI.StudCell)
 local Format = require(UI.Format)
 
+local Menus = ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus")
+local ProgressBar = require(Menus:WaitForChild("ProgressBar"))
+local StateStyle = require(Menus:WaitForChild("StateStyle"))
+
 type StudDef = Types.StudDef
 
 local IndexMenu = {}
 
 local MENU = "Index"
 local ROLE = "IndexRole"
-local SELECTED = Color3.new(1, 1, 1)
 local LOCKED = Color3.fromRGB(255, 140, 140)
 
 local sortedStuds: { StudDef } = table.clone(Studs.List)
@@ -53,8 +55,8 @@ table.sort(sortedStuds, function(a, b)
 	return a.OneIn < b.OneIn
 end)
 
-type Cell = { frame: GuiObject, viewport: ViewportFrame, name: TextLabel, odds: TextLabel, stroke: UIStroke?, def: StudDef }
-type Tab = { frame: GuiObject, stroke: UIStroke? }
+type Cell = { frame: GuiObject, viewport: ViewportFrame, name: TextLabel, odds: TextLabel, def: StudDef }
+type Tab = { frame: GuiObject }
 
 local cells: { Cell } = {}
 local tabs: { [string]: Tab } = {}
@@ -63,34 +65,20 @@ local claimButton: GuiObject
 local progressFill: GuiObject
 local progressText: TextLabel
 
--- The colours / thickness the designer gave the strokes, for "not selected".
-local idleStroke: { [UIStroke]: { Color3 | number } } = {}
 
 local activeVariant = "Normal"
 local selected: StudDef = sortedStuds[1]
 local built = false
 
-local function strokeOf(frame: Instance): UIStroke?
-	local stroke = frame:FindFirstChildOfClass("UIStroke")
-	if stroke then
-		idleStroke[stroke] = idleStroke[stroke] or { stroke.Color, stroke.Thickness }
-	end
-	return stroke
-end
-
-local function highlight(stroke: UIStroke?, on: boolean)
-	if not stroke then return end
-	local idle = idleStroke[stroke]
-	stroke.Color = if on then SELECTED else idle[1] :: Color3
-	stroke.Thickness = if on then (idle[2] :: number) + 1 else idle[2] :: number
+-- Picked or not: MenuSystem's StateStyle paints it (StatePreset =
+-- "Selected" on the template, its outline a UIStroke named MainStroke).
+local function highlight(frame: GuiObject, on: boolean)
+	StateStyle.Apply(frame, on)
 end
 
 local function viewportOf(frame: Instance): ViewportFrame
 	local viewport = (if frame:IsA("ViewportFrame") then frame else frame:FindFirstChildWhichIsA("ViewportFrame", true)) :: ViewportFrame
 	assert(viewport, `{frame:GetFullName()} needs a ViewportFrame`)
-	if not viewport.CurrentCamera then
-		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
-	end
 	return viewport
 end
 
@@ -129,7 +117,7 @@ local function renderDetail()
 	local counts = State.get("RollCounts") or {}
 	detail.rolls.Text = `🎲 Rolls: {Format.number(counts[RollLogic.encodeKey(def.Id, activeVariant)] or 0)} · ⭐ Lv {level}`
 	for _, cell in cells do
-		highlight(cell.stroke, cell.def == def)
+		highlight(cell.frame, cell.def == def)
 	end
 end
 
@@ -137,10 +125,7 @@ local function renderReward()
 	local found, total = RollLogic.tabProgress(State.get("Index") or {}, activeVariant)
 	local claims = State.get("IndexClaims") or {}
 	local claimed = claims[activeVariant] == true
-	local fillSize = progressFill.Size
-	TweenService:Create(progressFill, Interface.FAST, {
-		Size = UDim2.new(math.clamp(found / math.max(total, 1), 0, 1), 0, fillSize.Y.Scale, fillSize.Y.Offset),
-	}):Play()
+	ProgressBar.Set(progressFill, { Progress = found / math.max(total, 1) })
 	progressText.Text = `{found}/{total}`
 	if claimed then
 		Kit.paint(claimButton, "Purple")
@@ -173,7 +158,7 @@ local function renderGrid()
 		end
 	end
 	for name, tab in tabs do
-		highlight(tab.stroke, name == activeVariant)
+		highlight(tab.frame, name == activeVariant)
 	end
 	renderDetail()
 	renderReward()
@@ -204,7 +189,7 @@ local function bind()
 		end
 		StudCell.setViewport(viewportOf(tab), sortedStuds[1], variant)
 		tab.Parent = tabColumn
-		tabs[name] = { frame = tab, stroke = strokeOf(tab) }
+		tabs[name] = { frame = tab }
 		local button = if tab:IsA("GuiButton") then tab else tab:FindFirstChildWhichIsA("GuiButton", true)
 		if button then
 			(button :: GuiButton).Activated:Connect(function()
@@ -240,7 +225,6 @@ local function bind()
 			viewport = viewportOf(frame),
 			name = frame:FindFirstChild("Name", true) :: TextLabel,
 			odds = odds,
-			stroke = strokeOf(frame),
 			def = def,
 		}
 		local button = frame:FindFirstChildWhichIsA("GuiButton", true)
