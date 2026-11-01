@@ -765,6 +765,9 @@ function Admin.init()
 	folder.Parent = ReplicatedStorage
 
 	local lastCall: { [Player]: number } = {}
+	Players.PlayerRemoving:Connect(function(player)
+		lastCall[player] = nil
+	end)
 	remote.OnServerInvoke = function(player: Player, request: any): Result
 		if not roles[player] then
 			return { ok = false, message = "Not an admin" }

@@ -138,6 +138,27 @@ type Streak = {
 }
 
 local enemies: { [number]: Enemy } = {}
+-- The same enemies by zone: separation only compares neighbours in a zone
+-- (comparing against every enemy in the game was O(n²) at 20 Hz).
+local byZone: { [string]: { [number]: Enemy } } = {}
+
+local function register(enemy: Enemy)
+	enemies[enemy.id] = enemy
+	local bucket = byZone[enemy.zoneId]
+	if not bucket then
+		bucket = {}
+		byZone[enemy.zoneId] = bucket
+	end
+	bucket[enemy.id] = enemy
+end
+
+local function unregister(enemy: Enemy)
+	enemies[enemy.id] = nil
+	local bucket = byZone[enemy.zoneId]
+	if bucket then
+		bucket[enemy.id] = nil
+	end
+end
 local zoneStates: { [Instance]: ZoneState } = {}
 local fights: { [Player]: Enemy? } = {}
 local engagedAt: { [Player]: number } = {}
@@ -610,7 +631,7 @@ local function addEnemy(
 		nextWander = 0,
 	}
 
-	enemies[enemy.id] = enemy
+	register(enemy)
 	spawnEnemy(enemy)
 
 	return enemy
@@ -771,8 +792,8 @@ local function walk(enemy: Enemy, dt: number, speed: number, stop: number): bool
 
 	local move = offset.Unit * math.min(distance, speed * dt)
 
-	-- Separation: don't walk into or stack on other enemies.
-	for _, other in enemies do
+	-- Separation: don't walk into or stack on other enemies (of this zone).
+	for _, other in byZone[enemy.zoneId] or enemies do
 		local otherBody = other.body
 
 		if other ~= enemy and other.alive and otherBody then
@@ -1065,7 +1086,7 @@ local function removeEnemy(enemy: Enemy)
 		enemy.blocked = nil
 	end
 
-	enemies[enemy.id] = nil
+	unregister(enemy)
 end
 
 local function defeat(enemy: Enemy)
@@ -1254,7 +1275,7 @@ local function defeat(enemy: Enemy)
 	end
 
 	if enemy.zoneBoss or enemy.summoned then
-		enemies[enemy.id] = nil
+		unregister(enemy)
 		return
 	end
 

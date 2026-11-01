@@ -154,6 +154,17 @@ local function hudTarget(name: string): GuiObject?
 	return findHud(name)
 end
 
+-- A key's zone never changes: look it up once (Tags.keyZone walks ancestors).
+local keyZones: { [Instance]: string | false } = setmetatable({}, { __mode = "k" }) :: any
+local function zoneOfKey(hitbox: BasePart): string?
+	local cached = keyZones[hitbox]
+	if cached == nil then
+		cached = Tags.keyZone(hitbox) or false
+		keyZones[hitbox] = cached
+	end
+	return if cached then cached else nil
+end
+
 local function nearestKey(root: Vector3, wantTile: boolean): Vector3?
 	local best: Vector3? = nil
 	local bestDistance = math.huge
@@ -162,7 +173,7 @@ local function nearestKey(root: Vector3, wantTile: boolean): Vector3?
 		if hitbox:IsA("BasePart") then
 			local model = hitbox.Parent
 			local isTile = model ~= nil and model:GetAttribute(Config.KeyRewards.Attribute) ~= nil
-			local world = Tags.keyZone(hitbox)
+			local world = zoneOfKey(hitbox)
 			local enabled = model ~= nil and Tags.read(model, Tags.Attr.Enabled, true)
 			local owned = enabled and (world == nil or unlocked[world] == true)
 			if owned and (not wantTile or isTile) then
