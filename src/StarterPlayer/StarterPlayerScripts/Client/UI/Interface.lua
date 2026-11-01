@@ -39,6 +39,7 @@ local MenuSystem = ReplicatedStorage:WaitForChild("MenuSystem")
 local MenuController = require(MenuSystem.Menus.MenuController)
 
 local UIConfig = require(script.Parent.UIConfig)
+local Roles = require(script.Parent.Roles)
 
 local player = Players.LocalPlayer
 
@@ -61,7 +62,6 @@ Interface.Music = (nil :: any) :: SoundGroup
 local ready = false
 local sounds: { [string]: Sound } = {}
 local toastGui: ScreenGui? = nil
-local toastTemplate: Frame? = nil
 
 export type CustomMenu = {
 	open: () -> (),
@@ -359,38 +359,13 @@ end
 -- Toasts
 --------------------------------------------------------------------------
 
-local function ensureToasts(): (ScreenGui, Frame?)
-	if toastGui then return toastGui, toastTemplate end
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "Toasts"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 20
-	gui.IgnoreGuiInset = true
-	gui.Parent = player:WaitForChild("PlayerGui")
-
-	local layout = Instance.new("UIListLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Top
-	layout.Padding = UDim.new(0.005, 0)
-	layout.Parent = gui
-
-	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0.2, 0)
-	padding.Parent = gui
-
-	-- Same look as the HUD amount labels.
-	local source = Interface.HUD:FindFirstChild("Labels")
-	source = source and source:FindFirstChild("Amounts")
-	source = source and source:FindFirstChild("Clacks")
-	if source and source:IsA("Frame") then
-		local template = source:Clone()
-		template.Size = UDim2.fromScale(0.45, 0.045)
-		template.Position = UDim2.new()
-		toastTemplate = template
-	end
+-- StarterGui.Toasts (tools/ui/screens/Toasts.luau): its UIListLayout stacks
+-- copies of its "Toast" template.
+local function ensureToasts(): ScreenGui
+	if toastGui then return toastGui end
+	local gui = Roles.gui("Toasts")
 	toastGui = gui
-	return gui, toastTemplate
+	return gui
 end
 
 local toastOrder = 0
@@ -398,13 +373,9 @@ local toastOrder = 0
 -- Short message under the top bar. color tints the text (default white).
 function Interface.toast(text: string, color: Color3?)
 	if text == "" then return end
-	local gui, template = ensureToasts()
-	if not template then
-		warn("[UI]", text)
-		return
-	end
+	local gui = ensureToasts()
 	toastOrder += 1
-	local toast = template:Clone()
+	local toast = Roles.template(gui, "Toast")
 	toast.LayoutOrder = toastOrder
 	Interface.setText(toast, text, "Amount", "AmountShadow")
 	local amount = toast:FindFirstChild("Amount")

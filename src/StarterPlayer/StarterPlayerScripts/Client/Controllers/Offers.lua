@@ -18,8 +18,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Stud Trainer   when one of your studs levels up
 --   Stud Pass      when you reach pass tier 3 without the premium track
 -- Items whose Id isn't set yet (Shared/Products) are never offered.
+--
+-- The card is StarterGui.Offers (tools/ui/screens/Offers.luau), found by
+-- OfferRole: Card (rests where it sits in Studio, slides in from the left),
+-- Icon, Title, Body, Buy, Price, Close.
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -35,19 +38,19 @@ local Interface = require(UI.Interface)
 local Robux = require(UI.Robux)
 local Kit = require(UI.Kit)
 local Juice = require(UI.Juice)
+local Roles = require(UI.Roles)
 
 local Offers = {}
 
 local MIN_GAP = 6 * 60
 local SHOW_TIME = 12
 local STARTER_DELAY = 150
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-
-local player = Players.LocalPlayer
 
 local shown: { [string]: boolean } = {}
 local lastShown = -math.huge
-local card: Frame
+local card: GuiObject
+local home: UDim2 -- where the card rests (its Studio position)
+local away: UDim2 -- off the left edge
 local title: TextLabel
 local body: TextLabel
 local price: TextLabel
@@ -64,71 +67,24 @@ local function owns(isPass: boolean, key: string): boolean
 	return typeof(bought) == "table" and bought[key] == true
 end
 
-local function label(parent: Instance, text: string, size: UDim2, position: UDim2, color: Color3, align: Enum.TextXAlignment): TextLabel
-	local l = Instance.new("TextLabel")
-	l.BackgroundTransparency = 1
-	l.Size = size
-	l.Position = position
-	l.FontFace = FONT
-	l.TextScaled = true
-	l.TextWrapped = true
-	l.TextColor3 = color
-	l.TextXAlignment = align
-	l.Text = text
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1.5
-	stroke.Color = Color3.fromRGB(10, 10, 14)
-	stroke.Parent = l
-	l.Parent = parent
-	return l
-end
-
 local function hide()
 	current = nil
-	TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0, -340, 0.56, 0) }):Play()
+	TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = away }):Play()
 end
 
-local function build()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "Offers"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 6
-	gui.Parent = player:WaitForChild("PlayerGui")
+local function bind()
+	local gui = Roles.gui("Offers")
+	card = Roles.get(gui, "OfferRole", "Card")
+	icon = Roles.get(gui, "OfferRole", "Icon")
+	title = Roles.get(gui, "OfferRole", "Title")
+	body = Roles.get(gui, "OfferRole", "Body")
+	price = Roles.get(gui, "OfferRole", "Price")
+	home = card.Position
+	away = UDim2.new(home.X.Scale - 1, home.X.Offset - 40, home.Y.Scale, home.Y.Offset)
+	card.Position = away
+	card.Visible = true
 
-	card = Instance.new("Frame")
-	card.AnchorPoint = Vector2.new(0, 0.5)
-	card.Position = UDim2.new(0, -340, 0.56, 0)
-	card.Size = UDim2.fromOffset(320, 128)
-	card.BackgroundColor3 = Color3.fromRGB(30, 28, 46)
-	card.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 14)
-	corner.Parent = card
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
-	stroke.Color = Color3.fromRGB(255, 205, 60)
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = card
-
-	icon = Instance.new("ImageLabel")
-	icon.BackgroundTransparency = 1
-	icon.Position = UDim2.fromOffset(12, 14)
-	icon.Size = UDim2.fromOffset(64, 64)
-	icon.ScaleType = Enum.ScaleType.Fit
-	icon.Parent = card
-	title = label(card, "", UDim2.fromOffset(196, 26), UDim2.fromOffset(86, 10), Color3.fromRGB(255, 205, 60), Enum.TextXAlignment.Left)
-	body = label(card, "", UDim2.fromOffset(222, 48), UDim2.fromOffset(86, 38), Color3.new(1, 1, 1), Enum.TextXAlignment.Left)
-
-	local buy = Instance.new("TextButton")
-	buy.Text = ""
-	buy.Position = UDim2.fromOffset(86, 90)
-	buy.Size = UDim2.fromOffset(150, 30)
-	buy.BackgroundColor3 = Color3.fromRGB(60, 180, 90)
-	buy.Parent = card
-	local buyCorner = Instance.new("UICorner")
-	buyCorner.CornerRadius = UDim.new(0.3, 0)
-	buyCorner.Parent = buy
-	price = label(buy, "", UDim2.fromScale(0.9, 0.75), UDim2.fromScale(0.05, 0.12), Color3.new(1, 1, 1), Enum.TextXAlignment.Center)
+	local buy = Roles.get(gui, "OfferRole", "Buy") :: GuiButton
 	buy.Activated:Connect(function()
 		Interface.play("Click")
 		local offer = current
@@ -137,20 +93,13 @@ local function build()
 			hide()
 		end
 	end)
-
-	local close = Instance.new("TextButton")
-	close.Text = "✕"
-	close.FontFace = FONT
-	close.TextScaled = true
-	close.TextColor3 = Color3.new(1, 1, 1)
-	close.BackgroundTransparency = 1
-	close.Position = UDim2.fromOffset(286, 6)
-	close.Size = UDim2.fromOffset(26, 26)
-	close.Parent = card
-	close.Activated:Connect(function()
-		Interface.play("Click")
-		hide()
-	end)
+	local close = Roles.find(gui, "OfferRole", "Close")
+	if close and close:IsA("GuiButton") then
+		close.Activated:Connect(function()
+			Interface.play("Click")
+			hide()
+		end)
+	end
 end
 
 -- Shows the offer if it's allowed right now. Returns whether it showed.
@@ -173,7 +122,7 @@ local function offer(key: string, isPass: boolean, headline: string): boolean
 			price.Text = if robux then `BUY  R$ {robux}` else "BUY"
 		end
 	end)
-	TweenService:Create(card, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0, 14, 0.56, 0) }):Play()
+	TweenService:Create(card, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = home }):Play()
 	Juice.pop(card, 1.05)
 	Interface.play("Hover", 1.3)
 
@@ -199,7 +148,7 @@ end
 
 function Offers.start()
 	Interface.setup()
-	build()
+	bind()
 	if not State.isReady() then
 		State.Ready:Wait()
 	end

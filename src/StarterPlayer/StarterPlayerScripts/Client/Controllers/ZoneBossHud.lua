@@ -13,8 +13,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   * a chip under the top bar counting down to the next Titans ("👹 TITANS
 --     IN 12:34"), or the time left while they're out
 --   * banners: the warning, the spawn, your placing, escapes
---   * near a Titan: a raid panel (top right) with its health, time left, the live damage
---     leaderboard (top 5) and your rank
+--   * near a Titan (or a Mega Boss): a raid panel (top right) with its
+--     health, time left, the live damage leaderboard (top 5) and your rank
+--
+-- The chip and panel are StarterGui.ZoneBoss (tools/ui/screens/ZoneBoss.luau),
+-- found by BossRole: Chip, Panel, Name, Time, Fill, Hp, Mine, and Row with
+-- BossRow = 1..5.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -34,10 +38,10 @@ local Interface = require(UI.Interface)
 local Format = require(UI.Format)
 local Juice = require(UI.Juice)
 local CombatFx = require(UI.CombatFx)
+local Roles = require(UI.Roles)
 
 local ZoneBossHud = {}
 
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 local RED = Color3.fromRGB(255, 70, 60)
 local GOLD = Color3.fromRGB(255, 205, 60)
 local PANEL_RANGE = 220 -- studs: the raid panel shows within this of a Titan
@@ -47,9 +51,9 @@ local settings = Config.ZoneBoss
 
 local gui: ScreenGui
 local chip: TextLabel
-local panel: Frame
+local panel: GuiObject
 local panelName: TextLabel
-local panelFill: Frame
+local panelFill: GuiObject
 local panelHp: TextLabel
 local panelTime: TextLabel
 local rows: { TextLabel } = {}
@@ -58,31 +62,6 @@ local mineRow: TextLabel
 -- Latest "Board" per Titan id.
 type Board = { Name: string, Board: { { Name: string, Damage: number } }, Mine: number, Rank: number?, Left: number, At: number }
 local boards: { [number]: Board } = {}
-
-local function text(parent: Instance, value: string, color: Color3, size: UDim2, position: UDim2, align: Enum.TextXAlignment?): TextLabel
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	label.Size = size
-	label.Position = position
-	label.FontFace = FONT
-	label.TextScaled = true
-	label.TextColor3 = color
-	label.TextXAlignment = align or Enum.TextXAlignment.Center
-	label.Text = value
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(12, 12, 18)
-	stroke.Parent = label
-	label.Parent = parent
-	return label
-end
-
-local function corner(parent: Instance, radius: number)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(radius, 0)
-	c.Parent = parent
-end
 
 local function clock(seconds: number): string
 	seconds = math.max(0, math.floor(seconds))
@@ -103,72 +82,32 @@ end
 -- Gui
 --------------------------------------------------------------------------
 
-local function build()
-	gui = Instance.new("ScreenGui")
-	gui.Name = "ZoneBoss"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 4
-	gui.Parent = player:WaitForChild("PlayerGui")
-
-	-- Countdown chip, top right.
-	chip = text(gui, "", Color3.new(1, 1, 1), UDim2.fromOffset(210, 30), UDim2.new(1, -120, 0, 24))
-	chip.BackgroundTransparency = 0.25
-	chip.BackgroundColor3 = Color3.fromRGB(30, 14, 18)
-	corner(chip, 0.5)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 5)
-	pad.PaddingBottom = UDim.new(0, 5)
-	pad.Parent = chip
-
-	-- Raid panel, top right under the chip (top centre is the roll display's).
-	panel = Instance.new("Frame")
-	panel.Name = "Raid"
-	panel.AnchorPoint = Vector2.new(1, 0)
-	panel.Position = UDim2.new(1, -12, 0, 46)
-	panel.Size = UDim2.fromOffset(420, 200)
-	panel.BackgroundColor3 = Color3.fromRGB(22, 14, 20)
-	panel.BackgroundTransparency = 0.15
+local function bind()
+	gui = Roles.gui("ZoneBoss")
+	chip = Roles.get(gui, "BossRole", "Chip")
+	panel = Roles.get(gui, "BossRole", "Panel")
+	panelName = Roles.get(gui, "BossRole", "Name")
+	panelTime = Roles.get(gui, "BossRole", "Time")
+	panelFill = Roles.get(gui, "BossRole", "Fill")
+	panelHp = Roles.get(gui, "BossRole", "Hp")
+	mineRow = Roles.get(gui, "BossRole", "Mine")
+	for _, d in gui:GetDescendants() do
+		local index = d:GetAttribute("BossRow")
+		if d:GetAttribute("BossRole") == "Row" and typeof(index) == "number" and d:IsA("TextLabel") then
+			rows[index] = d
+		end
+	end
 	panel.Visible = false
-	panel.Parent = gui
-	corner(panel, 0.08)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = RED
-	stroke.Thickness = 3
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = panel
-	local scale = Instance.new("UIScale")
-	scale.Parent = panel
-	-- (UIScale shrinks towards the anchor: top right stays put.)
-	local function fit()
-		scale.Scale = math.clamp(gui.AbsoluteSize.X / 1100, 0.6, 1)
+
+	-- Shrink the panel on narrow screens (towards its anchor: top right stays put).
+	local scale = panel:FindFirstChildOfClass("UIScale")
+	if scale then
+		local function fit()
+			scale.Scale = math.clamp(gui.AbsoluteSize.X / 1100, 0.6, 1)
+		end
+		gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		fit()
 	end
-	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
-	fit()
-
-	panelName = text(panel, "", RED, UDim2.new(1, -20, 0, 26), UDim2.new(0.5, 0, 0, 20))
-	panelTime = text(panel, "", Color3.fromRGB(255, 220, 200), UDim2.new(0.3, 0, 0, 18), UDim2.new(0.85, 0, 0, 20), Enum.TextXAlignment.Right)
-
-	local back = Instance.new("Frame")
-	back.AnchorPoint = Vector2.new(0.5, 0)
-	back.Position = UDim2.new(0.5, 0, 0, 38)
-	back.Size = UDim2.new(1, -24, 0, 22)
-	back.BackgroundColor3 = Color3.fromRGB(12, 8, 12)
-	back.Parent = panel
-	corner(back, 0.5)
-	panelFill = Instance.new("Frame")
-	panelFill.Size = UDim2.fromScale(1, 1)
-	panelFill.BackgroundColor3 = RED
-	panelFill.Parent = back
-	corner(panelFill, 0.5)
-	panelHp = text(back, "", Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.85), UDim2.fromScale(0.5, 0.5))
-	panelHp.ZIndex = 3
-
-	text(panel, "TOP DAMAGE", GOLD, UDim2.new(1, -24, 0, 16), UDim2.new(0.5, 0, 0, 74))
-	for i = 1, 5 do
-		local row = text(panel, "", Color3.new(1, 1, 1), UDim2.new(1, -40, 0, 16), UDim2.new(0.5, 0, 0, 74 + i * 18), Enum.TextXAlignment.Left)
-		rows[i] = row
-	end
-	mineRow = text(panel, "", Color3.fromRGB(120, 255, 140), UDim2.new(1, -40, 0, 18), UDim2.new(0.5, 0, 0, 186), Enum.TextXAlignment.Left)
 end
 
 -- The nearest Titan within PANEL_RANGE.
@@ -178,7 +117,7 @@ local function nearestTitan(): Model?
 	if not (root and root:IsA("BasePart")) then return nil end
 	local best: Model?, bestDistance = nil, PANEL_RANGE
 	for _, instance in CollectionService:GetTagged(Tags.Enemy) do
-		if instance:IsA("Model") and instance:GetAttribute("ZoneBoss") == true then
+		if instance:IsA("Model") and (instance:GetAttribute("ZoneBoss") == true or instance:GetAttribute("MegaBoss") == true) then
 			local body = instance.PrimaryPart or instance:FindFirstChild("Body")
 			if body and body:IsA("BasePart") then
 				local distance = (body.Position - root.Position).Magnitude
@@ -303,7 +242,7 @@ end
 
 function ZoneBossHud.start()
 	Interface.setup()
-	build()
+	bind()
 	Net.on("ZoneBoss", onEvent)
 	task.spawn(function()
 		while true do
