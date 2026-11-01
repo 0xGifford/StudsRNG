@@ -63,10 +63,9 @@ end
 
 local templates: { [Instance]: { [string]: Instance } } = setmetatable({}, { __mode = "k" }) :: any
 
--- Studs added to a copied BillboardGui / SurfaceGui's MaxDistance. A
--- template's MaxDistance means "from the player"; MaxDistance is measured
--- from the camera, so a camera parked far away (the isometric one sets
--- this to its distance) would otherwise hide everything.
+-- Studs added to a copied BillboardGui / SurfaceGui's MaxDistance (0 by
+-- default). MaxDistance is measured from the camera: a game whose camera
+-- sits far from the player sets this to that distance.
 Roles.distanceBonus = 0
 
 -- A visible copy of the template UITemplate = name under root.

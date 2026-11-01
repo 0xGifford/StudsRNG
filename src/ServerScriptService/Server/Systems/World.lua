@@ -88,17 +88,6 @@ local function keepLoaded(model: Instance)
 end
 
 function World.init()
-	-- Shift lock makes no sense with the isometric camera (Config.Camera).
-	-- Only the server may change this; it applies to everyone who joins.
-	if Config.Camera.Enabled then
-		local ok, err = pcall(function()
-			game:GetService("StarterPlayer").EnableMouseLockOption = false
-		end)
-		if not ok then
-			warn("[World] couldn't turn off shift lock:", err)
-		end
-	end
-
 	if not workspace.StreamingEnabled then return end
 	local zones = workspace:FindFirstChild(Config.ZoneFolder)
 	if zones then

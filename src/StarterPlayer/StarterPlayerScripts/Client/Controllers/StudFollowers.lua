@@ -232,7 +232,7 @@ end
 local function update(dt: number)
 	local t = os.clock()
 	local camera = workspace.CurrentCamera
-	local cameraPos = camera and camera.Focus.Position or Vector3.zero -- what it looks at (IsoCamera)
+	local cameraPos = camera and camera.Focus.Position or Vector3.zero -- what it looks at (the player)
 
 	for player, entry in entries do
 		local character = player.Character
