@@ -131,7 +131,7 @@ end
 
 function RewardsMenu.start()
 	Interface.setup()
-	local window = Interface.Canva:WaitForChild(MENU)
+	local window = Interface.window(MENU)
 	local main = window:WaitForChild("Main")
 	local items = main:WaitForChild("Items")
 

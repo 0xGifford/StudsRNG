@@ -16,15 +16,17 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Juice.confetti(count, origin?)       UI confetti burst (screen pixels)
 --   Juice.banner(title, subtitle, color) big centre title card (queued)
 --   Juice.pop(guiObject, scale?)         elastic scale punch
+--
+-- The flash, confetti and banner are copies of the templates in
+-- StarterGui.Juice (tools/ui/screens/Juice.luau): restyle them there.
 
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local Roles = require(script.Parent.Roles)
+
 local Juice = {}
 
-local player = Players.LocalPlayer
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 local CONFETTI_COLORS = {
 	Color3.fromRGB(255, 90, 120), Color3.fromRGB(255, 210, 70), Color3.fromRGB(110, 230, 120),
 	Color3.fromRGB(90, 190, 255), Color3.fromRGB(190, 120, 255),
@@ -35,14 +37,9 @@ local gui: ScreenGui? = nil
 local function screen(): ScreenGui
 	local existing = gui
 	if existing and existing.Parent then return existing end
-	local created = Instance.new("ScreenGui")
-	created.Name = "Juice"
-	created.ResetOnSpawn = false
-	created.IgnoreGuiInset = true
-	created.DisplayOrder = 25
-	created.Parent = player:WaitForChild("PlayerGui")
-	gui = created
-	return created
+	local found = Roles.gui("Juice")
+	gui = found
+	return found
 end
 
 --------------------------------------------------------------------------
@@ -94,13 +91,11 @@ end
 --------------------------------------------------------------------------
 
 function Juice.flash(color: Color3, alpha: number, duration: number)
-	local frame = Instance.new("Frame")
-	frame.Size = UDim2.fromScale(1, 1)
+	local parent = screen()
+	local frame = Roles.template(parent, "Flash")
 	frame.BackgroundColor3 = color
 	frame.BackgroundTransparency = 1 - alpha
-	frame.BorderSizePixel = 0
-	frame.ZIndex = 1
-	frame.Parent = screen()
+	frame.Parent = parent
 	local tween = TweenService:Create(frame, TweenInfo.new(duration, Enum.EasingStyle.Quad), { BackgroundTransparency = 1 })
 	tween:Play()
 	tween.Completed:Once(function()
@@ -117,14 +112,11 @@ function Juice.confetti(count: number, origin: Vector2?)
 	local start = origin or size / 2
 	local bits: { Bit } = {}
 	for _ = 1, count do
-		local frame = Instance.new("Frame")
-		frame.AnchorPoint = Vector2.new(0.5, 0.5)
+		local frame = Roles.template(parent, "ConfettiBit")
 		frame.Size = UDim2.fromOffset(math.random(6, 12), math.random(10, 18))
 		frame.Position = UDim2.fromOffset(start.X, start.Y)
 		frame.BackgroundColor3 = CONFETTI_COLORS[math.random(#CONFETTI_COLORS)]
-		frame.BorderSizePixel = 0
 		frame.Rotation = math.random(0, 360)
-		frame.ZIndex = 5
 		frame.Parent = parent
 		local angle = math.rad(math.random(200, 340))
 		local speed = math.random(450, 1000)
@@ -180,28 +172,11 @@ type Banner = { title: string, subtitle: string, color: Color3, hold: number }
 local queue: { Banner } = {}
 local showing = false
 
-local function label(text: string, size: UDim2, position: UDim2, color: Color3, parent: Instance): TextLabel
-	local l = Instance.new("TextLabel")
-	l.BackgroundTransparency = 1
-	l.AnchorPoint = Vector2.new(0.5, 0.5)
-	l.Size = size
-	l.Position = position
-	l.TextScaled = true
-	l.FontFace = FONT
-	l.TextColor3 = Color3.new(1, 1, 1)
-	l.Text = text
-	l.ZIndex = 10
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.55), color)
-	gradient.Rotation = 90
-	gradient.Parent = l
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(20, 20, 25)
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = l
-	l.Parent = parent
-	return l
+local function tint(label: Instance?, color: Color3)
+	local gradient = label and label:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		gradient.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.55), color)
+	end
 end
 
 local function showNext()
@@ -212,34 +187,37 @@ local function showNext()
 	end
 	showing = true
 
-	local holder = Instance.new("CanvasGroup")
-	holder.BackgroundTransparency = 1
-	holder.AnchorPoint = Vector2.new(0.5, 0.5)
-	holder.Position = UDim2.fromScale(0.5, 0.3)
-	holder.Size = UDim2.fromScale(0.7, 0.2)
-	holder.ZIndex = 10
-	holder.Parent = screen()
-	local ratio = Instance.new("UIAspectRatioConstraint")
-	ratio.AspectRatio = 4.2
-	ratio.Parent = holder
-
-	label(banner.title, UDim2.fromScale(1, 0.62), UDim2.fromScale(0.5, 0.35), banner.color, holder)
-	if banner.subtitle ~= "" then
-		local sub = label(banner.subtitle, UDim2.fromScale(0.8, 0.26), UDim2.fromScale(0.5, 0.82), Color3.new(1, 1, 1), holder)
-		sub.ZIndex = 11
+	local parent = screen()
+	local holder = Roles.template(parent, "Banner") :: CanvasGroup
+	local home = holder.Position
+	local title = Roles.find(holder, "JuiceRole", "Title")
+	local sub = Roles.find(holder, "JuiceRole", "Subtitle")
+	if title and title:IsA("TextLabel") then
+		title.Text = banner.title
+		tint(title, banner.color)
+	end
+	if sub and sub:IsA("TextLabel") then
+		sub.Text = banner.subtitle
+		sub.Visible = banner.subtitle ~= ""
+		tint(sub, Color3.new(1, 1, 1))
 	end
 
-	local scale = Instance.new("UIScale")
-	scale.Scale = 2.2
-	scale.Parent = holder
+	local scale = holder:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = holder
+	end
+	local uiScale = scale :: UIScale
+	uiScale.Scale = 2.2
 	holder.GroupTransparency = 1
-	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	holder.Parent = parent
+	TweenService:Create(uiScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	TweenService:Create(holder, TweenInfo.new(0.15), { GroupTransparency = 0 }):Play()
 
 	task.delay(0.35 + banner.hold, function()
 		local out = TweenService:Create(holder, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 			GroupTransparency = 1,
-			Position = UDim2.fromScale(0.5, 0.22),
+			Position = home - UDim2.fromScale(0, 0.08),
 		})
 		out:Play()
 		out.Completed:Wait()

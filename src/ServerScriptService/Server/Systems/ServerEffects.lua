@@ -13,7 +13,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Server Luck: bought with Robux by anyone, x2 luck for everyone in this
 --   server for 15 minutes (buying again adds time).
 --   Global events: RollLogic.eventSchedule decides from the clock alone, so
---   every server runs the same event at the same moment.
+--   every server runs the same event at the same moment. Admins override it
+--   (ServerEffects.runEvent / stopEvent, in one server or all via
+--   Systems/Admin): an override lasts until its end time, then the schedule
+--   takes over again. ServerEffects.EventChanged tells Combat (enemy
+--   modifiers, the Mega Boss); clients read the attributes (EventLook).
 --
 -- Replicated as ReplicatedStorage attributes (server time, seconds):
 --   ServerLuckEnds, ServerLuckBy, EventId, EventEnds, NextEventAt
@@ -25,14 +29,20 @@ local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local RollLogic = require(Shared.Util.RollLogic)
 
+local Signal = require(Shared.Util.Signal)
+
 local Systems = script.Parent
 local Modifiers = require(Systems.Modifiers)
 
 local ServerEffects = {}
 
+-- (id or nil, def or nil) whenever the running event changes.
+ServerEffects.EventChanged = Signal.new() :: Signal.Signal<string?, Config.EventDef?>
+
 local serverLuckEnds = 0
--- Dev override: { id, ends } forces an event outside the schedule.
+-- Admin override until `ends` (server time): id = "" means "no event".
 local forced: { id: string, ends: number }? = nil
+local current: string? = nil
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -51,24 +61,31 @@ local function refreshEvent()
 	local currentForced = forced
 	if currentForced then
 		if currentForced.ends > t then
-			id = currentForced.id
+			id = if currentForced.id ~= "" then currentForced.id else nil
 			ends = currentForced.ends
 		else
 			forced = nil
 		end
 	end
 
-	local previous = ReplicatedStorage:GetAttribute("EventId")
+	local previous = current
+	current = id
 	Modifiers.setEvent(id)
 	ReplicatedStorage:SetAttribute("EventId", id or "")
 	ReplicatedStorage:SetAttribute("EventEnds", if id then ends else 0)
 	ReplicatedStorage:SetAttribute("NextEventAt", nextAt)
 
-	if id and previous ~= id then
+	if previous ~= id then
 		local def = RollLogic.eventById(id)
 		if def then
 			Net.fireAll("Notify", { Text = `{def.Name} started!`, Color = def.Color })
+		elseif previous then
+			local old = RollLogic.eventById(previous)
+			if old then
+				Net.fireAll("Notify", { Text = `{old.Name} is over.`, Color = old.Color })
+			end
 		end
+		ServerEffects.EventChanged:Fire(id, def)
 	end
 end
 
@@ -91,10 +108,26 @@ end
 
 -- Dev/admin: run an event now for `seconds`.
 function ServerEffects.forceEvent(id: string, seconds: number): boolean
-	if not RollLogic.eventById(id) then return false end
-	forced = { id = id, ends = now() + seconds }
+	return ServerEffects.runEvent(id, now() + seconds)
+end
+
+-- Admin: run event `id` until server time `ends` (overrides the schedule).
+function ServerEffects.runEvent(id: string, ends: number): boolean
+	if not RollLogic.eventById(id) or ends <= now() then return false end
+	forced = { id = id, ends = ends }
 	refreshEvent()
 	return true
+end
+
+-- Admin: stop whatever runs; the schedule resumes with its next event.
+function ServerEffects.stopEvent()
+	local _, scheduledEnds = RollLogic.eventSchedule(now())
+	forced = { id = "", ends = math.max(scheduledEnds, now() + 1) }
+	refreshEvent()
+end
+
+function ServerEffects.currentEvent(): string?
+	return current
 end
 
 function ServerEffects.init()

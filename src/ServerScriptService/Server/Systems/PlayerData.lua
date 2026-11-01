@@ -68,6 +68,7 @@ local TEMPLATE: PlayerData = {
 	Title = "", -- achievement id whose title is worn ("" = none)
 	Pass = { Season = "", Points = 0, Free = {}, Premium = {} }, -- Stud Pass (Systems/StudPass)
 	Bought = {}, -- [product key] = true for one-time products (Starter Pack)
+	Epochs = { Economy = 0, All = 0 }, -- admin resets applied (Systems/Admin)
 }
 
 -- Owned zones carry over a map change by their place in the unlock order
@@ -105,6 +106,10 @@ local PlayerData = {}
 
 -- Fires once a player's profile is loaded and ready.
 PlayerData.Loaded = Signal.new() :: Signal.Signal<Player, PlayerData>
+-- (player, message) for each ProfileStore message to their save (sent with
+-- PlayerData.message, e.g. an admin edit while they were offline). Fires
+-- after Loaded, and live while they play.
+PlayerData.Message = Signal.new() :: Signal.Signal<Player, any>
 
 local profiles: { [Player]: any } = {}
 local store: any = nil
@@ -207,6 +212,12 @@ local function onPlayerAdded(player: Player)
 
 	profiles[player] = profile
 	PlayerData.Loaded:Fire(player, profile.Data)
+	profile:MessageHandler(function(message, processed)
+		if profiles[player] == profile then
+			PlayerData.Message:Fire(player, message)
+			processed()
+		end
+	end)
 end
 
 local function onPlayerRemoving(player: Player)
@@ -257,17 +268,49 @@ function PlayerData.waitFor(player: Player, timeout: number?): PlayerData?
 	return PlayerData.get(player)
 end
 
--- Studio/dev only: reset a player's data to the template in place.
-function PlayerData.reset(player: Player)
-	local profile = profiles[player]
-	if not profile then return end
-	local data: any = profile.Data
+-- Resets a save table to the template in place, keeping the fields in
+-- `keep` (purchase receipts...).
+function PlayerData.resetData(data: any, keep: { string }?)
+	local kept = {}
+	for _, key in keep or {} do
+		kept[key] = data[key]
+	end
 	for key in data do
 		data[key] = nil
 	end
 	for key, value in TEMPLATE :: any do
 		data[key] = if typeof(value) == "table" then table.clone(value :: any) else value
 	end
+	for key, value in kept do
+		data[key] = value
+	end
+	data.Version = CURRENT_VERSION
+end
+
+-- Studio/dev only: reset a player's data to the template in place.
+function PlayerData.reset(player: Player)
+	local profile = profiles[player]
+	if not profile then return end
+	PlayerData.resetData(profile.Data)
+end
+
+-- Queues a message for a save (delivered by PlayerData.Message when it's
+-- next loaded, or within a minute in the server it's playing in). Yields.
+function PlayerData.message(userId: number, message: any): boolean
+	if not store then return false end
+	local ok, result = pcall(function()
+		return store:MessageAsync(`Player_{userId}`, message)
+	end)
+	return ok and result == true
+end
+
+-- A read-only copy of a save (nil: never played / failed). Yields.
+function PlayerData.peek(userId: number): any
+	if not store then return nil end
+	local ok, profile = pcall(function()
+		return store:GetAsync(`Player_{userId}`)
+	end)
+	return if ok and profile then profile.Data else nil
 end
 
 return PlayerData

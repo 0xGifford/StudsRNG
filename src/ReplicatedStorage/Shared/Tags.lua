@@ -65,18 +65,17 @@ Copyright © 2026. Mosswake, all rights reserved.
 --                   Board     string   Clacks | Enemies | Rarest (default Clacks)
 --                   Face      string   NormalId to draw on (default Front)
 --   MenuTrigger   BasePart that opens a menu.
---                   Menu        string   menu name (a Menu.Canva window, or Upgrades)
+--                   Menu        string   menu name (a MenuSystem menu ScreenGui, or Upgrades)
 --                   MenuAction  string   Open (default) | Toggle | Close
 --                   Prompt      boolean  use a ProximityPrompt instead of touch (default false)
 --                   PromptText  string   default "Open"
 --
--- UI (anywhere under PlayerGui: HUD, Menu, SurfaceGuis, BillboardGuis)
---   A GuiButton, or a kit button Frame (with a "Button" child), carrying
---     Menu        string   the menu it opens
---     MenuAction  string   Toggle (default) | Open | Close
---   A Menu.Canva window carrying
---     Blur     boolean  blur the world while open (default true)
---     HideHUD  boolean  slide the HUD away while open (default true)
+-- UI: the MenuSystem conventions (ReplicatedStorage.MenuSystem.Config): a
+--   GuiButton (a kit button's "Button") with Menu / MenuAction opens menus,
+--   Tab / Toggle / Gamepass / DeveloperProduct... and the rest are documented
+--   in MenuSystem/Config and each module's header. A menu ScreenGui (tagged
+--   Menu, its window MenuPanel = true) takes Backdrop = false (no blur) and
+--   KeepHud = true (the HUD stays).
 
 local CollectionService = game:GetService("CollectionService")
 
@@ -112,8 +111,6 @@ local Tags = {
 		MenuAction = "MenuAction",
 		Prompt = "Prompt",
 		PromptText = "PromptText",
-		Blur = "Blur",
-		HideHUD = "HideHUD",
 		Board = "Board",
 		Face = "Face",
 	},

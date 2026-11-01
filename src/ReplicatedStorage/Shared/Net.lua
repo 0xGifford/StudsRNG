@@ -97,14 +97,14 @@ local buckets: { [Player]: { [string]: Bucket } } = {}
 local MAX_ARGS = 4
 local MAX_STRING = 64
 
-local function safeArgs(...: any): boolean
+local function safeArgs(maxString: number, ...: any): boolean
 	local count = select("#", ...)
 	if count > MAX_ARGS then return false end
 	for i = 1, count do
 		local value = select(i, ...)
 		local kind = typeof(value)
 		if kind == "string" then
-			if #value > MAX_STRING then return false end
+			if #value > maxString then return false end
 		elseif kind == "number" then
 			if value ~= value or value == math.huge or value == -math.huge then return false end
 		elseif kind ~= "boolean" and kind ~= "nil" then
@@ -186,7 +186,8 @@ function Net.setup()
 	end)
 end
 
-export type Limit = { Rate: number, Burst: number }
+-- MaxString: longest string argument accepted (default 64).
+export type Limit = { Rate: number, Burst: number, MaxString: number? }
 
 -- handler receives the player plus RAW, UNVALIDATED arguments.
 function Net.handle(name: string, limit: Limit, handler: (Player, ...any) -> Response)
@@ -196,7 +197,7 @@ function Net.handle(name: string, limit: Limit, handler: (Player, ...any) -> Res
 			strike(player, name, "rate limit")
 			return { Ok = false, Error = "RateLimited" }
 		end
-		if not safeArgs(...) then
+		if not safeArgs(limit.MaxString or MAX_STRING, ...) then
 			strike(player, name, "bad payload")
 			return { Ok = false, Error = "InvalidArgs" }
 		end

@@ -149,7 +149,7 @@ end
 
 function WheelMenu.start()
 	Interface.setup()
-	local window = Interface.Canva:WaitForChild(MENU)
+	local window = Interface.window(MENU)
 	local main = window:WaitForChild("Main")
 	wheel = main:WaitForChild("Wheel") :: ImageLabel
 	spinFrame = main:WaitForChild("Spin") :: Frame

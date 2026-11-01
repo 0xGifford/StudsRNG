@@ -166,27 +166,86 @@ Config.ServerLuck = {
 	MaxDuration = 6 * 60 * 60,
 }
 
--- Global events: one starts every Interval seconds and lasts Duration.
--- The schedule is computed from the clock, so every server runs the same
--- event at the same time with no cross-server messaging.
+-- Global events: one starts every Interval seconds and lasts Duration,
+-- taking turns through the Scheduled ones. The schedule is computed from the
+-- clock, so every server runs the same event at the same time. Admins can
+-- also start / stop any event in one server or all of them (Systems/Admin).
+--
+--   Luck / Clacks / RollSpeed  multiply everyone's stats while it runs
+--   Look      the world while it runs (Controllers/EventLook blends it in and
+--             puts the place's own lighting back after). Any of:
+--               Lighting   { ClockTime, Brightness, Ambient, OutdoorAmbient,
+--                            FogColor, FogEnd, ExposureCompensation }
+--               Atmosphere { Color, Decay, Density, Haze, Glare, Offset }
+--               Grade      ColorCorrection { TintColor, Saturation, Contrast, Brightness }
+--               Sky        name of a Sky in ReplicatedStorage.Assets.Skies, or
+--                          { SkyboxBk = id, ... } (the place's own Sky is kept
+--                          when there's none)
+--   Enemies   every enemy while it runs:
+--               Glow     Color3: a glow around them
+--               Health / Damage / Reward / Size  multipliers (on spawn)
+--   MegaBoss  spawns a Mega Boss in each zone players are in (up to
+--             MegaBoss.MaxZones): Titan-sized x Size, Health x Health...
+--             It leaves when the event ends.
+export type EventLook = {
+	Lighting: { [string]: any }?,
+	Atmosphere: { [string]: any }?,
+	Grade: { [string]: any }?,
+	Sky: (string | { [string]: string })?,
+}
 export type EventDef = {
 	Id: string,
 	Name: string,
+	Description: string?,
 	Luck: number?, -- multiplies luck
 	Clacks: number?, -- multiplies Clacks
 	RollSpeed: number?, -- multiplies roll speed
 	Color: Color3,
+	Scheduled: boolean?, -- false: only when an admin runs it (default true)
+	Look: EventLook?,
+	Enemies: { Glow: Color3?, Health: number?, Damage: number?, Reward: number?, Size: number? }?,
+	MegaBoss: { Health: number, Damage: number, Reward: number, Size: number, MaxZones: number }?,
 }
 
 local events: { EventDef } = {
-	{ Id = "LuckyRush", Name = "Lucky Rush", Luck = 2, Color = Color3.fromRGB(120, 255, 140) },
-	{ Id = "ClackFrenzy", Name = "Clack Frenzy", Clacks = 2, Color = Color3.fromRGB(255, 230, 90) },
-	{ Id = "SpeedRush", Name = "Speed Rush", RollSpeed = 1.5, Color = Color3.fromRGB(110, 200, 255) },
+	{ Id = "LuckyRush", Name = "Lucky Rush", Description = "x2 Luck for everyone", Luck = 2, Color = Color3.fromRGB(120, 255, 140),
+		Look = {
+			Grade = { TintColor = Color3.fromRGB(225, 255, 228), Saturation = 0.15 },
+			Atmosphere = { Color = Color3.fromRGB(190, 255, 200), Haze = 1 },
+		} },
+	{ Id = "ClackFrenzy", Name = "Clack Frenzy", Description = "x2 Clacks for everyone", Clacks = 2, Color = Color3.fromRGB(255, 230, 90),
+		Look = {
+			Lighting = { ClockTime = 17.4 },
+			Grade = { TintColor = Color3.fromRGB(255, 240, 210), Saturation = 0.1 },
+			Atmosphere = { Color = Color3.fromRGB(255, 210, 140), Haze = 1.6, Glare = 0.4 },
+		},
+		Enemies = { Glow = Color3.fromRGB(255, 210, 70), Reward = 1.5 } },
+	{ Id = "SpeedRush", Name = "Speed Rush", Description = "x1.5 roll speed", RollSpeed = 1.5, Color = Color3.fromRGB(110, 200, 255),
+		Look = { Grade = { TintColor = Color3.fromRGB(220, 238, 255), Contrast = 0.1 } } },
+	{ Id = "BloodMoon", Name = "Blood Moon", Description = "Enemies are tougher and pay x3", Color = Color3.fromRGB(255, 70, 60),
+		Look = {
+			Lighting = { ClockTime = 0, Ambient = Color3.fromRGB(90, 30, 30), OutdoorAmbient = Color3.fromRGB(120, 50, 50), Brightness = 1 },
+			Atmosphere = { Color = Color3.fromRGB(150, 40, 40), Decay = Color3.fromRGB(60, 10, 10), Density = 0.4, Haze = 2 },
+			Grade = { TintColor = Color3.fromRGB(255, 200, 200), Saturation = -0.1, Contrast = 0.15 },
+			Sky = "BloodMoon",
+		},
+		Enemies = { Glow = Color3.fromRGB(255, 50, 40), Health = 2, Damage = 1.5, Reward = 3, Size = 1.15 } },
+	{ Id = "MegaBoss", Name = "Mega Boss", Description = "A Mega Boss stomps into your zone!", Color = Color3.fromRGB(190, 90, 255),
+		Look = {
+			Lighting = { ClockTime = 19, Brightness = 1.5 },
+			Atmosphere = { Color = Color3.fromRGB(150, 110, 220), Decay = Color3.fromRGB(60, 30, 100), Density = 0.35, Haze = 1.5 },
+			Grade = { TintColor = Color3.fromRGB(235, 220, 255), Contrast = 0.1 },
+			Sky = "Storm",
+		},
+		Enemies = { Glow = Color3.fromRGB(190, 110, 255) },
+		MegaBoss = { Health = 160, Damage = 5, Reward = 120, Size = 5.5, MaxZones = 3 } },
 }
 Config.Events = {
 	Interval = 20 * 60,
 	Duration = 5 * 60,
 	List = events,
+	-- Admin-started events last this long unless a duration is given.
+	AdminDuration = 5 * 60,
 }
 
 Config.Social = {
@@ -390,6 +449,15 @@ Config.Visuals = {
 	TemplateFolder = "Assets",
 	TemplateName = "StudTemplate",
 	EnemyTemplateFolder = "EnemyTemplates",
+	-- Enemy faces: every Decal on a part named "Body" in an enemy template
+	-- shows the idle face of its kind, and Angry while the enemy hunts
+	-- someone or is being fought.
+	EnemyFaces = {
+		Enemy = "rbxassetid://6375861436",
+		MiniBoss = "rbxassetid://7802853826",
+		Titan = "rbxassetid://7802852346",
+		Angry = "rbxassetid://6443708470",
+	},
 	FallbackTextureId = "",
 	Size = Vector3.new(1, 1, 1),
 }
@@ -410,6 +478,52 @@ Config.Data = {
 Config.Dev = {
 	-- Dev commands only ever exist in Studio. Extra UserIds allowed there:
 	AllowedUserIds = {} :: { number },
+}
+
+-- Admin panel (Systems/Admin; the panel's tabs and actions are
+-- Shared/AdminConfig, its UI the Admin ScreenGui). Who gets which role:
+-- the game's creator (or the owning group's rank 255) is CreatorRole, then
+-- Users by UserId, then Groups by rank. In Studio, every tester is StudioRole.
+-- A role can only act on players of a LOWER rank (the top role on anyone).
+--
+-- Permissions:
+--   EditPlayers    change a player's Clacks, rolls, spins, rebirths, zones, studs, boosts
+--   ResetPlayers   wipe one player's progress
+--   ResetEconomy   zero everyone's currencies (EconomyReset), online and offline
+--   ResetAll       wipe everyone's progress, online and offline
+--   Kick / TempBan / Ban / Unban
+--   Events         start / stop events in this server
+--   Announce       announcements in this server
+--   Global         do Events / Announce in every server
+--   "*"            everything
+export type AdminRole = { Rank: number, Color: Color3, Permissions: { string } }
+Config.Admin = {
+	Roles = {
+		Owner = { Rank = 3, Color = Color3.fromRGB(255, 90, 90), Permissions = { "*" } },
+		Admin = { Rank = 2, Color = Color3.fromRGB(255, 180, 60), Permissions = {
+			"EditPlayers", "ResetPlayers", "Kick", "TempBan", "Ban", "Unban", "Events", "Announce", "Global",
+		} },
+		Moderator = { Rank = 1, Color = Color3.fromRGB(110, 200, 255), Permissions = {
+			"Kick", "TempBan", "Announce",
+		} },
+	} :: { [string]: AdminRole },
+	CreatorRole = "Owner",
+	StudioRole = "Owner",
+	-- [UserId] = role name
+	Users = {} :: { [number]: string },
+	-- { GroupId = 123, MinRank = 200, Role = "Admin" }, checked in order
+	Groups = {} :: { { GroupId: number, MinRank: number, Role: string } },
+	-- What "Reset economy" sets on every save (anything not listed is kept).
+	EconomyReset = {
+		Clacks = 0,
+		FreeRolls = 0,
+		RollMeter = 0,
+		Spins = 0,
+		LuckyRolls = 0,
+		Boosts = {},
+	},
+	-- Kept by "Reset player" / "Reset all" (purchase receipts must survive).
+	KeepOnReset = { "PurchaseIds", "Bought", "Epochs" },
 }
 
 return Config

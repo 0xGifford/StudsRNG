@@ -36,6 +36,7 @@ local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local RollReveal = require(Controllers.RollReveal)
 local Interface = require(UI.Interface)
+local Roles = require(UI.Roles)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
 local Juice = require(UI.Juice)
@@ -52,7 +53,7 @@ local clacksFrame: Frame
 local multiplierFrame: Frame
 local sideButtons: Frame
 local boosts: Frame?
-local popupLayer: Frame
+local popupLayer: GuiObject
 
 -- Count-up display for Clacks: only moves when popups land (or on spends).
 local shownClacks = Instance.new("NumberValue")
@@ -426,12 +427,13 @@ function Hud.start()
 	clacksScale = clacksFrame:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
 	clacksScale.Parent = clacksFrame
 
-	popupLayer = Instance.new("Frame")
-	popupLayer.Name = "ClackPopups"
-	popupLayer.BackgroundTransparency = 1
-	popupLayer.Size = UDim2.fromScale(1, 1)
-	popupLayer.ZIndex = 50
-	popupLayer.Parent = Interface.HUD
+	-- The layer the "+123" popups fly across (HudRole = "ClackPopups").
+	local layer = Roles.find(Interface.HUD, "HudRole", "ClackPopups")
+	if not layer then
+		warn('[Hud] the HUD has no frame with HudRole = "ClackPopups" (run tools/ui/migrate.luau on your place)')
+		layer = Interface.HUD
+	end
+	popupLayer = layer
 
 	applyFeatures()
 

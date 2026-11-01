@@ -141,7 +141,7 @@ function OptionsMenu.start()
 	end
 	workspace.DescendantAdded:Connect(routeKeySound)
 
-	local main = Interface.Canva:WaitForChild("Options"):WaitForChild("Main")
+	local main = Interface.window("Options"):WaitForChild("Main")
 
 	local sfxRow = main:FindFirstChild("Sound Effect")
 	local sfxSlider = sfxRow and sfxRow:FindFirstChild("Slider")

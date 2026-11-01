@@ -87,7 +87,7 @@ end
 
 function RebirthMenu.start()
 	Interface.setup()
-	local window = Interface.Canva:WaitForChild(MENU)
+	local window = Interface.window(MENU)
 	main = window:WaitForChild("Main")
 
 	local buy = main:WaitForChild("Buy")

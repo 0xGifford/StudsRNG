@@ -25,10 +25,9 @@ local Tags = require(Shared.Tags)
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local Format = require(UI.Format)
+local Roles = require(UI.Roles)
 
 local LeaderboardBoards = {}
-
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 local ROWS = 10
 local MEDALS = { "🥇", "🥈", "🥉" }
 local TITLES = {
@@ -55,24 +54,6 @@ local function formatValue(id: string, value: number): string
 		return Format.oneIn(value)
 	end
 	return Format.number(value)
-end
-
-local function label(parent: Instance, text: string, color: Color3, size: UDim2, position: UDim2, align: Enum.TextXAlignment): TextLabel
-	local l = Instance.new("TextLabel")
-	l.BackgroundTransparency = 1
-	l.Size = size
-	l.Position = position
-	l.FontFace = FONT
-	l.TextScaled = true
-	l.TextColor3 = color
-	l.TextXAlignment = align
-	l.Text = text
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(10, 10, 16)
-	stroke.Parent = l
-	l.Parent = parent
-	return l
 end
 
 local function render(board: Board, id: string)
@@ -111,33 +92,29 @@ local function build(part: BasePart): Board
 		return (Enum.NormalId :: any)[faceName]
 	end)
 
-	local gui = Instance.new("SurfaceGui")
+	-- A copy of StarterGui.WorldUI's LeaderboardBoard (BoardRole: Title,
+	-- Row / Value with BoardRow, Footer).
+	local gui = Roles.template(Roles.gui("WorldUI"), "LeaderboardBoard") :: SurfaceGui
 	gui.Name = "Leaderboard"
 	gui.Adornee = part
 	gui.Face = if ok and face then face else Enum.NormalId.Front
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = 40
-	gui.LightInfluence = 0
-	gui.MaxDistance = 250
-	gui.ResetOnSpawn = false
-
-	local back = Instance.new("Frame")
-	back.Size = UDim2.fromScale(1, 1)
-	back.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
-	back.Parent = gui
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new(Color3.fromRGB(40, 36, 60), Color3.fromRGB(14, 14, 20))
-	gradient.Rotation = 90
-	gradient.Parent = back
-
-	label(back, title[1], title[2], UDim2.fromScale(0.92, 0.1), UDim2.fromScale(0.04, 0.02), Enum.TextXAlignment.Center)
-	local rows, values = {}, {}
-	for i = 1, ROWS do
-		local y = 0.14 + (i - 1) * 0.074
-		rows[i] = label(back, "", Color3.new(1, 1, 1), UDim2.fromScale(0.6, 0.06), UDim2.fromScale(0.05, y), Enum.TextXAlignment.Left)
-		values[i] = label(back, "", Color3.new(1, 1, 1), UDim2.fromScale(0.32, 0.06), UDim2.fromScale(0.63, y), Enum.TextXAlignment.Right)
+	local heading = Roles.find(gui, "BoardRole", "Title")
+	if heading then
+		heading.Text = title[1]
+		heading.TextColor3 = title[2]
 	end
-	local footer = label(back, "", Color3.fromRGB(120, 255, 140), UDim2.fromScale(0.9, 0.06), UDim2.fromScale(0.05, 0.9), Enum.TextXAlignment.Center)
+	local rows, values = {}, {}
+	for _, d in gui:GetDescendants() do
+		local index = d:GetAttribute("BoardRow")
+		if typeof(index) == "number" then
+			if d:GetAttribute("BoardRole") == "Row" then
+				rows[index] = d
+			elseif d:GetAttribute("BoardRole") == "Value" then
+				values[index] = d
+			end
+		end
+	end
+	local footer = Roles.get(gui, "BoardRole", "Footer")
 
 	gui.Parent = player:WaitForChild("PlayerGui")
 	return { gui = gui, part = part, rows = rows, values = values, footer = footer, connections = {} }

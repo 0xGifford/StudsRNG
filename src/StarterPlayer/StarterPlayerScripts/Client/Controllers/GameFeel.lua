@@ -32,6 +32,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local Interface = require(UI.Interface)
+local Roles = require(UI.Roles)
 local Format = require(UI.Format)
 local Juice = require(UI.Juice)
 local CombatFx = require(UI.CombatFx)
@@ -52,27 +53,17 @@ local lastPop = 0
 -- Combo meter
 --------------------------------------------------------------------------
 
+-- The HUD's combo label (HudRole = "Combo"; tools/ui/migrate.luau adds it).
 local function buildCombo()
-	local labels = Interface.HUD:FindFirstChild("Labels")
-	local amounts = labels and labels:FindFirstChild("Amounts")
-	local clacks = amounts and amounts:FindFirstChild("Clacks")
-	local source = clacks and clacks:FindFirstChild("Amount")
-	if not (amounts and amounts:IsA("GuiObject") and source and source:IsA("TextLabel")) then return end
-
-	local label = source:Clone()
-	label.Name = "Combo"
-	label.AnchorPoint = Vector2.new(0.5, 0)
-	label.Position = UDim2.new(amounts.Position.X.Scale, 0, amounts.Position.Y.Scale + amounts.Size.Y.Scale * 0.55, 0)
-	label.Size = UDim2.fromScale(amounts.Size.X.Scale * 0.8, amounts.Size.Y.Scale * 0.38)
+	local label = Roles.find(Interface.HUD, "HudRole", "Combo")
+	if not (label and label:IsA("TextLabel")) then
+		warn('[GameFeel] the HUD has no label with HudRole = "Combo": the combo meter is hidden')
+		return
+	end
 	label.Text = ""
 	label.TextTransparency = 1
-	label.Rotation = -4
-	label.ZIndex = 10
-	local scale = Instance.new("UIScale")
-	scale.Parent = label
-	label.Parent = Interface.HUD
 	comboLabel = label
-	comboScale = scale
+	comboScale = label:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", label)
 end
 
 local function onCombo(combo: any)
@@ -182,28 +173,16 @@ local function levelUpPopup(text: string, color: Color3, order: number)
 	local character = player.Character
 	local head = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
 	if not (head and head:IsA("BasePart")) then return end
-	local board = Instance.new("BillboardGui")
+	local board = Roles.template(Roles.gui("WorldUI"), "LevelUpPopup") :: BillboardGui
 	board.Name = "LevelUp"
 	board.Adornee = head
-	board.Size = UDim2.fromScale(8, 1.6)
 	board.StudsOffset = Vector3.new(0, 3 + order * 1.7, 0)
-	board.AlwaysOnTop = true
-	board.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-	label.TextScaled = true
-	label.TextColor3 = color
+	local label = Roles.get(board, "PopupRole", "Text") :: TextLabel
 	label.Text = text
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
-	stroke.Color = Color3.fromRGB(15, 15, 22)
-	stroke.Parent = label
-	local scale = Instance.new("UIScale")
+	label.TextColor3 = color
+	local stroke = label:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke", label)
+	local scale = label:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", label)
 	scale.Scale = 0.2
-	scale.Parent = label
-	label.Parent = board
 	board.Parent = player:WaitForChild("PlayerGui")
 	TweenService:Create(scale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	TweenService:Create(board, TweenInfo.new(2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { StudsOffset = board.StudsOffset + Vector3.new(0, 3, 0) }):Play()

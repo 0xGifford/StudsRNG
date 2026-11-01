@@ -34,6 +34,7 @@ local Tags = require(Shared.Tags)
 local UI = script.Parent.Parent:WaitForChild("UI")
 local CombatFx = require(UI.CombatFx)
 local Format = require(UI.Format)
+local Roles = require(UI.Roles)
 local EnemyVisuals = require(script.Parent.EnemyVisuals)
 
 local FollowConfig = Config.Followers
@@ -124,28 +125,23 @@ local function rebuild(player: Player)
 				highlight.Adornee = StudVisuals.adorneeOf(part)
 				highlight.Parent = part
 			end
-			-- Odds and name floating over it ("1/3.07M" / "Stormy").
-			local tag = Instance.new("BillboardGui")
+			-- Odds and name floating over it ("1/3.07M" / "Stormy"): a copy of
+			-- StarterGui.WorldUI's StudNametag.
+			local tag = Roles.template(Roles.gui("WorldUI"), "StudNametag") :: BillboardGui
 			tag.Name = "Nametag"
-			tag.Size = UDim2.fromOffset(150, 44)
 			tag.StudsOffset = Vector3.new(0, part.Size.Y / 2 + 0.9, 0)
-			tag.MaxDistance = if player == localPlayer then 90 else 45
-			tag.LightInfluence = 0
+			if player ~= localPlayer then
+				tag.MaxDistance = tag.MaxDistance / 2
+			end
 			local rarity = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
-			for i, line in { { `1/{Format.number(def.OneIn * variant.OneIn)}`, Color3.fromRGB(150, 210, 255) }, { Format.studName(def, variant), rarity } } do
-				local label = Instance.new("TextLabel")
-				label.BackgroundTransparency = 1
-				label.Size = UDim2.fromScale(1, 0.5)
-				label.Position = UDim2.fromScale(0, (i - 1) * 0.5)
-				label.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-				label.TextScaled = true
-				label.TextColor3 = line[2]
-				label.Text = line[1]
-				local stroke = Instance.new("UIStroke")
-				stroke.Thickness = 2
-				stroke.Color = Color3.fromRGB(12, 12, 18)
-				stroke.Parent = label
-				label.Parent = tag
+			local odds = Roles.find(tag, "NametagRole", "Odds")
+			if odds then
+				odds.Text = `1/{Format.number(def.OneIn * variant.OneIn)}`
+			end
+			local name = Roles.find(tag, "NametagRole", "Name")
+			if name then
+				name.Text = Format.studName(def, variant)
+				name.TextColor3 = rarity
 			end
 			tag.Parent = part
 			table.insert(entry.followers, { part = part, phase = math.random() * math.pi * 2, size = part.Size.Y, trail = trail, lastU = 0 })

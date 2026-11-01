@@ -26,6 +26,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local Interface = require(UI.Interface)
+local Roles = require(UI.Roles)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
@@ -161,25 +162,15 @@ end
 
 function DailyMenu.start()
 	Interface.setup()
-	local window = Interface.Canva:WaitForChild(MENU)
+	local window = Interface.window(MENU)
 	local main = window:WaitForChild("Main")
 	local folder = main:WaitForChild("Days")
 
-	-- Week streak line under the days.
-	local label = Instance.new("TextLabel")
-	label.Name = "WeekStreak"
-	label.BackgroundTransparency = 1
-	label.AnchorPoint = Vector2.new(0.5, 0)
-	label.Position = UDim2.fromScale(0.5, 1.01)
-	label.Size = UDim2.fromScale(0.9, 0.07)
-	label.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-	label.TextScaled = true
-	label.TextColor3 = Color3.fromRGB(255, 170, 60)
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(15, 15, 20)
-	stroke.Parent = label
-	label.Parent = main
+	-- Week streak line under the days (DailyRole = "WeekStreak").
+	local label = Roles.find(window, "DailyRole", "WeekStreak")
+	if not label then
+		warn('[DailyMenu] the Daily window has no label with DailyRole = "WeekStreak" (run tools/ui/migrate.luau on your place)')
+	end
 	weekLabel = label
 	for _, child in folder:GetChildren() do
 		local index = tonumber(child.Name)

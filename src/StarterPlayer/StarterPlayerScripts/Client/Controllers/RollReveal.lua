@@ -27,6 +27,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- each result instead, with AUTO / HIDE tucked under it. Faster rolling =
 -- faster reels. The server decided the results before the reel
 -- starts: it's pure theatre.
+--
+-- Everything shown is StarterGui.RollReveal (RevealRole pieces and the
+-- templates in its Templates frame, see tools/ui/screens/RollReveal.luau).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -49,6 +52,7 @@ local Interface = require(UI.Interface)
 local StudCell = require(UI.StudCell)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
+local Roles = require(UI.Roles)
 local Juice = require(UI.Juice)
 
 type RollResult = Types.RollResult
@@ -62,9 +66,6 @@ RollReveal.BusyChanged = Signal.new() :: Signal.Signal<boolean>
 -- Fired when the player tries Auto without the upgrade.
 RollReveal.AutoLocked = Signal.new() :: Signal.Signal<>
 
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-local ODDS_COLOR = Color3.fromRGB(150, 210, 255)
-local CLOVER = Color3.fromRGB(70, 220, 80)
 local VISIBLE = 5 -- cells drawn per reel (centre ± 2)
 
 local player = Players.LocalPlayer
@@ -73,16 +74,21 @@ local auto = false
 local hidden = false -- HIDE: the small top display instead of the reel (Auto only)
 
 local gui: ScreenGui
-local dim: Frame
-local stage: Frame -- follows the player's head on screen
-local controls: Frame
-local autoButton: TextButton
-local hideButton: TextButton
+local dim: GuiObject
+local dimTransparency = 0.45
+local stage: GuiObject -- follows the player's head on screen
+local controls: GuiObject
+local controlsLayout: { anchor: Vector2, position: UDim2, size: UDim2, hiddenSize: UDim2 }
+local autoButton: GuiButton
+local autoPosition: UDim2
+local hideButton: GuiButton
+local onColor = Color3.fromRGB(120, 255, 140)
+local offColor = Color3.fromRGB(255, 120, 120)
+local designHeight = 100 -- the reel cell height the templates are drawn for
 local cinematic = false
 
 -- The small roll display at the top (HIDE mode).
-local MINI_TOP = 58 -- px from the top edge, clear of the topbar
-local mini: Frame
+local mini: GuiObject
 local miniStroke: UIStroke
 local miniViewport: ViewportFrame
 local miniOdds: TextLabel
@@ -91,108 +97,74 @@ local miniScale: UIScale
 local hudWasEnabled = true
 
 --------------------------------------------------------------------------
--- Small builders
+-- StarterGui.RollReveal
 --------------------------------------------------------------------------
 
-local function text(parent: Instance, value: string, color: Color3, size: UDim2, position: UDim2, z: number): TextLabel
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	label.Size = size
-	label.Position = position
-	label.TextScaled = true
-	label.FontFace = FONT
-	label.TextColor3 = color
-	label.Text = value
-	label.ZIndex = z
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(15, 15, 22)
-	stroke.Thickness = 2.5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	label.Parent = parent
-	return label
+local function child(root: Instance, name: string): any
+	local found = root:FindFirstChild(name, true)
+	assert(found, `{root:GetFullName()} needs a "{name}"`)
+	return found
 end
 
--- A round icon button with its label underneath (Slime RNG style).
-local function pill(parent: Instance, value: string, position: UDim2, icon: string): TextButton
-	local button = Instance.new("TextButton")
-	button.AutoButtonColor = false
-	button.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-	button.BackgroundTransparency = 0.1
-	button.AnchorPoint = Vector2.new(0.5, 0.5)
-	button.Position = position
-	button.Size = UDim2.fromScale(1, 0.68)
-	button.Text = ""
-	button.Parent = parent
-	local square = Instance.new("UIAspectRatioConstraint")
-	square.AspectRatio = 1
-	square.DominantAxis = Enum.DominantAxis.Height
-	square.Parent = button
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = button
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.new(1, 1, 1)
-	stroke.Transparency = 0.5
-	stroke.Thickness = 2
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = button
-	local glyph = text(button, icon, Color3.new(1, 1, 1), UDim2.fromScale(0.62, 0.62), UDim2.fromScale(0.5, 0.48), 2)
-	glyph.Name = "Icon"
-	local label = text(button, value, Color3.new(1, 1, 1), UDim2.fromScale(2.4, 0.42), UDim2.fromScale(0.5, 1.25), 2)
-	label.Name = "Label"
-	button.MouseButton1Down:Connect(function()
-		Interface.play("Click")
-	end)
-	return button
+-- A copy of a template, offset sizes scaled from the design cell height.
+local function copy(name: string, cellHeight: number?): any
+	local object = Roles.template(gui, name)
+	if cellHeight and object:IsA("GuiObject") then
+		local k = cellHeight / designHeight
+		local size = object.Size
+		object.Size = UDim2.new(size.X.Scale, size.X.Offset * k, size.Y.Scale, size.Y.Offset * k)
+	end
+	return object
 end
 
-local function setPill(button: TextButton, value: string, on: boolean)
+local function viewportIn(root: Instance): ViewportFrame
+	local viewport = root:FindFirstChildWhichIsA("ViewportFrame", true) :: ViewportFrame
+	assert(viewport, `{root:GetFullName()} needs a ViewportFrame`)
+	if not viewport.CurrentCamera then
+		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
+	end
+	return viewport
+end
+
+local function setPill(button: GuiButton, value: string, on: boolean)
 	local label = button:FindFirstChild("Label")
 	if label and label:IsA("TextLabel") then
 		label.Text = value
-		label.TextColor3 = if on then Color3.fromRGB(120, 255, 140) else Color3.fromRGB(255, 120, 120)
+		label.TextColor3 = if on then onColor else offColor
 	end
 end
 
-local function buildGui()
-	gui = Instance.new("ScreenGui")
-	gui.Name = "RollReveal"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 5
-	gui.IgnoreGuiInset = true
-	gui.Parent = player:WaitForChild("PlayerGui")
-
-	dim = Instance.new("Frame")
-	dim.Name = "Dim"
-	dim.Size = UDim2.fromScale(1, 1)
-	dim.BackgroundColor3 = Color3.fromRGB(5, 5, 12)
+local function bindGui()
+	gui = Roles.gui("RollReveal")
+	local function part(name: string): any
+		return Roles.get(gui, "RevealRole", name)
+	end
+	dim = part("Dim")
+	local dimAttr = dim:GetAttribute("DimTransparency")
+	if typeof(dimAttr) == "number" then dimTransparency = dimAttr end
 	dim.BackgroundTransparency = 1
-	dim.BorderSizePixel = 0
-	dim.Parent = gui
+	stage = part("Stage")
 
-	stage = Instance.new("Frame")
-	stage.Name = "Stage"
-	stage.BackgroundTransparency = 1
-	stage.AnchorPoint = Vector2.new(0.5, 0.5)
-	stage.Size = UDim2.fromScale(0, 0)
-	stage.Parent = gui
-
-	controls = Instance.new("Frame")
-	controls.Name = "Controls"
-	controls.BackgroundTransparency = 1
-	controls.AnchorPoint = Vector2.new(0.5, 1)
-	controls.Position = UDim2.fromScale(0.5, 0.97)
-	controls.Size = UDim2.fromScale(0.45, 0.13)
+	controls = part("Controls")
 	controls.Visible = false
-	controls.Parent = gui
-	local ratio = Instance.new("UIAspectRatioConstraint")
-	ratio.AspectRatio = 4
-	ratio.Parent = controls
-
-	autoButton = pill(controls, "AUTO - OFF", UDim2.fromScale(0.27, 0.4), "🔁")
-	hideButton = pill(controls, "HIDE - OFF", UDim2.fromScale(0.73, 0.4), "👁")
+	local hiddenSize = controls:GetAttribute("HiddenSize")
+	controlsLayout = {
+		anchor = controls.AnchorPoint,
+		position = controls.Position,
+		size = controls.Size,
+		hiddenSize = if typeof(hiddenSize) == "UDim2" then hiddenSize else UDim2.fromScale(0.26, 0.08),
+	}
+	local on, off = controls:GetAttribute("OnColor"), controls:GetAttribute("OffColor")
+	if typeof(on) == "Color3" then onColor = on end
+	if typeof(off) == "Color3" then offColor = off end
+	autoButton = part("Auto")
+	autoPosition = autoButton.Position
+	hideButton = part("Hide")
+	for _, button in { autoButton, hideButton } do
+		button.MouseButton1Down:Connect(function()
+			Interface.play("Click")
+		end)
+	end
 	autoButton.Activated:Connect(function()
 		RollReveal.setAuto(not auto)
 	end)
@@ -203,59 +175,33 @@ local function buildGui()
 	setPill(autoButton, "AUTO - OFF", false)
 	setPill(hideButton, "HIDE - OFF", false)
 
-	-- Small roll display: stud on the left, odds and name on the right.
-	mini = Instance.new("Frame")
-	mini.Name = "MiniRoll"
-	mini.AnchorPoint = Vector2.new(0.5, 0)
-	mini.Position = UDim2.new(0.5, 0, 0, MINI_TOP)
-	mini.Size = UDim2.fromScale(0.24, 0.08)
-	mini.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-	mini.BackgroundTransparency = 0.1
+	mini = part("Mini")
 	mini.Visible = false
-	mini.Parent = gui
-	local miniRatio = Instance.new("UIAspectRatioConstraint")
-	miniRatio.AspectRatio = 4
-	miniRatio.Parent = mini
-	local miniLimit = Instance.new("UISizeConstraint")
-	miniLimit.MinSize = Vector2.new(200, 50)
-	miniLimit.MaxSize = Vector2.new(340, 85)
-	miniLimit.Parent = mini
-	local miniCorner = Instance.new("UICorner")
-	miniCorner.CornerRadius = UDim.new(0.3, 0)
-	miniCorner.Parent = mini
-	miniStroke = Instance.new("UIStroke")
-	miniStroke.Thickness = 3
-	miniStroke.Color = Color3.new(1, 1, 1)
-	miniStroke.Transparency = 0.5
-	miniStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	miniStroke.Parent = mini
-	miniScale = Instance.new("UIScale")
-	miniScale.Parent = mini
+	miniStroke = mini:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke", mini)
+	miniScale = mini:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", mini)
+	miniViewport = viewportIn(mini)
+	StudCell.setViewport(miniViewport, Studs.List[1], Variants.ById.Normal)
+	miniOdds = child(mini, "Odds")
+	miniName = child(mini, "Name")
 
-	miniViewport = StudCell.viewport(Studs.List[1], Variants.ById.Normal)
-	miniViewport.AnchorPoint = Vector2.new(0.5, 0.5)
-	miniViewport.Position = UDim2.fromScale(0.14, 0.5)
-	miniViewport.Size = UDim2.fromScale(0.85, 0.85)
-	miniViewport.SizeConstraint = Enum.SizeConstraint.RelativeYY
-	miniViewport.ZIndex = 2
-	miniViewport.Parent = mini
-	miniOdds = text(mini, "AUTO ROLL", ODDS_COLOR, UDim2.fromScale(0.68, 0.34), UDim2.fromScale(0.62, 0.3), 2)
-	miniName = text(mini, "", Color3.new(1, 1, 1), UDim2.fromScale(0.68, 0.42), UDim2.fromScale(0.62, 0.68), 2)
+	local templates = gui:FindFirstChild("Templates")
+	local height = templates and templates:GetAttribute("DesignHeight")
+	if typeof(height) == "number" and height > 0 then designHeight = height end
 end
 
 -- AUTO alone, or AUTO + HIDE while Auto is on. In HIDE mode they sit under
--- the small display at the top; otherwise at the bottom.
+-- the small display at the top; otherwise where they were designed.
 local function layoutControls()
 	hideButton.Visible = auto
-	autoButton.Position = UDim2.fromScale(if auto then 0.27 else 0.5, 0.4)
+	autoButton.Position = if auto then autoPosition else UDim2.new(0.5, 0, autoPosition.Y.Scale, autoPosition.Y.Offset)
 	if auto and hidden then
 		controls.AnchorPoint = Vector2.new(0.5, 0)
-		controls.Position = UDim2.new(0.5, 0, 0, MINI_TOP + mini.AbsoluteSize.Y + 6)
-		controls.Size = UDim2.fromScale(0.26, 0.08)
+		controls.Position = UDim2.new(0.5, 0, 0, mini.AbsolutePosition.Y + mini.AbsoluteSize.Y + 6)
+		controls.Size = controlsLayout.hiddenSize
 	else
-		controls.AnchorPoint = Vector2.new(0.5, 1)
-		controls.Position = UDim2.fromScale(0.5, 0.97)
-		controls.Size = UDim2.fromScale(0.45, 0.13)
+		controls.AnchorPoint = controlsLayout.anchor
+		controls.Position = controlsLayout.position
+		controls.Size = controlsLayout.size
 	end
 end
 
@@ -269,7 +215,7 @@ local function setCinematic(on: boolean)
 	if on then
 		hudWasEnabled = Interface.HUD.Enabled
 		Interface.HUD.Enabled = false
-		TweenService:Create(dim, TweenInfo.new(0.25), { BackgroundTransparency = 0.45 }):Play()
+		TweenService:Create(dim, TweenInfo.new(0.25), { BackgroundTransparency = dimTransparency }):Play()
 	else
 		Interface.HUD.Enabled = hudWasEnabled
 		TweenService:Create(dim, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
@@ -314,7 +260,7 @@ end
 --------------------------------------------------------------------------
 
 type Cell = {
-	frame: Frame,
+	frame: GuiObject,
 	viewport: ViewportFrame,
 	odds: TextLabel,
 	name: TextLabel,
@@ -322,7 +268,7 @@ type Cell = {
 }
 
 type Reel = {
-	holder: Frame,
+	holder: GuiObject,
 	cells: { Cell },
 	sequence: { StudDef },
 	result: RollResult,
@@ -366,24 +312,13 @@ local function oddsText(def: StudDef, variant: VariantDef): string
 	return (string.gsub(Format.oneIn(def.OneIn * variant.OneIn), "^1 in ", "1 / "))
 end
 
-local function makeCell(parent: Frame, height: number): Cell
-	local frame = Instance.new("Frame")
-	frame.BackgroundTransparency = 1
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Size = UDim2.fromOffset(height * 1.6, height)
+local function makeCell(parent: Instance, height: number): Cell
+	local frame = copy("ReelCell", height) :: GuiObject
+	if not frame:FindFirstChildOfClass("UIScale") then
+		Instance.new("UIScale").Parent = frame
+	end
 	frame.Parent = parent
-	local scale = Instance.new("UIScale")
-	scale.Parent = frame
-
-	local viewport = StudCell.viewport(Studs.List[1], Variants.ById.Normal)
-	viewport.Position = UDim2.fromScale(0.5, 0.5)
-	viewport.Size = UDim2.fromScale(0.62, 0.62)
-	viewport.ZIndex = 2
-	viewport.Parent = frame
-
-	local odds = text(frame, "", ODDS_COLOR, UDim2.fromScale(1, 0.2), UDim2.fromScale(0.5, 0.1), 3)
-	local name = text(frame, "", Color3.new(1, 1, 1), UDim2.fromScale(1.1, 0.22), UDim2.fromScale(0.5, 0.9), 3)
-	return { frame = frame, viewport = viewport, odds = odds, name = name, index = 0 }
+	return { frame = frame, viewport = viewportIn(frame), odds = child(frame, "Odds"), name = child(frame, "Name"), index = 0 }
 end
 
 local function showInCell(cell: Cell, def: StudDef, variant: VariantDef)
@@ -394,11 +329,10 @@ local function showInCell(cell: Cell, def: StudDef, variant: VariantDef)
 end
 
 local function makeReel(result: RollResult, offsetX: number, length: number, cellHeight: number): Reel
-	local holder = Instance.new("Frame")
-	holder.BackgroundTransparency = 1
-	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	local cellWidth = cellHeight * 1.6
+	local holder = copy("ReelHolder") :: GuiObject
 	holder.Position = UDim2.fromOffset(offsetX, 0)
-	holder.Size = UDim2.fromOffset(cellHeight * 1.6, cellHeight * VISIBLE)
+	holder.Size = UDim2.fromOffset(cellWidth, cellHeight * VISIBLE)
 	holder.Parent = stage
 
 	local pool = spinPool()
@@ -473,37 +407,23 @@ end
 local function decorations(width: number, cellHeight: number): { Instance }
 	local made: { Instance } = {}
 	for _, side in { -1, 1 } do
-		local dash = Instance.new("Frame")
-		dash.AnchorPoint = Vector2.new(0.5, 0.5)
+		local dash = copy("ReelDash", cellHeight) :: GuiObject
 		dash.Position = UDim2.fromOffset(side * (width / 2 + cellHeight * 0.55), 0)
-		dash.Size = UDim2.fromOffset(cellHeight * 0.45, 4)
-		dash.BackgroundColor3 = Color3.new(1, 1, 1)
-		dash.BorderSizePixel = 0
-		local gradient = Instance.new("UIGradient")
-		gradient.Transparency = NumberSequence.new(if side < 0 then 1 else 0, if side < 0 then 0 else 1)
-		gradient.Parent = dash
+		if side > 0 then
+			dash.Rotation += 180
+		end
 		dash.Parent = stage
 		table.insert(made, dash)
 	end
 
 	local stats = State.stats()
-	local badge = Instance.new("Frame")
-	badge.AnchorPoint = Vector2.new(0.5, 0.5)
+	local badge = copy("LuckBadge", cellHeight) :: GuiObject
 	badge.Position = UDim2.fromOffset(-(width / 2 + cellHeight * 0.05), 0)
-	badge.Size = UDim2.fromOffset(cellHeight * 0.7, cellHeight * 0.7)
-	badge.BackgroundColor3 = CLOVER
-	badge.Rotation = 45
-	badge.ZIndex = 4
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.3, 0)
-	corner.Parent = badge
-	local badgeStroke = Instance.new("UIStroke")
-	badgeStroke.Color = Color3.fromRGB(20, 60, 20)
-	badgeStroke.Thickness = 3
-	badgeStroke.Parent = badge
 	local luck = string.gsub(string.format("%.1f", stats.Luck), "%.0$", "")
-	local badgeText = text(badge, `{luck}X`, Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.55), UDim2.fromScale(0.5, 0.5), 5)
-	badgeText.Rotation = -45
+	local badgeText = badge:FindFirstChild("Text", true)
+	if badgeText and badgeText:IsA("TextLabel") then
+		badgeText.Text = `{luck}X`
+	end
 	badge.Parent = stage
 	table.insert(made, badge)
 	Juice.pop(badge, 1.4)
@@ -522,20 +442,8 @@ local function decorations(width: number, cellHeight: number): { Instance }
 		bonus = true
 	end
 	if bonus then
-		local tag = Instance.new("Frame")
-		tag.AnchorPoint = Vector2.new(0.5, 0.5)
+		local tag = copy("BonusTag", cellHeight) :: GuiObject
 		tag.Position = UDim2.fromOffset(-(width / 2 + cellHeight * 0.05), cellHeight * 0.62)
-		tag.Size = UDim2.fromOffset(cellHeight * 0.85, cellHeight * 0.28)
-		tag.BackgroundColor3 = Color3.fromRGB(30, 22, 18)
-		tag.ZIndex = 4
-		local tagCorner = Instance.new("UICorner")
-		tagCorner.CornerRadius = UDim.new(1, 0)
-		tagCorner.Parent = tag
-		local tagStroke = Instance.new("UIStroke")
-		tagStroke.Color = Color3.fromRGB(255, 150, 60)
-		tagStroke.Thickness = 2
-		tagStroke.Parent = tag
-		text(tag, "BONUS", Color3.fromRGB(255, 190, 90), UDim2.fromScale(0.85, 0.8), UDim2.fromScale(0.5, 0.5), 5)
 		tag.Parent = stage
 		table.insert(made, tag)
 	end
@@ -545,16 +453,11 @@ end
 local function cloverRain(count: number)
 	local size = gui.AbsoluteSize
 	for _ = 1, count do
-		local clover = Instance.new("TextLabel")
-		clover.BackgroundTransparency = 1
-		clover.Text = "🍀"
-		clover.TextScaled = true
-		local s = math.random(22, 38)
+		local clover = copy("Clover") :: TextLabel
+		local s = clover.Size.X.Offset * (0.75 + math.random() * 0.5)
 		clover.Size = UDim2.fromOffset(s, s)
-		clover.AnchorPoint = Vector2.new(0.5, 0.5)
 		clover.Position = UDim2.fromOffset(math.random() * size.X, -40)
 		clover.Rotation = math.random(-30, 30)
-		clover.ZIndex = 6
 		clover.Parent = gui
 		local fall = TweenService:Create(clover, TweenInfo.new(math.random(110, 190) / 100, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 			Position = UDim2.fromOffset(clover.Position.X.Offset + math.random(-80, 80), size.Y * (0.5 + math.random() * 0.4)),
@@ -572,51 +475,22 @@ end
 -- Landing
 --------------------------------------------------------------------------
 
-local function rays(parent: Frame, color: Color3, size: number): Frame
-	local holder = Instance.new("Frame")
-	holder.BackgroundTransparency = 1
-	holder.AnchorPoint = Vector2.new(0.5, 0.5)
-	holder.Position = UDim2.fromScale(0.5, 0.5)
-	holder.Size = UDim2.fromOffset(size, size)
-	holder.ZIndex = 1
-	for i = 1, 10 do
-		local ray = Instance.new("Frame")
-		ray.AnchorPoint = Vector2.new(0.5, 0.5)
-		ray.Position = UDim2.fromScale(0.5, 0.5)
-		ray.Size = UDim2.new(0, size * 0.09, 1, 0)
-		ray.Rotation = i * 18
-		ray.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.6)
-		ray.BorderSizePixel = 0
-		ray.ZIndex = 1
-		local gradient = Instance.new("UIGradient")
-		gradient.Rotation = 90
-		gradient.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(0.5, 0.25),
-			NumberSequenceKeypoint.new(1, 1),
-		})
-		gradient.Parent = ray
-		ray.Parent = holder
+local function rays(parent: Instance, color: Color3, cellHeight: number): GuiObject
+	local holder = copy("Rays", cellHeight) :: GuiObject
+	for _, d in holder:GetDescendants() do
+		if d:IsA("Frame") then
+			d.BackgroundColor3 = if d.Name == "Glow" then color else color:Lerp(Color3.new(1, 1, 1), 0.6)
+		end
 	end
-	local glow = Instance.new("Frame")
-	glow.AnchorPoint = Vector2.new(0.5, 0.5)
-	glow.Position = UDim2.fromScale(0.5, 0.5)
-	glow.Size = UDim2.fromScale(0.45, 0.45)
-	glow.BackgroundColor3 = color
-	glow.BackgroundTransparency = 0.45
-	glow.ZIndex = 1
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = glow
-	glow.Parent = holder
 	holder.Parent = parent
 	return holder
 end
 
 -- "SO CLOSE!" over the rarer stud the reel almost landed on.
 local function soClose(reel: Reel)
-	local label = text(reel.holder, "SO CLOSE!", Color3.fromRGB(255, 90, 90), UDim2.fromScale(1.4, 0.12), UDim2.new(0.5, 0, 0.5, -reel.cellHeight * 1.05), 6)
-	label.Rotation = -6
+	local label = copy("SoClose") :: TextLabel
+	label.Position = UDim2.new(0.5, 0, 0.5, -reel.cellHeight * 1.05)
+	label.Parent = reel.holder
 	local scale = Instance.new("UIScale")
 	scale.Scale = 0.3
 	scale.Parent = label
@@ -648,7 +522,7 @@ local function land(reel: Reel)
 		center.name.Text ..= if result.Reason == "Full" then " (FULL)" else " (DELETED)"
 	end
 
-	local burst = rays(center.frame, rarityColor, reel.cellHeight * 2.4)
+	local burst = rays(center.frame, rarityColor, reel.cellHeight)
 	local spin = TweenService:Create(burst, TweenInfo.new(4, Enum.EasingStyle.Linear), { Rotation = 180 })
 	spin:Play()
 	local scale = center.frame:FindFirstChildOfClass("UIScale")
@@ -698,16 +572,15 @@ local function floatResult(result: RollResult, order: number)
 	local variant = Variants.ById[result.Variant]
 	local color = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 
-	local board = Instance.new("BillboardGui")
+	local board = copy("ResultBoard") :: BillboardGui
 	board.Name = "RollResult"
 	board.Adornee = head
-	board.Size = UDim2.fromScale(9, 2.6)
-	board.StudsOffset = Vector3.new(0, 4.2 + (order - 1) * 2.4, 0)
-	board.AlwaysOnTop = true
-	board.LightInfluence = 0
-	board.MaxDistance = 200
-	local odds = text(board, oddsText(def, variant), ODDS_COLOR, UDim2.fromScale(1, 0.48), UDim2.fromScale(0.5, 0.27), 1)
-	local name = text(board, Format.studName(def, variant), if def.Rarity == "Secret" then Color3.new(1, 1, 1) else color, UDim2.fromScale(1, 0.5), UDim2.fromScale(0.5, 0.75), 1)
+	board.StudsOffset += Vector3.new(0, 4.2 + (order - 1) * 2.4, 0)
+	local odds = child(board, "Odds") :: TextLabel
+	odds.Text = oddsText(def, variant)
+	local name = child(board, "Name") :: TextLabel
+	name.Text = Format.studName(def, variant)
+	name.TextColor3 = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else color
 	board.Parent = gui.Parent -- PlayerGui: a BillboardGui inside a ScreenGui won't draw in 3D
 
 	-- Older labels drift up out of the way.
@@ -1033,7 +906,7 @@ end
 
 function RollReveal.start()
 	Interface.setup()
-	buildGui()
+	bindGui()
 	-- Chat tabs on, so the Rolls channel is its own tab instead of mixing
 	-- into the main chat window.
 	local tabs = TextChatService:FindFirstChildOfClass("ChannelTabsConfiguration")

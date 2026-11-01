@@ -20,6 +20,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Every piece is anchored and placed with one BulkMoveTo per frame; enemies
 -- far from the camera aren't animated.
 --
+-- Event glow: while an event gives enemies a Glow (Config.Events), each gets
+-- a light and (up to MAX_HIGHLIGHTS, nearest first) an outline of that colour.
+-- Mega Bosses (the Mega Boss event) use a MegaBoss model, else Titan.
+--
 -- Your own enemy models: put Models named Enemy, MiniBoss and Titan in
 -- ServerStorage.EnemyTemplates (Systems/Templates copies them for clients).
 -- Each enemy uses its own kind's model, else MiniBoss / Enemy. The model is
@@ -30,6 +34,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Eye     blink                 Pupil   glow red while it hunts you
 --   Brow    tilt angrier while it hunts you
 -- Parts with the attribute Tint = true take the zone's enemy colour.
+-- Faces: every Decal on a part named Body shows the kind's idle face
+-- (Config.Visuals.EnemyFaces: Enemy / MiniBoss / Titan) and the Angry face
+-- while the enemy hunts someone or anyone's studs are fighting it.
 -- Without templates, enemies are the built-in brick monsters.
 --
 -- Other controllers anchor UI and effects to the visual, not the proxy:
@@ -66,6 +73,10 @@ type Visual = {
 	whites: { BasePart },
 	whiteHeights: { number }, -- each eye's open height (blink squashes it)
 	pupilRest: { { color: Color3, material: Enum.Material } }?, -- a template's own pupils, when calm
+	source: Model, -- the server's enemy (attributes: EnemyId, Hunting...)
+	faces: { Decal }, -- face decals on the template's Body parts
+	idleFace: string,
+	angry: boolean,
 	size: number,
 	boss: boolean,
 	position: Vector3,
@@ -98,11 +109,14 @@ local function newPart(size: Vector3, color: Color3, material: Enum.Material?): 
 end
 
 -- The template for this kind of enemy, falling back to the plainer kinds.
-local function templateFor(boss: boolean, titan: boolean): Model?
+local function templateFor(boss: boolean, titan: boolean, mega: boolean): Model?
 	local assets = ReplicatedStorage:FindFirstChild(Config.Visuals.TemplateFolder)
 	local templates = assets and assets:FindFirstChild(Config.Visuals.EnemyTemplateFolder)
 	if not templates then return nil end
-	local names = if titan then { "Titan", "MiniBoss", "Enemy" } elseif boss then { "MiniBoss", "Enemy" } else { "Enemy" }
+	local names = if mega then { "MegaBoss", "Titan", "MiniBoss", "Enemy" }
+		elseif titan then { "Titan", "MiniBoss", "Enemy" }
+		elseif boss then { "MiniBoss", "Enemy" }
+		else { "Enemy" }
 	for _, name in names do
 		local found = templates:FindFirstChild(name)
 		if found and found:IsA("Model") then
@@ -181,6 +195,23 @@ local function buildFromTemplate(model: Model, proxy: BasePart, source: Model, b
 	for i, eye in whites do
 		heights[i] = eye.Size.Y
 	end
+
+	-- Decal faces live on the template's Body parts.
+	local faces: { Decal } = {}
+	for _, d in clone:GetDescendants() do
+		if d:IsA("Decal") and d.Parent and d.Parent:IsA("BasePart") and d.Parent.Name == "Body" then
+			table.insert(faces, d)
+		end
+	end
+	local faceSet = Config.Visuals.EnemyFaces
+	local idleFace = if model:GetAttribute("MegaBoss") == true then (faceSet.MegaBoss or faceSet.Titan)
+		elseif model:GetAttribute("ZoneBoss") == true then faceSet.Titan
+		elseif model:GetAttribute("Boss") == true then faceSet.MiniBoss
+		else faceSet.Enemy
+	for _, face in faces do
+		face.Texture = idleFace
+	end
+
 	local health = model:GetAttribute("Health")
 	return {
 		model = visual,
@@ -191,6 +222,10 @@ local function buildFromTemplate(model: Model, proxy: BasePart, source: Model, b
 		whites = whites,
 		whiteHeights = heights,
 		pupilRest = pupilRest,
+		source = model,
+		faces = faces,
+		idleFace = idleFace,
+		angry = false,
 		size = s,
 		boss = boss,
 		position = proxy.Position,
@@ -211,8 +246,9 @@ local function build(model: Model, proxy: BasePart): Visual
 	local color = model:GetAttribute("Color")
 	local bodyColor = if typeof(color) == "Color3" then color else proxy.Color
 	local boss = model:GetAttribute("Boss") == true
-	local titan = model:GetAttribute("ZoneBoss") == true
-	local source = templateFor(boss, titan)
+	local mega = model:GetAttribute("MegaBoss") == true
+	local titan = model:GetAttribute("ZoneBoss") == true or mega
+	local source = templateFor(boss, titan, mega)
 	if source then
 		return buildFromTemplate(model, proxy, source, bodyColor, boss or titan)
 	end
@@ -271,6 +307,10 @@ local function build(model: Model, proxy: BasePart): Visual
 			for i, eye in whites do heights[i] = eye.Size.Y end
 			return heights
 		end)(),
+		source = model,
+		faces = {},
+		idleFace = "",
+		angry = false,
 		size = s,
 		boss = boss,
 		position = proxy.Position,
@@ -302,10 +342,101 @@ local function setEyeColor(visual: Visual, color: Color3, neon: boolean)
 	end
 end
 
+-- Angry while it hunts anyone or any player's studs fight it (FightTarget).
+local function isAngry(visual: Visual): boolean
+	local source = visual.source
+	if source:GetAttribute("Hunting") ~= nil then return true end
+	local id = source:GetAttribute("EnemyId")
+	if id == nil then return false end
+	for _, other in Players:GetPlayers() do
+		if other:GetAttribute("FightTarget") == id then
+			return true
+		end
+	end
+	return false
+end
+
+local function refreshFace(visual: Visual)
+	if #visual.faces == 0 then return end
+	local angry = isAngry(visual)
+	if angry == visual.angry then return end
+	visual.angry = angry
+	local texture = if angry then Config.Visuals.EnemyFaces.Angry else visual.idleFace
+	for _, face in visual.faces do
+		face.Texture = texture
+	end
+end
+
+local function refreshAllFaces()
+	for _, visual in visuals do
+		refreshFace(visual)
+	end
+end
+
+-- Event glow -------------------------------------------------------------
+
+local MAX_HIGHLIGHTS = 20 -- Roblox draws ~31 Highlights at once
+local glowing: { [Visual]: Color3 } = {}
+
+local function setGlow(visual: Visual, color: Color3?)
+	local light = visual.root:FindFirstChild("EventGlow") :: PointLight?
+	if not color then
+		glowing[visual] = nil
+		if light then light:Destroy() end
+		local outline = visual.model:FindFirstChild("EventOutline")
+		if outline then outline:Destroy() end
+		return
+	end
+	glowing[visual] = color
+	if not light then
+		local newLight = Instance.new("PointLight")
+		newLight.Name = "EventGlow"
+		newLight.Brightness = 2.5
+		newLight.Range = math.clamp(visual.size * 2.5, 8, 40)
+		newLight.Shadows = false
+		newLight.Parent = visual.root
+		light = newLight
+	end
+	(light :: PointLight).Color = color
+end
+
+-- Outlines go to the nearest glowing enemies (twice a second).
+local function refreshOutlines()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	local from = camera.CFrame.Position
+	local order: { Visual } = {}
+	for visual in glowing do
+		table.insert(order, visual)
+	end
+	table.sort(order, function(a, b)
+		return (a.root.Position - from).Magnitude < (b.root.Position - from).Magnitude
+	end)
+	for i, visual in order do
+		local outline = visual.model:FindFirstChild("EventOutline") :: Highlight?
+		if i <= MAX_HIGHLIGHTS then
+			if not outline then
+				local highlight = Instance.new("Highlight")
+				highlight.Name = "EventOutline"
+				highlight.FillTransparency = 0.75
+				highlight.OutlineTransparency = 0
+				highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+				highlight.Parent = visual.model
+				outline = highlight
+			end
+			(outline :: Highlight).FillColor = glowing[visual];
+			(outline :: Highlight).OutlineColor = glowing[visual]
+		elseif outline then
+			outline:Destroy()
+		end
+	end
+end
+
 local function untrack(instance: Instance)
 	local visual = visuals[instance :: Model]
 	if not visual then return end
 	visuals[instance :: Model] = nil
+	glowing[visual] = nil
 	for _, connection in visual.connections do
 		connection:Disconnect()
 	end
@@ -320,6 +451,9 @@ local function track(instance: Instance): Visual?
 	if not (proxy and proxy:IsA("BasePart")) then return nil end
 	local visual = build(instance, proxy)
 	visuals[instance] = visual
+	refreshFace(visual)
+	local glow = instance:GetAttribute("Glow")
+	setGlow(visual, if typeof(glow) == "Color3" then glow else nil)
 
 	table.insert(visual.connections, instance.AttributeChanged:Connect(function(name)
 		if name == "Health" then
@@ -330,7 +464,11 @@ local function track(instance: Instance): Visual?
 				end
 				visual.lastHealth = health
 			end
+		elseif name == "Glow" then
+			local glow = instance:GetAttribute("Glow")
+			setGlow(visual, if typeof(glow) == "Color3" then glow else nil)
 		elseif name == "Hunting" then
+			refreshFace(visual)
 			local hunting = instance:GetAttribute("Hunting") == player.UserId
 			if hunting ~= visual.hunting then
 				visual.hunting = hunting
@@ -459,7 +597,25 @@ function EnemyVisuals.start()
 		track(model)
 	end)
 	CollectionService:GetInstanceRemovedSignal(Tags.Enemy):Connect(untrack)
+	-- A player's studs starting or stopping a fight changes faces.
+	local function watchPlayer(other: Player)
+		other:GetAttributeChangedSignal("FightTarget"):Connect(refreshAllFaces)
+	end
+	for _, other in Players:GetPlayers() do
+		watchPlayer(other)
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+	Players.PlayerRemoving:Connect(function()
+		task.defer(refreshAllFaces)
+	end)
+
 	RunService.RenderStepped:Connect(update)
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			refreshOutlines()
+		end
+	end)
 end
 
 return EnemyVisuals
