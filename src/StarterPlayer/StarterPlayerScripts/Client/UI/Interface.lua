@@ -17,9 +17,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- ScreenGui (tagged "Menu", its window marked MenuPanel = true), opened and
 -- closed by MenuController with the kit's blur, scale-in and HUD slide
 -- (PackShared, HudSlide). Interface.open / close / toggle / isOpen and the
--- MenuOpened / MenuClosed signals are a thin layer over MenuController, plus
--- "custom" menus that run their own gui (Interface.registerMenu, e.g. the
--- upgrade tree). Only one menu of either kind is open at a time.
+-- MenuOpened / MenuClosed signals are a thin layer over MenuController.
+-- Every menu's gui lives in StarterGui; its controller fills it in.
 --
 -- Buttons open menus by attribute, MenuSystem style: a GuiButton (for a kit
 -- button, its "Button") with Menu = "Store" toggles it; MenuAction = "open" /
@@ -62,13 +61,6 @@ Interface.Music = (nil :: any) :: SoundGroup
 local ready = false
 local sounds: { [string]: Sound } = {}
 local toastGui: ScreenGui? = nil
-
-export type CustomMenu = {
-	open: () -> (),
-	close: () -> (),
-	isOpen: () -> boolean,
-}
-local customMenus: { [string]: CustomMenu } = {}
 
 --------------------------------------------------------------------------
 -- Setup
@@ -272,66 +264,20 @@ end
 -- Menus
 --------------------------------------------------------------------------
 
--- A menu that runs its own gui instead of being a MenuSystem menu.
-function Interface.registerMenu(name: string, menu: CustomMenu)
-	customMenus[name] = menu
-end
-
-local function closeCustomMenus(except: string?)
-	for name, menu in customMenus do
-		if name ~= except and menu.isOpen() then
-			menu.close()
-			Interface.MenuClosed:Fire(name)
-		end
-	end
-end
-
-local function customOpen(): boolean
-	for _, menu in customMenus do
-		if menu.isOpen() then
-			return true
-		end
-	end
-	return false
-end
-
 function Interface.isOpen(name: string?): boolean
 	if name then
-		local menu = customMenus[name]
-		if menu then
-			return menu.isOpen()
-		end
 		return MenuController.IsOpen(name)
 	end
-	return #MenuController.OpenMenus() > 0 or customOpen()
+	return #MenuController.OpenMenus() > 0
 end
 
 function Interface.open(name: string)
-	local custom = customMenus[name]
-	if custom then
-		if custom.isOpen() then return end
-		MenuController.CloseAll()
-		closeCustomMenus(name)
-		custom.open()
-		Interface.MenuOpened:Fire(name)
-		return
-	end
-	closeCustomMenus(nil)
 	MenuController.Open(name)
 end
 
 -- Closes the named menu, or every open one when name is nil.
 function Interface.close(name: string?)
-	if name and customMenus[name] then
-		local custom = customMenus[name]
-		if custom.isOpen() then
-			custom.close()
-			Interface.MenuClosed:Fire(name)
-		end
-		return
-	end
 	if not name then
-		closeCustomMenus(nil)
 		MenuController.CloseAll()
 		return
 	end

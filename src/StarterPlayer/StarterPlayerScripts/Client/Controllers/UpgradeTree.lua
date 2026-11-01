@@ -9,15 +9,17 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- The full-screen upgrade tree (HUD's Upgrades button). A honeycomb of
--- Shared/Upgrades nodes:
+-- The full-screen upgrade tree (HUD's Upgrades button; StarterGui.Upgrades,
+-- a MenuSystem menu, pieces found by UpgradeRole, see
+-- tools/ui/screens/Upgrades.luau). A honeycomb of Shared/Upgrades nodes:
 --   drag (mouse or finger) to pan, scroll wheel or pinch to zoom,
 --   click / tap a node to buy its next level (a press that turned into a
 --   drag never buys), hover or press to see its details below.
 --
--- Nodes are hexagons made of three rotated rectangles, so no image assets
--- are needed. Colours: gold = maxed, green = affordable, blue = available,
--- grey = locked (buy a neighbour first).
+-- Nodes and lines are copies of the UpgradeNode / UpgradeLine templates,
+-- placed from each upgrade's Q, R. Colours (attributes on the Root): gold =
+-- maxed, green = affordable, blue = available, grey = locked (buy a
+-- neighbour first).
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -32,7 +34,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local Interface = require(UI.Interface)
-local Kit = require(UI.Kit)
+local Roles = require(UI.Roles)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
 local Juice = require(UI.Juice)
@@ -41,48 +43,46 @@ type UpgradeDef = Upgrades.UpgradeDef
 
 local UpgradeTree = {}
 
+local player = Players.LocalPlayer
+
 local MENU = "Upgrades"
 local SINK_ACTION = "UpgradeTreeSinkWheel"
 local SQRT3 = math.sqrt(3)
 
-local CELL = 64 -- layout radius: distance between neighbours is CELL * sqrt(3)
-local RADIUS = 56 -- drawn hex radius
-local BORDER = 5
+local CELL = 64 -- layout radius: distance between neighbours is CELL * sqrt(3) (World's Spacing)
 local MIN_ZOOM, MAX_ZOOM = 0.45, 1.8
 local DRAG_THRESHOLD = 10 -- pixels before a press counts as a drag
 local MARGIN = 140
 
+-- Defaults; the Root's <Name>Color attributes override them.
 local COLORS: { [string]: Color3 } = {
 	Maxed = Color3.fromRGB(255, 196, 64),
 	Affordable = Color3.fromRGB(90, 220, 110),
 	Available = Color3.fromRGB(70, 140, 255),
 	Locked = Color3.fromRGB(70, 70, 82),
-	Border = Color3.fromRGB(25, 25, 25),
 	LineOn = Color3.fromRGB(255, 220, 110),
 	LineAvailable = Color3.fromRGB(200, 200, 215),
 	LineOff = Color3.fromRGB(55, 55, 65),
-	Background = Color3.fromRGB(22, 18, 34),
+	Error = Color3.fromRGB(255, 120, 120),
 }
-
-local player = Players.LocalPlayer
 
 type Node = {
 	def: UpgradeDef,
-	frame: Frame,
-	fills: { Frame },
-	shines: { Frame },
+	frame: GuiObject,
+	fills: { GuiObject },
+	shines: { { object: GuiObject, transparency: number } },
 	icon: TextLabel,
 	level: TextLabel,
 	cost: TextLabel,
 	scale: UIScale,
 }
 
-type Line = { frame: Frame, from: string, to: string }
+type Line = { frame: GuiObject, from: string, to: string }
 
 local gui: ScreenGui? = nil
-local world: Frame
+local world: GuiObject
 local worldScale: UIScale
-local viewport: Frame
+local viewport: GuiObject
 local clacksLabel: TextLabel
 local infoTitle: TextLabel
 local infoBody: TextLabel
@@ -111,25 +111,6 @@ local pinchZoom = 1
 
 local function worldPosition(def: UpgradeDef): Vector2
 	return Vector2.new(CELL * SQRT3 * (def.Q + def.R / 2), CELL * 1.5 * def.R)
-end
-
--- A pointy-top hexagon as three rectangles (0°, 60°, -60°). Returns the rects.
-local function hexagon(parent: GuiObject, radius: number, color: Color3, zIndex: number, name: string): { Frame }
-	local rects: { Frame } = {}
-	for _, rotation in { 0, 60, -60 } do
-		local rect = Instance.new("Frame")
-		rect.Name = name
-		rect.BorderSizePixel = 0
-		rect.AnchorPoint = Vector2.new(0.5, 0.5)
-		rect.Position = UDim2.fromScale(0.5, 0.5)
-		rect.Size = UDim2.fromOffset(SQRT3 * radius, radius)
-		rect.Rotation = rotation
-		rect.BackgroundColor3 = color
-		rect.ZIndex = zIndex
-		rect.Parent = parent
-		table.insert(rects, rect)
-	end
-	return rects
 end
 
 local function viewportSize(): Vector2
@@ -213,11 +194,11 @@ local function renderInfo()
 		infoCost.TextColor3 = COLORS.Maxed
 	elseif state == "Locked" then
 		infoCost.Text = `Requires {requiresText(def)}`
-		infoCost.TextColor3 = Color3.fromRGB(255, 120, 120)
+		infoCost.TextColor3 = COLORS.Error
 	else
 		local cost = Upgrades.cost(def, level)
 		infoCost.Text = `Cost: {Format.number(cost)} Clacks`
-		infoCost.TextColor3 = if state == "Affordable" then COLORS.Affordable else Color3.fromRGB(255, 120, 120)
+		infoCost.TextColor3 = if state == "Affordable" then COLORS.Affordable else COLORS.Error
 	end
 end
 
@@ -230,8 +211,8 @@ local function renderNodes()
 		for _, rect in node.fills do
 			rect.BackgroundColor3 = color
 		end
-		for _, rect in node.shines do
-			rect.BackgroundTransparency = if state == "Locked" then 0.9 else 0.72
+		for _, shine in node.shines do
+			shine.object.BackgroundTransparency = if state == "Locked" then 1 - (1 - shine.transparency) * 0.35 else shine.transparency
 		end
 		node.icon.TextTransparency = if state == "Locked" then 0.5 else 0
 		local level = Upgrades.level(current, id)
@@ -241,7 +222,7 @@ local function renderNodes()
 		else
 			node.cost.Visible = true
 			node.cost.Text = Format.number(Upgrades.cost(def, level))
-			node.cost.TextColor3 = if state == "Affordable" then COLORS.Affordable else Color3.fromRGB(255, 140, 140)
+			node.cost.TextColor3 = if state == "Affordable" then COLORS.Affordable else COLORS.Error
 		end
 	end
 
@@ -278,12 +259,12 @@ local function buy(id: string)
 		return
 	elseif state == "Locked" then
 		renderInfo()
-		Interface.toast(`Buy {requiresText(def)} first`, Color3.fromRGB(255, 110, 110))
+		Interface.toast(`Buy {requiresText(def)} first`, COLORS.Error)
 		return
 	elseif state == "Available" then
 		renderInfo()
 		local cost = Upgrades.cost(def, Upgrades.level(levels(), id))
-		Interface.toast(`You need {Format.number(cost)} Clacks`, Color3.fromRGB(255, 110, 110))
+		Interface.toast(`You need {Format.number(cost)} Clacks`, COLORS.Error)
 		return
 	end
 
@@ -305,16 +286,8 @@ local function buy(id: string)
 end
 
 --------------------------------------------------------------------------
--- Building
+-- Building (copies of StarterGui.Upgrades' templates)
 --------------------------------------------------------------------------
-
-local function textLabel(text: string, size: UDim2, position: UDim2, zIndex: number): TextLabel
-	local label = Kit.label(text)
-	label.Size = size
-	label.Position = position
-	label.ZIndex = zIndex
-	return label
-end
 
 local function beginPress(input: InputObject, nodeId: string?)
 	local t = input.UserInputType
@@ -339,69 +312,35 @@ local function beginPress(input: InputObject, nodeId: string?)
 	end
 end
 
-local function buildNode(def: UpgradeDef, parent: Frame): Node
-	local position = worldPosition(def)
-	local frame = Instance.new("Frame")
-	frame.Name = def.Id
-	frame.BackgroundTransparency = 1
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromOffset(position.X, position.Y)
-	frame.Size = UDim2.fromOffset(RADIUS * 2, RADIUS * 2)
-	frame.ZIndex = 5
-	frame.Parent = parent
-
-	local scale = Instance.new("UIScale")
-	scale.Parent = frame
-
-	hexagon(frame, RADIUS + BORDER, COLORS.Border, 5, "Border")
-	local fills = hexagon(frame, RADIUS, COLORS.Locked, 6, "Fill")
-	-- A lighter, smaller hex nudged up reads as a bevel.
-	local shineHolder = Instance.new("Frame")
-	shineHolder.Name = "Shine"
-	shineHolder.BackgroundTransparency = 1
-	shineHolder.AnchorPoint = Vector2.new(0.5, 0.5)
-	shineHolder.Position = UDim2.new(0.5, 0, 0.5, -RADIUS * 0.12)
-	shineHolder.Size = UDim2.fromScale(1, 1)
-	shineHolder.ZIndex = 7
-	shineHolder.Parent = frame
-	local shines = hexagon(shineHolder, RADIUS * 0.72, Color3.new(1, 1, 1), 7, "Shine")
-	for _, rect in shines do
-		rect.BackgroundTransparency = 0.72
+local function named(root: Instance, name: string): { GuiObject }
+	local found = {}
+	for _, d in root:GetDescendants() do
+		if d.Name == name and d:IsA("GuiObject") then
+			table.insert(found, d)
+		end
 	end
+	return found
+end
 
-	local icon = Instance.new("TextLabel")
-	icon.Name = "Icon"
-	icon.BackgroundTransparency = 1
-	icon.AnchorPoint = Vector2.new(0.5, 0.5)
-	icon.Position = UDim2.fromScale(0.5, 0.42)
-	icon.Size = UDim2.fromScale(0.55, 0.55)
-	icon.TextScaled = true
-	icon.Font = Enum.Font.GothamBold
+local function buildNode(screen: ScreenGui, def: UpgradeDef, parent: Instance): Node
+	local position = worldPosition(def)
+	local frame = Roles.template(screen, "UpgradeNode") :: GuiObject
+	frame.Name = def.Id
+	frame.Position = UDim2.fromOffset(position.X, position.Y)
+
+	local scale = frame:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = frame
+	end
+	local shines = {}
+	for _, shine in named(frame, "Shine") do
+		table.insert(shines, { object = shine, transparency = shine.BackgroundTransparency })
+	end
+	local icon = frame:FindFirstChild("Icon", true) :: TextLabel
 	icon.Text = def.Icon
-	icon.ZIndex = 9
-	icon.Parent = frame
-
-	local level = textLabel("", UDim2.fromScale(0.62, 0.22), UDim2.fromScale(0.5, 0.78), 9)
-	level.Name = "Level"
-	level.Parent = frame
-
-	local cost = textLabel("", UDim2.fromScale(1.1, 0.26), UDim2.new(0.5, 0, 1, 14), 9)
-	cost.Name = "Cost"
-	cost.Parent = frame
-
-	local button = Instance.new("TextButton")
-	button.Name = "Button"
-	button.Text = ""
-	button.BackgroundTransparency = 1
-	button.AnchorPoint = Vector2.new(0.5, 0.5)
-	button.Position = UDim2.fromScale(0.5, 0.5)
-	button.Size = UDim2.fromScale(0.95, 0.95)
-	button.ZIndex = 10
-	button.AutoButtonColor = false
-	button.Parent = frame
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = button
+	local button = frame:FindFirstChildWhichIsA("GuiButton", true) :: GuiButton
+	local nodeScale = scale :: UIScale
 
 	button.InputBegan:Connect(function(input)
 		beginPress(input, def.Id)
@@ -411,231 +350,102 @@ local function buildNode(def: UpgradeDef, parent: Frame): Node
 		Interface.play("Hover", 1.1)
 		selected = def.Id
 		renderInfo()
-		TweenService:Create(scale, Interface.FAST, { Scale = 1.08 }):Play()
+		TweenService:Create(nodeScale, Interface.FAST, { Scale = 1.08 }):Play()
 	end)
 	button.MouseLeave:Connect(function()
-		TweenService:Create(scale, Interface.FAST, { Scale = 1 }):Play()
+		TweenService:Create(nodeScale, Interface.FAST, { Scale = 1 }):Play()
 	end)
+	frame.Parent = parent
 
-	return { def = def, frame = frame, fills = fills, shines = shines, icon = icon, level = level, cost = cost, scale = scale }
+	return {
+		def = def,
+		frame = frame,
+		fills = named(frame, "Fill"),
+		shines = shines,
+		icon = icon,
+		level = frame:FindFirstChild("Level", true) :: TextLabel,
+		cost = frame:FindFirstChild("Cost", true) :: TextLabel,
+		scale = nodeScale,
+	}
 end
 
-local function buildLine(fromDef: UpgradeDef, toDef: UpgradeDef, parent: Frame): Line
+local function buildLine(screen: ScreenGui, fromDef: UpgradeDef, toDef: UpgradeDef, parent: Instance): Line
 	local a = worldPosition(fromDef)
 	local b = worldPosition(toDef)
 	local mid = (a + b) / 2
 	local delta = b - a
-	local frame = Instance.new("Frame")
+	local frame = Roles.template(screen, "UpgradeLine") :: GuiObject
 	frame.Name = `{fromDef.Id}->{toDef.Id}`
-	frame.BorderSizePixel = 0
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
 	frame.Position = UDim2.fromOffset(mid.X, mid.Y)
-	frame.Size = UDim2.fromOffset(delta.Magnitude, 12)
+	frame.Size = UDim2.fromOffset(delta.Magnitude, frame.Size.Y.Offset)
 	frame.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-	frame.BackgroundColor3 = COLORS.LineOff
-	frame.ZIndex = 2
 	frame.Parent = parent
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLORS.Border
-	stroke.Thickness = 3
-	stroke.Parent = frame
 	return { frame = frame, from = fromDef.Id, to = toDef.Id }
 end
 
-local function makeTopBar(root: Frame)
-	local bar = Instance.new("Frame")
-	bar.Name = "Top"
-	bar.BackgroundColor3 = Color3.new(0, 0, 0)
-	bar.BackgroundTransparency = 0.45
-	bar.BorderSizePixel = 0
-	bar.Size = UDim2.new(1, 0, 0.11, 0)
-	bar.ZIndex = 20
-	bar.Parent = root
-
-	local title = textLabel("Upgrade Tree", UDim2.fromScale(0.4, 0.6), UDim2.fromScale(0.5, 0.5), 21)
-	title.Parent = bar
-
-	local clacks = Kit.label("0 Clacks")
-	local hudAmount = Interface.HUD:FindFirstChild("Labels")
-	hudAmount = hudAmount and hudAmount:FindFirstChild("Amounts")
-	hudAmount = hudAmount and hudAmount:FindFirstChild("Clacks")
-	hudAmount = hudAmount and hudAmount:FindFirstChild("Amount")
-	if hudAmount and hudAmount:IsA("TextLabel") then
-		clacks = hudAmount:Clone()
+local function bind(): boolean
+	if gui then return true end
+	local screen = Roles.gui(MENU)
+	local function part(name: string): any
+		return Roles.get(screen, "UpgradeRole", name)
 	end
-	clacks.Name = "Clacks"
-	clacks.AnchorPoint = Vector2.new(0, 0.5)
-	clacks.Position = UDim2.fromScale(0.02, 0.5)
-	clacks.Size = UDim2.fromScale(0.3, 0.55)
-	clacks.TextXAlignment = Enum.TextXAlignment.Left
-	clacks.ZIndex = 21
-	clacks.Parent = bar
-	clacksLabel = clacks
-
-	-- The kit's red X, borrowed from a menu window.
-	local exitSource = Interface.window("Store")
-	exitSource = exitSource and exitSource:FindFirstChild("Top")
-	exitSource = exitSource and exitSource:FindFirstChild("Exit")
-	local exit: Frame
-	if exitSource and exitSource:IsA("Frame") then
-		exit = exitSource:Clone()
-		-- Its MenuAction belongs to the Store window; this one is bound below.
-		for _, d in exit:GetDescendants() do
-			d:SetAttribute("MenuAction", nil)
-			d:SetAttribute("Menu", nil)
-		end
-	else
-		exit = Kit.button("Sunset", "X")
+	if not Roles.find(screen, "UpgradeRole", "Nodes") then
+		warn('[UpgradeTree] StarterGui.Upgrades has no UpgradeRole pieces; run tools/ui/migrate.luau on your place')
+		return false
 	end
-	exit.Name = "Exit"
-	exit.AnchorPoint = Vector2.new(1, 0.5)
-	exit.Position = UDim2.fromScale(0.985, 0.5)
-	exit.Size = UDim2.fromScale(0.75, 0.75)
-	for _, child in exit:GetDescendants() do
-		if child:IsA("GuiObject") then
-			child.ZIndex += 21
+
+	-- State colours from the Root's attributes.
+	for _, d in screen:GetDescendants() do
+		if d:GetAttribute("MenuPanel") == true then
+			for name in COLORS do
+				local value = d:GetAttribute(`{name}Color`)
+				if typeof(value) == "Color3" then
+					COLORS[name] = value
+				end
+			end
+			break
 		end
 	end
-	exit.ZIndex = 21
-	exit.Parent = bar
-	if not exit:FindFirstChildOfClass("UIAspectRatioConstraint") then
-		local ratio = Instance.new("UIAspectRatioConstraint")
-		ratio.Parent = exit
+
+	viewport = part("Viewport")
+	world = part("World")
+	local spacing = world:GetAttribute("Spacing")
+	if typeof(spacing) == "number" and spacing > 0 then
+		CELL = spacing
 	end
-	Interface.bindButton(exit, function()
-		Interface.close(MENU)
-	end)
-end
+	local scale = world:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = world
+	end
+	worldScale = scale :: UIScale
+	clacksLabel = part("Clacks")
+	infoTitle = part("InfoTitle")
+	infoBody = part("InfoBody")
+	infoCost = part("InfoCost")
 
-local function makeInfoPanel(root: Frame)
-	local panel = Instance.new("Frame")
-	panel.Name = "Info"
-	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.fromScale(0.5, 0.97)
-	panel.Size = UDim2.fromScale(0.6, 0.2)
-	panel.BackgroundColor3 = Color3.new(0, 0, 0)
-	panel.BackgroundTransparency = 0.4
-	panel.ZIndex = 20
-	panel.Parent = root
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.12, 0)
-	corner.Parent = panel
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.new(1, 1, 1)
-	stroke.Transparency = 0.7
-	stroke.Thickness = 2
-	stroke.Parent = panel
-	local ratio = Instance.new("UIAspectRatioConstraint")
-	ratio.AspectRatio = 4.6
-	ratio.Parent = panel
-
-	infoTitle = textLabel("", UDim2.fromScale(0.94, 0.26), UDim2.fromScale(0.5, 0.18), 21)
-	infoTitle.Parent = panel
-
-	local body = Instance.new("TextLabel")
-	body.Name = "Body"
-	body.BackgroundTransparency = 1
-	body.AnchorPoint = Vector2.new(0.5, 0.5)
-	body.Position = UDim2.fromScale(0.5, 0.53)
-	body.Size = UDim2.fromScale(0.94, 0.38)
-	body.TextScaled = true
-	body.TextWrapped = true
-	body.Font = Enum.Font.GothamMedium
-	body.TextColor3 = Color3.new(1, 1, 1)
-	body.TextStrokeTransparency = 0.5
-	body.ZIndex = 21
-	body.Parent = panel
-	infoBody = body
-
-	infoCost = textLabel("", UDim2.fromScale(0.94, 0.2), UDim2.fromScale(0.5, 0.86), 21)
-	infoCost.Parent = panel
-end
-
-local function build()
-	local screen = Instance.new("ScreenGui")
-	screen.Name = "UpgradeTree"
-	screen.ResetOnSpawn = false
-	screen.IgnoreGuiInset = true
-	screen.DisplayOrder = 8
-	screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	screen.Enabled = false
-
-	local root = Instance.new("Frame")
-	root.Name = "Root"
-	root.Size = UDim2.fromScale(1, 1)
-	root.BackgroundColor3 = COLORS.Background
-	root.BorderSizePixel = 0
-	root.Active = true
-	root.Parent = screen
-
-	local studs = Instance.new("ImageLabel")
-	studs.Name = "Studs"
-	studs.BackgroundTransparency = 1
-	studs.Size = UDim2.fromScale(1, 1)
-	studs.Image = "rbxassetid://18878365966"
-	studs.ScaleType = Enum.ScaleType.Tile
-	studs.TileSize = UDim2.fromOffset(96, 96)
-	studs.ImageTransparency = 0.93
-	studs.ZIndex = 1
-	studs.Parent = root
-
-	viewport = Instance.new("Frame")
-	viewport.Name = "Viewport"
-	viewport.BackgroundTransparency = 1
-	viewport.Size = UDim2.fromScale(1, 1)
-	viewport.ClipsDescendants = true
-	viewport.Active = true
-	viewport.ZIndex = 2
-	viewport.Parent = root
-
-	world = Instance.new("Frame")
-	world.Name = "World"
-	world.BackgroundTransparency = 1
-	world.AnchorPoint = Vector2.new(0.5, 0.5)
-	world.Size = UDim2.new()
-	world.Position = UDim2.fromScale(0.5, 0.5)
-	world.ZIndex = 2
-	world.Parent = viewport
-	worldScale = Instance.new("UIScale")
-	worldScale.Parent = world
-
-	local lineLayer = Instance.new("Frame")
-	lineLayer.Name = "Lines"
-	lineLayer.Size = UDim2.new()
-	lineLayer.BackgroundTransparency = 1
-	lineLayer.ZIndex = 2
-	lineLayer.Parent = world
-	local nodeLayer = Instance.new("Frame")
-	nodeLayer.Name = "Nodes"
-	nodeLayer.Size = UDim2.new()
-	nodeLayer.BackgroundTransparency = 1
-	nodeLayer.ZIndex = 5
-	nodeLayer.Parent = world
-
+	local lineLayer = part("Lines")
+	local nodeLayer = part("Nodes")
 	for _, def in Upgrades.List do
 		local position = worldPosition(def)
 		bounds.minX = math.min(bounds.minX, position.X)
 		bounds.maxX = math.max(bounds.maxX, position.X)
 		bounds.minY = math.min(bounds.minY, position.Y)
 		bounds.maxY = math.max(bounds.maxY, position.Y)
-		nodes[def.Id] = buildNode(def, nodeLayer)
+		nodes[def.Id] = buildNode(screen, def, nodeLayer)
 		for _, requiredId in def.Requires do
 			local required = Upgrades.ById[requiredId]
 			if required then
-				table.insert(lines, buildLine(required, def, lineLayer))
+				table.insert(lines, buildLine(screen, required, def, lineLayer))
 			end
 		end
 	end
 
-	makeTopBar(root)
-	makeInfoPanel(root)
-
 	viewport.InputBegan:Connect(function(input)
 		beginPress(input, nil)
 	end)
-
-	screen.Parent = player:WaitForChild("PlayerGui")
 	gui = screen
+	return true
 end
 
 --------------------------------------------------------------------------
@@ -733,15 +543,10 @@ local function setControls(enabled: boolean)
 end
 
 function UpgradeTree.isOpen(): boolean
-	local screen = gui
-	return screen ~= nil and screen.Enabled
+	return Interface.isOpen(MENU)
 end
 
-function UpgradeTree.open()
-	if not gui then build() end
-	local screen = gui :: ScreenGui
-	if screen.Enabled then return end
-	screen.Enabled = true
+local function onOpened()
 	selected = nil
 	zoom = if viewportSize().X < 900 then 0.7 else 1
 	pan = Vector2.zero
@@ -756,23 +561,34 @@ function UpgradeTree.open()
 	end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseWheel)
 end
 
-function UpgradeTree.close()
-	local screen = gui
-	if not screen or not screen.Enabled then return end
-	screen.Enabled = false
+local function onClosed()
 	dragInput = nil
 	pressedNode = nil
 	setControls(true)
 	ContextActionService:UnbindAction(SINK_ACTION)
 end
 
+function UpgradeTree.open()
+	Interface.open(MENU)
+end
+
+function UpgradeTree.close()
+	Interface.close(MENU)
+end
+
 function UpgradeTree.start()
 	Interface.setup()
-	Interface.registerMenu(MENU, {
-		open = UpgradeTree.open,
-		close = UpgradeTree.close,
-		isOpen = UpgradeTree.isOpen,
-	})
+	if not bind() then return end
+	Interface.MenuOpened:Connect(function(name)
+		if name == MENU then
+			onOpened()
+		end
+	end)
+	Interface.MenuClosed:Connect(function(name)
+		if name == MENU then
+			onClosed()
+		end
+	end)
 	bindInput()
 
 	State.Changed:Connect(function(field)
