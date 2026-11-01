@@ -102,6 +102,8 @@ Config.Attributes = {
 	ProgressTween = "ProgressTween", --   seconds, 0 = instant
 	KitColor = "KitColor",           -- kit button / card: palette name (KitColor)
 	Icon = "Icon",                   -- ImageLabel: Config.Icons name, asset or emoji (IconImage)
+	Rarity = "Rarity",               -- anything: tinted by a stud rarity (RarityColor)
+	RarityMode = "RarityMode",       --   Gradient | Background | Stroke | Text | Image
 	UITemplate = "UITemplate",       -- a template the code copies (Roles.template)
 }
 

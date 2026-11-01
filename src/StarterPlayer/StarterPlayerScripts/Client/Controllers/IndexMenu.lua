@@ -41,6 +41,7 @@ local Format = require(UI.Format)
 local Menus = ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus")
 local ProgressBar = require(Menus:WaitForChild("ProgressBar"))
 local StateStyle = require(Menus:WaitForChild("StateStyle"))
+local RarityColor = require(Menus:WaitForChild("RarityColor"))
 
 type StudDef = Types.StudDef
 
@@ -55,11 +56,12 @@ table.sort(sortedStuds, function(a, b)
 	return a.OneIn < b.OneIn
 end)
 
-type Cell = { frame: GuiObject, viewport: ViewportFrame, name: TextLabel, odds: TextLabel, def: StudDef }
+type Cell = { frame: GuiObject, viewport: ViewportFrame, name: TextLabel, odds: TextLabel, backdrop: GuiObject?, mystery: GuiObject?, def: StudDef }
 type Tab = { frame: GuiObject }
 
 local cells: { Cell } = {}
 local tabs: { [string]: Tab } = {}
+local detailBackdrop: GuiObject? = nil
 local detail: { viewport: ViewportFrame, name: TextLabel, odds: TextLabel, rarity: TextLabel, strength: TextLabel, health: TextLabel, rolls: TextLabel }
 local claimButton: GuiObject
 local progressFill: GuiObject
@@ -104,6 +106,9 @@ local function renderDetail()
 	local found = isFound(def)
 	StudCell.setViewport(detail.viewport, def, variant)
 	StudCell.setSilhouette(detail.viewport, not found)
+	if detailBackdrop then
+		RarityColor.Set(detailBackdrop, { Rarity = if found then def.Rarity else "" })
+	end
 	local color = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 	detail.name.Text = if found then string.upper(Format.studName(def, variant)) else "???"
 	detail.name.TextColor3 = if found and def.Rarity ~= "Secret" then color:Lerp(Color3.new(1, 1, 1), 0.25) else Color3.new(1, 1, 1)
@@ -147,6 +152,12 @@ local function renderGrid()
 		local found = isFound(def)
 		StudCell.setViewport(cell.viewport, def, variant)
 		StudCell.setSilhouette(cell.viewport, not found)
+		if cell.backdrop then
+			RarityColor.Set(cell.backdrop, { Rarity = if found then def.Rarity else "" })
+		end
+		if cell.mystery then
+			cell.mystery.Visible = not found
+		end
 		cell.name.Text = if found then string.upper(def.Name) else "???"
 		if unlocked[def.World] then
 			cell.odds.Text = oddsText(def)
@@ -225,6 +236,8 @@ local function bind()
 			viewport = viewportOf(frame),
 			name = frame:FindFirstChild("Name", true) :: TextLabel,
 			odds = odds,
+			backdrop = frame:FindFirstChild("Backdrop") :: GuiObject?,
+			mystery = frame:FindFirstChild("Mystery") :: GuiObject?,
 			def = def,
 		}
 		local button = frame:FindFirstChildWhichIsA("GuiButton", true)
@@ -239,6 +252,7 @@ local function bind()
 		table.insert(cells, cell)
 	end
 
+	detailBackdrop = Roles.find(gui, ROLE, "DetailBackdrop")
 	detail = {
 		viewport = viewportOf(part("DetailViewport")),
 		name = part("DetailName"),

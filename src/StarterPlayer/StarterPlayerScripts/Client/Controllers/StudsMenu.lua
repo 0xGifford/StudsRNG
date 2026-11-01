@@ -38,7 +38,9 @@ local Format = require(UI.Format)
 local Juice = require(UI.Juice)
 local CombatFx = require(UI.CombatFx)
 
-local StateStyle = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("StateStyle"))
+local Menus = ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus")
+local StateStyle = require(Menus:WaitForChild("StateStyle"))
+local RarityColor = require(Menus:WaitForChild("RarityColor"))
 
 type StudDef = Types.StudDef
 type VariantDef = Types.VariantDef
@@ -186,6 +188,10 @@ local function makeCell(parent: Instance, template: string, key: string, count: 
 	local viewport = frame:FindFirstChildWhichIsA("ViewportFrame", true)
 	if viewport then
 		StudCell.setViewport(viewport, def, variant)
+	end
+	local backdrop = frame:FindFirstChild("Backdrop")
+	if backdrop then
+		RarityColor.Set(backdrop, { Rarity = def.Rarity })
 	end
 	local odds = frame:FindFirstChild("Odds", true)
 	if odds and odds:IsA("TextLabel") then

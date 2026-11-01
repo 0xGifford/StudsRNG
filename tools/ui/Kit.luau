@@ -168,8 +168,8 @@ end
 function Kit.viewport(props: { [string]: any }?): any
 	local viewport = Kit.new("ViewportFrame", {
 		Name = "Viewport", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
-		Size = UDim2.fromScale(0.72, 0.72), Ambient = Color3.fromRGB(170, 170, 170), LightColor = Color3.new(1, 1, 1),
-		LightDirection = roblox.Vector3.new(-1, -1.5, -1), ZIndex = 1,
+		Size = UDim2.fromScale(0.72, 0.72), Ambient = Color3.fromRGB(195, 195, 205), LightColor = Color3.new(1, 1, 1),
+		LightDirection = roblox.Vector3.new(-0.5, -1, -0.7), ZIndex = 1,
 	})
 	Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }, viewport)
 	local camera = Kit.new("Camera", {
@@ -179,10 +179,36 @@ function Kit.viewport(props: { [string]: any }?): any
 	viewport.CurrentCamera = camera
 	-- MenuSystem's StudView draws the stud named by this attribute.
 	viewport:SetAttribute("Stud", "")
+	-- Not found yet: a soft slate shape rather than a black hole.
+	viewport:SetAttribute("ViewSilhouetteColor", Color3.fromRGB(52, 56, 74))
 	for key, value in props or {} do
 		viewport[key] = value
 	end
 	return viewport
+end
+
+-- A card's rarity glow: a rounded frame whose UIGradient MenuSystem's
+-- RarityColor tints (Rarity attribute; "" = not found yet).
+function Kit.rarityBackdrop(props: { [string]: any }?): any
+	local backdrop = Kit.new("Frame", {
+		Name = "Backdrop", BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -6, 1, -6), ZIndex = 1,
+	})
+	Kit.new("UICorner", { CornerRadius = UDim.new(0.1, 0) }, backdrop)
+	Kit.new("UIGradient", {
+		Rotation = 90,
+		Transparency = roblox.NumberSequence.new({
+			roblox.NumberSequenceKeypoint.new(0, 0.35),
+			roblox.NumberSequenceKeypoint.new(0.6, 0.75),
+			roblox.NumberSequenceKeypoint.new(1, 1),
+		}),
+	}, backdrop)
+	backdrop:SetAttribute("Rarity", "")
+	backdrop:SetAttribute("RarityMode", "Gradient")
+	for key, value in props or {} do
+		backdrop[key] = value
+	end
+	return backdrop
 end
 
 -- A 3D zone preview: MenuSystem's ZoneView draws the zone named by Zone.
@@ -328,7 +354,7 @@ end
 -- Bump when the screens change in a way places need (new attributes, new
 -- pieces): tools/ui/migrate.luau replaces a place's copy of a built screen
 -- whose UIBuild is lower (unless it has UIKeep = true).
-Kit.BUILD = 2
+Kit.BUILD = 3
 
 -- Writes a ScreenGui to src/StarterGui/<name>.rbxm, stamped UIBuild.
 function Kit.save(gui: any)

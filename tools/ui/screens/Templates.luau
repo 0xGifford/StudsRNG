@@ -112,8 +112,8 @@ action.Parent = zoneRow
 -- The 3D stud preview (StudCell.viewport).
 local viewport = Kit.new("ViewportFrame", {
 	Name = "StudViewport", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
-	Size = UDim2.fromScale(0.72, 0.72), Ambient = Color3.fromRGB(170, 170, 170), LightColor = Color3.new(1, 1, 1),
-	LightDirection = require("@lune/roblox").Vector3.new(-1, -1.5, -1), ZIndex = 1,
+	Size = UDim2.fromScale(0.72, 0.72), Ambient = Color3.fromRGB(195, 195, 205), LightColor = Color3.new(1, 1, 1),
+	LightDirection = require("@lune/roblox").Vector3.new(-0.5, -1, -0.7), ZIndex = 1,
 }, gui)
 Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }, viewport)
 local roblox2 = require("@lune/roblox")
@@ -123,5 +123,6 @@ local camera = Kit.new("Camera", {
 }, viewport)
 viewport.CurrentCamera = camera
 viewport:SetAttribute("Stud", "")
+viewport:SetAttribute("ViewSilhouetteColor", Color3.fromRGB(52, 56, 74))
 
 Kit.save(gui)
