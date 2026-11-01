@@ -37,14 +37,13 @@ local State = require(Controllers.State)
 local RollReveal = require(Controllers.RollReveal)
 local EnemyVisuals = require(Controllers.EnemyVisuals)
 local Interface = require(UI.Interface)
-local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local Juice = require(UI.Juice)
+local Roles = require(UI.Roles)
 local CombatFx = require(UI.CombatFx)
 
 local Enemies = {}
 
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 local HP_GREEN = Color3.fromRGB(90, 230, 100)
 local HP_RED = Color3.fromRGB(255, 80, 80)
 local BOSS_GOLD = Color3.fromRGB(255, 205, 60)
@@ -57,7 +56,7 @@ local playerGui: PlayerGui
 
 type Tracked = {
 	gui: BillboardGui,
-	fill: Frame,
+	fill: GuiObject,
 	amount: TextLabel,
 	body: BasePart,
 	boss: boolean,
@@ -78,58 +77,14 @@ local lastHitSound = 0
 local flash: Highlight
 
 local teamGui: ScreenGui
-local teamPanel: Frame
-local teamFill: Frame
+local teamPanel: GuiObject
+local teamFill: GuiObject
+local worldUI: ScreenGui -- StarterGui.WorldUI: the bar / popup templates
 local teamText: TextLabel
 local strengthText: TextLabel
 local streakText: TextLabel
 local lowPulse: Tween? = nil
 local lastTeamHp: number? = nil
-
-local function label(parent: Instance, text: string, color: Color3, size: UDim2, position: UDim2): TextLabel
-	local l = Instance.new("TextLabel")
-	l.BackgroundTransparency = 1
-	l.AnchorPoint = Vector2.new(0.5, 0.5)
-	l.Size = size
-	l.Position = position
-	l.FontFace = FONT
-	l.TextScaled = true
-	l.TextWrapped = false
-	l.TextColor3 = color
-	l.Text = text
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(15, 15, 20)
-	stroke.Parent = l
-	l.Parent = parent
-	return l
-end
-
-local function bar(parent: Instance, size: UDim2, position: UDim2): (Frame, Frame)
-	local back = Instance.new("Frame")
-	back.AnchorPoint = Vector2.new(0.5, 0.5)
-	back.Size = size
-	back.Position = position
-	back.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-	back.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = back
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(10, 10, 14)
-	stroke.Parent = back
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(1, 1)
-	fill.BackgroundColor3 = HP_GREEN
-	fill.BorderSizePixel = 0
-	local fillCorner = Instance.new("UICorner")
-	fillCorner.CornerRadius = UDim.new(1, 0)
-	fillCorner.Parent = fill
-	fill.Parent = back
-	back.Parent = parent
-	return back, fill
-end
 
 local function hpColor(share: number): Color3
 	return HP_RED:Lerp(HP_GREEN, math.clamp(share, 0, 1))
@@ -146,17 +101,14 @@ end
 -- "-123" floating up off the enemy when your studs land a hit; crits are
 -- bigger, orange, punch in and read "CRIT!".
 local function damagePopup(body: BasePart, value: string, crit: boolean)
-	local pop = Instance.new("BillboardGui")
+	local pop = Roles.template(worldUI, if crit then "CritPopup" else "DamagePopup") :: BillboardGui
 	pop.Adornee = body
-	pop.Size = if crit then UDim2.fromScale(7, 2.4) else UDim2.fromScale(4, 1.4)
 	pop.StudsOffsetWorldSpace = Vector3.new(math.random(-15, 15) / 10, body.Size.Y / 2 + (if crit then 2 else 1), 0)
-	pop.AlwaysOnTop = true
-	pop.LightInfluence = 0
-	local text = label(pop, value, if crit then CRIT_ORANGE else Color3.fromRGB(255, 230, 90), UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5))
+	local text = Roles.get(pop, "EnemyRole", "Text") :: TextLabel
+	text.Text = value
 	text.Rotation = if crit then math.random(-12, 12) else 0
-	local scale = Instance.new("UIScale")
+	local scale = text:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", text)
 	scale.Scale = if crit then 2.2 else 1.4
-	scale.Parent = text
 	pop.Parent = playerGui
 	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	TweenService:Create(pop, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -178,16 +130,12 @@ end
 
 -- "!" pops over an enemy that just started hunting you.
 local function aggroPop(entry: Tracked)
-	local pop = Instance.new("BillboardGui")
+	local pop = Roles.template(worldUI, "AggroPop") :: BillboardGui
 	pop.Adornee = entry.body
-	pop.Size = UDim2.fromScale(2.4, 2.4)
 	pop.StudsOffsetWorldSpace = Vector3.new(0, entry.body.Size.Y / 2 + (if entry.boss then 7 else 4.6), 0)
-	pop.AlwaysOnTop = true
-	pop.LightInfluence = 0
-	local mark = label(pop, "!", AGGRO_RED, UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5))
-	local scale = Instance.new("UIScale")
+	local mark = Roles.get(pop, "EnemyRole", "Text") :: TextLabel
+	local scale = mark:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", mark)
 	scale.Scale = 0.2
-	scale.Parent = mark
 	pop.Parent = playerGui
 	TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	CombatFx.sound("Aggro", entry.body.Position, 1.4, 0.4)
@@ -281,35 +229,24 @@ local function track(instance: Instance)
 	local body = EnemyVisuals.rootOf(model) or proxy
 
 	local boss = model:GetAttribute("Boss") == true
-	local gui = Instance.new("BillboardGui")
+	local gui = Roles.template(worldUI, if boss then "BossBar" else "EnemyBar") :: BillboardGui
 	gui.Name = "EnemyBar"
 	gui.Adornee = body
-	gui.Size = if boss then UDim2.fromOffset(220, 76) else UDim2.fromOffset(150, 46)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, body.Size.Y / 2 + (if boss then 4 else 2.2), 0)
-	gui.MaxDistance = if boss then 160 else 90
-	gui.LightInfluence = 0
 	local level = model:GetAttribute("Level")
 	local levelText = `Lv.{if typeof(level) == "number" then level else 1}`
-	local fill: Frame
-	if boss then
-		local tag = label(gui, if model:GetAttribute("ZoneBoss") == true then "👹 ZONE BOSS" else "👑 MINI BOSS", BOSS_GOLD, UDim2.fromScale(1, 0.3), UDim2.fromScale(0.5, 0.15))
-		local gradient = Instance.new("UIGradient")
-		gradient.Color = ColorSequence.new(Color3.fromRGB(255, 240, 150), BOSS_GOLD)
-		gradient.Rotation = 90
-		gradient.Parent = tag
-		label(gui, `{model.Name}  {levelText}`, Color3.new(1, 1, 1), UDim2.fromScale(1, 0.28), UDim2.fromScale(0.5, 0.45))
-		local back
-		back, fill = bar(gui, UDim2.fromScale(0.98, 0.3), UDim2.fromScale(0.5, 0.8))
-		local stroke = back:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			stroke.Color = BOSS_GOLD
-		end
-	else
-		label(gui, `{model.Name}  {levelText}`, Color3.new(1, 1, 1), UDim2.fromScale(1, 0.45), UDim2.fromScale(0.5, 0.22))
-		_, fill = bar(gui, UDim2.fromScale(0.95, 0.4), UDim2.fromScale(0.5, 0.72))
+	local nameLabel = Roles.find(gui, "EnemyRole", "Name")
+	if nameLabel then
+		nameLabel.Text = `{model.Name}  {levelText}`
 	end
-	local amount = label(fill.Parent :: Instance, "", Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.85), UDim2.fromScale(0.5, 0.5))
-	amount.ZIndex = 3
+	local tag = Roles.find(gui, "EnemyRole", "Tag")
+	if tag then
+		tag.Text = if model:GetAttribute("MegaBoss") == true then "💥 MEGA BOSS"
+			elseif model:GetAttribute("ZoneBoss") == true then "👹 ZONE BOSS"
+			else "👑 MINI BOSS"
+	end
+	local fill = Roles.get(gui, "EnemyRole", "Fill") :: GuiObject
+	local amount = Roles.get(gui, "EnemyRole", "Amount") :: TextLabel
 	gui.Parent = playerGui
 
 	local crits = model:GetAttribute("Crits")
@@ -372,45 +309,21 @@ end
 -- Team bar while fighting
 --------------------------------------------------------------------------
 
-local function buildTeamBar()
-	teamGui = Instance.new("ScreenGui")
-	teamGui.Name = "FightBar"
-	teamGui.ResetOnSpawn = false
-	teamGui.DisplayOrder = 4
+local function bindTeamBar()
+	teamGui = Roles.gui("FightBar")
 	teamGui.Enabled = false
-
-	local panel = Instance.new("Frame")
-	teamPanel = panel
-	panel.AnchorPoint = Vector2.new(0.5, 0)
-	panel.Position = UDim2.fromScale(0.5, 0.11)
-	panel.Size = UDim2.fromScale(0.3, 0.08)
-	panel.BackgroundTransparency = 1
-	panel.Parent = teamGui
-	local aspect = Instance.new("UIAspectRatioConstraint")
-	aspect.AspectRatio = 6
-	aspect.Parent = panel
-
-	label(panel, "YOUR STUDS", Color3.new(1, 1, 1), UDim2.fromScale(0.5, 0.36), UDim2.fromScale(0.3, 0.18))
-	strengthText = label(panel, "", Color3.fromRGB(255, 200, 90), UDim2.fromScale(0.4, 0.36), UDim2.fromScale(0.78, 0.18))
-	local _, fill = bar(panel, UDim2.fromScale(0.78, 0.5), UDim2.fromScale(0.39, 0.72))
-	teamFill = fill
-	teamText = label(fill.Parent :: Instance, "", Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.8), UDim2.fromScale(0.5, 0.5))
-	teamText.ZIndex = 3
-
-	-- Kill streak, under the bar.
-	streakText = label(panel, "", Color3.fromRGB(255, 150, 60), UDim2.fromScale(0.6, 0.4), UDim2.fromScale(0.39, 1.25))
+	teamPanel = Roles.get(teamGui, "FightRole", "Panel")
+	strengthText = Roles.get(teamGui, "FightRole", "Strength")
+	teamFill = Roles.get(teamGui, "FightRole", "Fill")
+	teamText = Roles.get(teamGui, "FightRole", "Hp")
+	streakText = Roles.get(teamGui, "FightRole", "Streak")
 	streakText.Visible = false
-
-	local retreat = Kit.button("Sunset", "RETREAT")
-	retreat.AnchorPoint = Vector2.new(0.5, 0.5)
-	retreat.Position = UDim2.fromScale(0.9, 0.72)
-	retreat.Size = UDim2.fromScale(0.2, 0.62)
-	retreat.Parent = panel
-	Interface.bindButton(retreat, function()
-		State.stopFight()
-	end)
-
-	teamGui.Parent = playerGui
+	local retreat = Roles.find(teamGui, "FightRole", "Retreat")
+	if retreat then
+		Interface.bindButton(retreat, function()
+			State.stopFight()
+		end)
+	end
 end
 
 local function refreshTeam()
@@ -479,7 +392,8 @@ end
 function Enemies.start()
 	Interface.setup()
 	playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
-	buildTeamBar()
+	worldUI = Roles.gui("WorldUI")
+	bindTeamBar()
 	flash = Instance.new("Highlight")
 	flash.Name = "HitFlash"
 	flash.FillColor = Color3.new(1, 1, 1)

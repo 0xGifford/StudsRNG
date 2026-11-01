@@ -22,12 +22,13 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 
+local Roles = require(script.Parent.Parent:WaitForChild("UI"):WaitForChild("Roles"))
+
 local KeyLabels = {}
 
 local Settings = Config.KeyRewards
 local LETTER_GUI = "SurfaceGui" -- KeyCapper's GuiFactory name
 local REWARD_GUI = "RewardLabel"
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
 
 -- hitbox → connections on its key Model
 local tracked: { [Instance]: { RBXScriptConnection } } = {}
@@ -38,43 +39,16 @@ local function hideLetter(gui: Instance)
 	end
 end
 
+-- A copy of StarterGui.WorldUI's KeyReward on the key's cap.
 local function buildRewardGui(cap: BasePart, text: string)
-	local gui = Instance.new("SurfaceGui")
+	local gui = Roles.template(Roles.gui("WorldUI"), "KeyReward") :: SurfaceGui
 	gui.Name = REWARD_GUI
-	gui.Face = Enum.NormalId.Top
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
-	gui.CanvasSize = Vector2.new(150, 150)
-	gui.LightInfluence = 0
-	gui.MaxDistance = 150
-	gui.AlwaysOnTop = false
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Text"
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	label.Position = UDim2.fromScale(0.5, 0.5)
-	label.Size = UDim2.fromScale(0.85, 0.85)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.FontFace = FONT
-	label.TextColor3 = Color3.new(1, 1, 1)
+	local label = Roles.get(gui, "KeyRole", "Text") :: TextLabel
 	label.Text = text
-	label.Parent = gui
-
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new(Color3.fromRGB(255, 245, 140), Color3.fromRGB(255, 180, 40))
-	gradient.Rotation = 90
-	gradient.Parent = label
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(25, 25, 25)
-	stroke.Thickness = 6
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
 
 	-- Gentle pulse so tiles catch the eye.
-	local scale = Instance.new("UIScale")
+	local scale = label:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", label)
 	scale.Scale = 0
-	scale.Parent = label
 	local appear = TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
 	appear:Play()
 	appear.Completed:Once(function()
