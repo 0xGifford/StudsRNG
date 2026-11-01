@@ -378,6 +378,7 @@ local REPLACED = {
 	Index = "IndexRole",
 	Achievements = "AchievementRole",
 	StudPass = "PassRole",
+	Studs = "BackpackRole",
 }
 
 local function hasRole(root: any, attribute: string): boolean

@@ -9,7 +9,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- The Backpack (custom menu "Studs", built in code, Slime RNG style):
+-- The Backpack (StarterGui.Studs, a MenuSystem menu, Slime RNG style; pieces
+-- found by BackpackRole, see tools/ui/screens/Studs.luau):
 --   * a big "Backpack" title, SORT / EQUIP BEST / X up top
 --   * "4/7 Equipped · 956K DMG" and your equipped studs in a row
 --   * every stud you own below: odds, how many, its level, a size / Shiny /
@@ -19,13 +20,11 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   * storage used, and AUTO DELETE (Off → Common → ... → Epic, applied by
 --     the server to Base-size rolls)
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Variants = require(Shared.Variants)
-local Studs = require(Shared.Studs)
 local Types = require(Shared.Types)
 local RollLogic = require(Shared.Util.RollLogic)
 
@@ -33,6 +32,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local Interface = require(UI.Interface)
+local Roles = require(UI.Roles)
 local StudCell = require(UI.StudCell)
 local Format = require(UI.Format)
 local Juice = require(UI.Juice)
@@ -44,14 +44,7 @@ type VariantDef = Types.VariantDef
 local StudsMenu = {}
 
 local MENU = "Studs"
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-local PANEL = Color3.fromRGB(30, 31, 40)
-local CARD = Color3.fromRGB(44, 46, 58)
-local EDGE = Color3.fromRGB(12, 12, 16)
-local GREEN = Color3.fromRGB(70, 200, 90)
-local BLUE = Color3.fromRGB(60, 140, 255)
-local RED = Color3.fromRGB(230, 50, 50)
-local ODDS = Color3.fromRGB(150, 210, 255)
+local ROLE = "BackpackRole"
 local SORTS = { "RARITY", "STRENGTH", "COUNT" }
 local BADGES: { [string]: { string } } = {
 	Big = { "BIG", "#FFA040" },
@@ -61,23 +54,23 @@ local BADGES: { [string]: { string } } = {
 	Inverted = { "INV", "#C8A0FF" },
 }
 
-local player = Players.LocalPlayer
-
 local gui: ScreenGui? = nil
 local header: TextLabel
-local equippedRow: Frame
+local equippedRow: GuiObject
 local grid: ScrollingFrame
-local card: Frame
+local card: GuiObject
 local storageText: TextLabel
-local autoButton: TextButton
-local sortButton: TextButton
-local bestButton: TextButton? = nil
+local storageColor: Color3
+local autoButton: GuiObject
+local sortButton: GuiObject
+local bestButton: GuiObject? = nil
+local equipColor: Color3
 local cardParts: { [string]: any } = {}
 
 local selected: string? = nil
 local sortIndex = 1
 local pending = false
-local cells: { [string]: Frame } = {}
+local cells: { [string]: GuiObject } = {}
 
 -- Rarities the player can auto-delete, lowest first.
 local deletable: { string } = {}
@@ -87,68 +80,31 @@ for _, rarity in Config.Rarities.Order do
 	end
 end
 
---------------------------------------------------------------------------
--- Small builders
---------------------------------------------------------------------------
-
-local function text(parent: Instance, value: string, color: Color3, size: UDim2, position: UDim2, align: Enum.TextXAlignment?): TextLabel
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = size
-	label.Position = position
-	label.FontFace = FONT
-	label.TextScaled = true
-	label.TextColor3 = color
-	label.TextXAlignment = align or Enum.TextXAlignment.Center
-	label.RichText = true
-	label.Text = value
-	label.ZIndex = 4
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = EDGE
-	stroke.Parent = label
-	label.Parent = parent
-	return label
-end
-
-local function round(object: GuiObject, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(radius, 0)
-	corner.Parent = object
-end
-
-local function outline(object: GuiObject, color: Color3, thickness: number): UIStroke
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = color
-	stroke.Thickness = thickness
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = object
-	return stroke
-end
-
-local function button(parent: Instance, value: string, color: Color3): TextButton
-	local b = Instance.new("TextButton")
-	b.Text = ""
-	b.AutoButtonColor = true
-	b.BackgroundColor3 = color
-	b.ZIndex = 3
-	round(b, 0.18)
-	outline(b, EDGE, 3)
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 190))
-	gradient.Rotation = 90
-	gradient.Parent = b
-	local label = text(b, value, Color3.new(1, 1, 1), UDim2.fromScale(0.9, 0.72), UDim2.fromScale(0.05, 0.14))
-	label.Name = "Label"
-	label.ZIndex = 5
-	b.Parent = parent
-	return b
-end
-
-local function setButtonText(b: TextButton, value: string)
-	local label = b:FindFirstChild("Label")
+local function setButtonText(b: GuiObject, value: string)
+	local label = b:FindFirstChild("Label", true)
 	if label and label:IsA("TextLabel") then
 		label.Text = value
+	elseif b:IsA("TextButton") then
+		b.Text = value
+	end
+end
+
+local function onClick(object: GuiObject, fn: () -> ())
+	local target = if object:IsA("GuiButton") then object else object:FindFirstChildWhichIsA("GuiButton", true)
+	assert(target, `{object:GetFullName()} needs a button`)
+	;(target :: GuiButton).Activated:Connect(function()
+		Interface.play("Click")
+		fn()
+	end)
+end
+
+local function show(frame: Instance, name: string, value: string?)
+	local label = frame:FindFirstChild(name, true)
+	if label and label:IsA("TextLabel") then
+		label.Visible = value ~= nil
+		if value then
+			label.Text = value
+		end
 	end
 end
 
@@ -214,56 +170,50 @@ local function sortedKeys(): { string }
 end
 
 --------------------------------------------------------------------------
--- Cells
+-- Cells (copies of BackpackCell / EquippedCell)
 --------------------------------------------------------------------------
 
-local function makeCell(parent: Instance, key: string, count: number?, order: number): Frame?
+local function makeCell(parent: Instance, template: string, key: string, count: number?, order: number): GuiObject?
 	local def, variant = RollLogic.decodeKey(key)
 	if not (def and variant) then return nil end
-	local frame = Instance.new("Frame")
+	local frame = Roles.template(gui :: ScreenGui, template) :: GuiObject
 	frame.Name = key
 	frame.LayoutOrder = order
-	frame.BackgroundColor3 = CARD
-	round(frame, 0.1)
-	local stroke = outline(frame, EDGE, 2)
-	stroke.Name = "Edge"
+	frame:SetAttribute("BackpackCell", true)
 
-	local viewport = StudCell.viewport(def, variant)
-	viewport.Position = UDim2.fromScale(0.5, 0.46)
-	viewport.Size = UDim2.fromScale(0.82, 0.82)
-	viewport.ZIndex = 2
-	viewport.Parent = frame
-
-	text(frame, oddsText(def, variant), rarityColor(def):Lerp(Color3.new(1, 1, 1), 0.25), UDim2.fromScale(0.95, 0.22), UDim2.fromScale(0.025, 0.76))
-	if count and count > 1 then
-		text(frame, `x{count}`, Color3.new(1, 1, 1), UDim2.fromScale(0.36, 0.18), UDim2.fromScale(0.62, 0.03), Enum.TextXAlignment.Right)
+	local viewport = frame:FindFirstChildWhichIsA("ViewportFrame", true)
+	if viewport then
+		if not viewport.CurrentCamera then
+			viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
+		end
+		StudCell.setViewport(viewport, def, variant)
 	end
+	local odds = frame:FindFirstChild("Odds", true)
+	if odds and odds:IsA("TextLabel") then
+		odds.Text = oddsText(def, variant)
+		odds.TextColor3 = rarityColor(def):Lerp(Color3.new(1, 1, 1), 0.25)
+	end
+	show(frame, "Count", if count and count > 1 then `x{count}` else nil)
 	local level = levelOf(def)
-	if level > 1 then
-		text(frame, `Lv. {level}`, Color3.fromRGB(120, 200, 255), UDim2.fromScale(0.5, 0.18), UDim2.fromScale(0.25, 0.03))
-	end
+	show(frame, "Level", if level > 1 then `Lv. {level}` else nil)
 	local badge = BADGES[variant.Name]
-	if badge then
-		text(frame, `<font color="{badge[2]}">{badge[1]}</font>`, Color3.new(1, 1, 1), UDim2.fromScale(0.42, 0.17), UDim2.fromScale(0.03, 0.03), Enum.TextXAlignment.Left)
-	end
+	show(frame, "Badge", if badge then `<font color="{badge[2]}">{badge[1]}</font>` else nil)
+	show(frame, "Check", if template == "BackpackCell" and equippedCount(key) > 0 then "✓" else nil)
 
-	local hit = Instance.new("TextButton")
-	hit.Text = ""
-	hit.BackgroundTransparency = 1
-	hit.Size = UDim2.fromScale(1, 1)
-	hit.ZIndex = 6
-	hit.Parent = frame
-	hit.Activated:Connect(function()
-		Interface.play("Click")
-		StudsMenu.select(if selected == key then nil else key)
-	end)
+	local hit = frame:FindFirstChildWhichIsA("GuiButton", true)
+	if hit then
+		hit.Activated:Connect(function()
+			Interface.play("Click")
+			StudsMenu.select(if selected == key then nil else key)
+		end)
+	end
 	frame.Parent = parent
 	return frame
 end
 
 local function clear(container: Instance)
 	for _, child in container:GetChildren() do
-		if child:IsA("Frame") then
+		if child:GetAttribute("BackpackCell") then
 			child:Destroy()
 		end
 	end
@@ -297,7 +247,8 @@ local function renderCard()
 	local canEquipMore = equippedCount(key) < owned(key) and #equippedList() < State.stats().Slots
 	local equipping = canEquipMore or equippedCount(key) == 0
 	setButtonText(cardParts.equip, if equipping then "EQUIP" else "UNEQUIP")
-	cardParts.equip.BackgroundColor3 = if equipping then GREEN else Color3.fromRGB(220, 140, 40)
+	local unequipColor = cardParts.equip:GetAttribute("UnequipColor")
+	cardParts.equip.BackgroundColor3 = if equipping or typeof(unequipColor) ~= "Color3" then equipColor else unequipColor
 	local fuseCost = State.stats().FuseCost
 	if Variants.Next[variant.Name] then
 		setButtonText(cardParts.fuse, `FUSE {math.min(owned(key), fuseCost)}/{fuseCost}`)
@@ -320,20 +271,16 @@ local function render()
 
 	clear(equippedRow)
 	for i, key in equipped do
-		makeCell(equippedRow, key, nil, i)
+		makeCell(equippedRow, "EquippedCell", key, nil, i)
 	end
 
 	clear(grid)
 	table.clear(cells)
 	local studs = State.get("Studs") or {}
 	for order, key in sortedKeys() do
-		local cell = makeCell(grid, key, studs[key], order)
+		local cell = makeCell(grid, "BackpackCell", key, studs[key], order)
 		if cell then
 			cells[key] = cell
-			if equippedCount(key) > 0 then
-				local check = text(cell, "✓", GREEN, UDim2.fromScale(0.3, 0.22), UDim2.fromScale(0.68, 0.55), Enum.TextXAlignment.Right)
-				check.ZIndex = 5
-			end
 		end
 	end
 	if selected and not cells[selected] then
@@ -343,13 +290,14 @@ local function render()
 		local edge = cells[selected]:FindFirstChild("Edge")
 		if edge and edge:IsA("UIStroke") then
 			edge.Color = Color3.new(1, 1, 1)
-			edge.Thickness = 3
+			edge.Thickness += 1
 		end
 	end
 	renderCard()
 
 	storageText.Text = `🎒 {stats.StudCount}/{stats.MaxStuds}`
-	storageText.TextColor3 = if stats.StudCount >= stats.MaxStuds then RED else Color3.new(1, 1, 1)
+	local full = storageText:GetAttribute("FullColor")
+	storageText.TextColor3 = if stats.StudCount >= stats.MaxStuds and typeof(full) == "Color3" then full else storageColor
 	local threshold = autoDeleteThreshold()
 	setButtonText(autoButton, if threshold then `AUTO DELETE: {string.upper(threshold)}` else "AUTO DELETE: OFF")
 	setButtonText(sortButton, `SORT: {SORTS[sortIndex]}`)
@@ -451,197 +399,78 @@ local function onAutoDelete()
 end
 
 --------------------------------------------------------------------------
--- Build
+-- Bind (StarterGui.Studs)
 --------------------------------------------------------------------------
 
-local function build()
-	local screen = Instance.new("ScreenGui")
-	screen.Name = "Backpack"
-	screen.ResetOnSpawn = false
-	screen.DisplayOrder = 10
-	screen.IgnoreGuiInset = true
-	screen.Enabled = false
+local function bind(): boolean
+	if gui then return true end
+	local screen = Roles.gui(MENU)
+	if not Roles.find(screen, ROLE, "Grid") then
+		warn('[StudsMenu] StarterGui.Studs is the old window (no BackpackRole pieces); run tools/ui/migrate.luau on your place')
+		return false
+	end
 	gui = screen
+	local function part(name: string): any
+		return Roles.get(screen, ROLE, name)
+	end
 
-	local shade = Instance.new("Frame")
-	shade.Size = UDim2.fromScale(1, 1)
-	shade.BackgroundColor3 = Color3.new(0, 0, 0)
-	shade.BackgroundTransparency = 0.5
-	shade.Parent = screen
+	header = part("Header")
+	equippedRow = part("Equipped")
+	grid = part("Grid")
+	card = part("Card")
+	card.Visible = false
+	storageText = part("Storage")
+	storageColor = storageText.TextColor3
+	autoButton = part("AutoDelete")
+	sortButton = part("Sort")
+	bestButton = part("EquipBest")
 
-	local root = Instance.new("Frame")
-	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	root.Position = UDim2.fromScale(0.5, 0.52)
-	root.Size = UDim2.fromScale(0.62, 0.68)
-	root.BackgroundTransparency = 1
-	root.Parent = screen
-	local aspect = Instance.new("UIAspectRatioConstraint")
-	aspect.AspectRatio = 1.55
-	aspect.Parent = root
-	local limit = Instance.new("UISizeConstraint")
-	limit.MaxSize = Vector2.new(1100, 710)
-	limit.Parent = root
+	-- Grid cells stay square, sized off the grid's width.
+	local layout = grid:FindFirstChildOfClass("UIGridLayout")
+	if layout then
+		local cellScale = layout.CellSize.X.Scale
+		if cellScale <= 0 then cellScale = 0.148 end
+		local function sizeCells()
+			local width = grid.AbsoluteSize.X * cellScale
+			layout.CellSize = UDim2.fromOffset(width, width)
+			layout.CellPadding = UDim2.fromOffset(width * 0.08, width * 0.08)
+		end
+		grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
+		sizeCells()
+	end
 
-	-- Title and top buttons.
-	text(root, "Backpack", Color3.new(1, 1, 1), UDim2.fromScale(0.42, 0.12), UDim2.fromScale(0, -0.02), Enum.TextXAlignment.Left)
-	sortButton = button(root, "SORT: RARITY", GREEN)
-	sortButton.Position = UDim2.fromScale(0.5, 0.0)
-	sortButton.Size = UDim2.fromScale(0.2, 0.075)
-	sortButton.Activated:Connect(function()
-		Interface.play("Click")
+	local viewport = part("CardViewport") :: ViewportFrame
+	if not viewport:IsA("ViewportFrame") then
+		viewport = viewport:FindFirstChildWhichIsA("ViewportFrame", true) :: ViewportFrame
+	end
+	if not viewport.CurrentCamera then
+		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
+	end
+	cardParts.viewport = viewport
+	cardParts.name = part("CardName")
+	cardParts.odds = part("CardOdds")
+	cardParts.stats = part("CardStats")
+	cardParts.level = part("CardLevel")
+	cardParts.owned = part("CardOwned")
+	cardParts.equip = part("Equip")
+	cardParts.fuse = part("Fuse")
+	equipColor = cardParts.equip.BackgroundColor3
+
+	onClick(sortButton, function()
 		sortIndex = sortIndex % #SORTS + 1
 		render()
 	end)
-	local best = button(root, "EQUIP BEST", BLUE)
-	best.Position = UDim2.fromScale(0.715, 0.0)
-	best.Size = UDim2.fromScale(0.19, 0.075)
-	bestButton = best
-	best.Activated:Connect(function()
-		Interface.play("Click")
+	onClick(bestButton :: GuiObject, function()
 		run(State.equipBest)
 	end)
-	local close = button(root, "X", RED)
-	close.Position = UDim2.fromScale(0.92, -0.01)
-	close.Size = UDim2.fromScale(0.075, 0.1)
-	close.Activated:Connect(function()
-		Interface.play("Click")
-		Interface.close(MENU)
-	end)
-
-	-- Main panel.
-	local panel = Instance.new("Frame")
-	panel.Position = UDim2.fromScale(0, 0.1)
-	panel.Size = UDim2.fromScale(1, 0.9)
-	panel.BackgroundColor3 = PANEL
-	panel.Parent = root
-	round(panel, 0.035)
-	outline(panel, EDGE, 4)
-
-	header = text(panel, "", Color3.new(1, 1, 1), UDim2.fromScale(0.7, 0.06), UDim2.fromScale(0.15, 0.02))
-
-	equippedRow = Instance.new("Frame")
-	equippedRow.BackgroundTransparency = 1
-	equippedRow.Position = UDim2.fromScale(0.02, 0.09)
-	equippedRow.Size = UDim2.fromScale(0.96, 0.17)
-	equippedRow.Parent = panel
-	local rowLayout = Instance.new("UIListLayout")
-	rowLayout.FillDirection = Enum.FillDirection.Horizontal
-	rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	rowLayout.Padding = UDim.new(0.012, 0)
-	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	rowLayout.Parent = equippedRow
-	-- Row cells are square, sized off the row's height.
-	equippedRow.ChildAdded:Connect(function(child)
-		if child:IsA("Frame") then
-			child.Size = UDim2.fromScale(0.105, 1)
-			local square = Instance.new("UIAspectRatioConstraint")
-			square.AspectRatio = 1
-			square.Parent = child
-		end
-	end)
-
-	local divider = Instance.new("Frame")
-	divider.Position = UDim2.fromScale(0.08, 0.285)
-	divider.Size = UDim2.fromScale(0.84, 0.006)
-	divider.BackgroundColor3 = Color3.fromRGB(70, 72, 86)
-	divider.BorderSizePixel = 0
-	divider.Parent = panel
-
-	grid = Instance.new("ScrollingFrame")
-	grid.BackgroundTransparency = 1
-	grid.BorderSizePixel = 0
-	grid.Position = UDim2.fromScale(0.02, 0.31)
-	grid.Size = UDim2.fromScale(0.96, 0.59)
-	grid.CanvasSize = UDim2.new()
-	grid.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	grid.ScrollingDirection = Enum.ScrollingDirection.Y
-	grid.ScrollBarThickness = 6
-	grid.Parent = panel
-	local layout = Instance.new("UIGridLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.Parent = grid
-	local function sizeCells()
-		local width = grid.AbsoluteSize.X * 0.148
-		layout.CellSize = UDim2.fromOffset(width, width)
-		layout.CellPadding = UDim2.fromOffset(width * 0.08, width * 0.08)
-	end
-	grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
-	sizeCells()
-
-	-- Footer: storage and auto delete.
-	storageText = text(panel, "", Color3.new(1, 1, 1), UDim2.fromScale(0.25, 0.06), UDim2.fromScale(0.03, 0.915), Enum.TextXAlignment.Left)
-	autoButton = button(panel, "AUTO DELETE: OFF", Color3.fromRGB(90, 90, 110))
-	autoButton.Position = UDim2.fromScale(0.66, 0.905)
-	autoButton.Size = UDim2.fromScale(0.31, 0.075)
-	autoButton.Activated:Connect(function()
-		Interface.play("Click")
-		onAutoDelete()
-	end)
-
-	-- Selected stud card (slides over the right of the grid).
-	card = Instance.new("Frame")
-	card.AnchorPoint = Vector2.new(1, 0)
-	card.Position = UDim2.fromScale(1.015, 0.29)
-	card.Size = UDim2.fromScale(0.3, 0.62)
-	card.BackgroundColor3 = Color3.fromRGB(24, 25, 32)
-	card.Visible = false
-	card.ZIndex = 8
-	card.Parent = panel
-	round(card, 0.06)
-	outline(card, EDGE, 4)
-	local viewport = StudCell.viewport(Studs.List[1], Variants.ById.Normal)
-	viewport.Position = UDim2.fromScale(0.5, 0.18)
-	viewport.Size = UDim2.fromScale(0.5, 0.5)
-	viewport.ZIndex = 9
-	viewport.Parent = card
-	cardParts.viewport = viewport
-	cardParts.name = text(card, "", Color3.new(1, 1, 1), UDim2.fromScale(0.92, 0.08), UDim2.fromScale(0.04, 0.37))
-	cardParts.odds = text(card, "", ODDS, UDim2.fromScale(0.9, 0.06), UDim2.fromScale(0.05, 0.45))
-	cardParts.stats = text(card, "", Color3.new(1, 1, 1), UDim2.fromScale(0.92, 0.06), UDim2.fromScale(0.04, 0.52))
-	cardParts.level = text(card, "", Color3.fromRGB(120, 200, 255), UDim2.fromScale(0.9, 0.055), UDim2.fromScale(0.05, 0.585))
-	cardParts.owned = text(card, "", Color3.fromRGB(190, 195, 215), UDim2.fromScale(0.9, 0.05), UDim2.fromScale(0.05, 0.645))
-	for _, label in { cardParts.name, cardParts.odds, cardParts.stats, cardParts.level, cardParts.owned } do
-		label.ZIndex = 9
-	end
-	cardParts.equip = button(card, "EQUIP", GREEN)
-	cardParts.equip.Position = UDim2.fromScale(0.06, 0.71)
-	cardParts.equip.Size = UDim2.fromScale(0.88, 0.085)
-	cardParts.fuse = button(card, "FUSE", Color3.fromRGB(160, 90, 230))
-	cardParts.fuse.Position = UDim2.fromScale(0.06, 0.805)
-	cardParts.fuse.Size = UDim2.fromScale(0.56, 0.085)
-	local delete = button(card, "DELETE", RED)
-	delete.Position = UDim2.fromScale(0.64, 0.805)
-	delete.Size = UDim2.fromScale(0.3, 0.085)
-	local deselect = button(card, "CLOSE", Color3.fromRGB(70, 72, 86))
-	deselect.Position = UDim2.fromScale(0.06, 0.9)
-	deselect.Size = UDim2.fromScale(0.88, 0.075)
-	for _, b in { cardParts.equip, cardParts.fuse, delete, deselect } do
-		b.ZIndex = 9
-		for _, child in b:GetDescendants() do
-			if child:IsA("GuiObject") then
-				child.ZIndex = 10
-			end
-		end
-	end
-	cardParts.equip.Activated:Connect(function()
-		Interface.play("Click")
-		onEquip()
-	end)
-	cardParts.fuse.Activated:Connect(function()
-		Interface.play("Click")
-		onFuse()
-	end)
-	delete.Activated:Connect(function()
-		Interface.play("Click")
-		onDelete()
-	end)
-	deselect.Activated:Connect(function()
-		Interface.play("Click")
+	onClick(autoButton, onAutoDelete)
+	onClick(cardParts.equip, onEquip)
+	onClick(cardParts.fuse, onFuse)
+	onClick(part("Delete"), onDelete)
+	onClick(part("Deselect"), function()
 		StudsMenu.select(nil)
 	end)
-
-	screen.Parent = player:WaitForChild("PlayerGui")
+	return true
 end
 
 --------------------------------------------------------------------------
@@ -649,18 +478,11 @@ end
 --------------------------------------------------------------------------
 
 function StudsMenu.open()
-	if not gui then build() end
-	local screen = gui :: ScreenGui
-	if screen.Enabled then return end
-	screen.Enabled = true
-	render()
+	Interface.open(MENU)
 end
 
 function StudsMenu.close()
-	if gui then
-		gui.Enabled = false
-	end
-	selected = nil
+	Interface.close(MENU)
 end
 
 -- For the tutorial's pointer.
@@ -669,17 +491,22 @@ function StudsMenu.equipBestButton(): GuiObject?
 end
 
 function StudsMenu.isOpen(): boolean
-	return gui ~= nil and gui.Enabled
+	return Interface.isOpen(MENU)
 end
 
 function StudsMenu.start()
 	Interface.setup()
-	-- Replaces the kit's Studs window: every "Studs" button opens this.
-	Interface.registerMenu(MENU, {
-		open = StudsMenu.open,
-		close = StudsMenu.close,
-		isOpen = StudsMenu.isOpen,
-	})
+	if not bind() then return end
+	Interface.MenuOpened:Connect(function(name)
+		if name == MENU then
+			render()
+		end
+	end)
+	Interface.MenuClosed:Connect(function(name)
+		if name == MENU then
+			selected = nil
+		end
+	end)
 
 	-- Studs, Equipped and Stats usually change together: one render a patch.
 	local queued = false
