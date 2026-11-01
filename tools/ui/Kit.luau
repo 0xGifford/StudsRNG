@@ -163,6 +163,39 @@ function Kit.kitLabel(text: string, props: { [string]: any }?): any
 	return label
 end
 
+-- A 3D stud preview, like Templates.StudViewport (UI/StudCell fills it).
+function Kit.viewport(props: { [string]: any }?): any
+	local viewport = Kit.new("ViewportFrame", {
+		Name = "Viewport", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromScale(0.72, 0.72), Ambient = Color3.fromRGB(170, 170, 170), LightColor = Color3.new(1, 1, 1),
+		LightDirection = roblox.Vector3.new(-1, -1.5, -1), ZIndex = 1,
+	})
+	Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }, viewport)
+	local camera = Kit.new("Camera", {
+		Name = "Camera", FieldOfView = 30,
+		CFrame = roblox.CFrame.lookAt(roblox.Vector3.new(0, 0, 3.4), roblox.Vector3.new(0, 0, 0)),
+	}, viewport)
+	viewport.CurrentCamera = camera
+	for key, value in props or {} do
+		viewport[key] = value
+	end
+	return viewport
+end
+
+-- A MenuSystem menu ScreenGui whose window is `panel` itself (custom-built
+-- menus): tagged Menu, the panel MenuPanel = true, Scale = false.
+function Kit.panelMenu(name: string, panel: any): any
+	local gui = Kit.new("ScreenGui", {
+		Name = name, ResetOnSpawn = false, Enabled = false, IgnoreGuiInset = true, DisplayOrder = 10,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+	gui:AddTag("Menu")
+	gui:SetAttribute("Scale", false)
+	panel:SetAttribute("MenuPanel", true)
+	panel.Parent = gui
+	return gui
+end
+
 -- A kit button frame (with its transparent TextButton named "Button"),
 -- cloned from Assets.UI.Templates.Buttons.
 function Kit.button(color: string, text: string, props: { [string]: any }?): any

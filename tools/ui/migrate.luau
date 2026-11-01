@@ -25,6 +25,8 @@
 	    true), side buttons for the Pass and Badges menus, and the combo
 	    meter label under the Clacks counter (HudRole = "Combo") and the layer
 	    the Clacks popups fly across (HudRole = "ClackPopups").
+	  * Menus whose UI used to be built in code (Index, ...) get the repo's
+	    StarterGui build in place of the kit pack's old window (REPLACED).
 ]]
 
 local fs = require("@lune/fs")
@@ -368,9 +370,40 @@ local function addDailyStreak(starterGui: any, log: { string })
 	table.insert(log, "Daily: added the week streak label (DailyRole = WeekStreak)")
 end
 
+-- Menus whose code-built UI moved into StarterGui: the repo's build
+-- (src/StarterGui/<name>.rbxm) replaces a ScreenGui of that name that has
+-- none of the role attribute (the kit pack's unused placeholder window), or
+-- is added when there's none. Keyed by the role attribute its code finds.
+local REPLACED = {
+	Index = "IndexRole",
+}
+
+local function hasRole(root: any, attribute: string): boolean
+	for _, d in root:GetDescendants() do
+		if d:GetAttribute(attribute) ~= nil then return true end
+	end
+	return false
+end
+
+local function replaceBuilt(starterGui: any, log: { string })
+	for name, attribute in REPLACED do
+		local old = starterGui:FindFirstChild(name)
+		if old and hasRole(old, attribute) then continue end
+		local path = `src/StarterGui/{name}.rbxm`
+		if not fs.isFile(path) then continue end
+		local built = roblox.deserializeModel(fs.readFile(path))[1]
+		if old then
+			old:Destroy()
+		end
+		built.Parent = starterGui
+		table.insert(log, `{name}: {if old then "replaced the old window with" else "added"} the repo build ({attribute})`)
+	end
+end
+
 local function migrate(starterGui: any): { string }
 	local log = {}
 	splitMenu(starterGui, log)
+	replaceBuilt(starterGui, log)
 	for _, gui in starterGui:GetChildren() do
 		if gui:IsA("ScreenGui") then
 			moveButtonAttributes(gui, log)
