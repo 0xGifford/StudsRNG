@@ -148,6 +148,21 @@ function Kit.panel(props: { [string]: any }?): any
 	return panel
 end
 
+-- The kit's title label (the StudCell title's look), like UI/Kit's Kit.label.
+function Kit.kitLabel(text: string, props: { [string]: any }?): any
+	local label = uiAssets.Templates.StudCell.Title:Clone()
+	label.Name = "Label"
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Position = UDim2.fromScale(0.5, 0.5)
+	label.Size = UDim2.fromScale(1, 1)
+	label.ZIndex = 2
+	label.Text = text
+	for key, value in props or {} do
+		label[key] = value
+	end
+	return label
+end
+
 -- A kit button frame (with its transparent TextButton named "Button"),
 -- cloned from Assets.UI.Templates.Buttons.
 function Kit.button(color: string, text: string, props: { [string]: any }?): any

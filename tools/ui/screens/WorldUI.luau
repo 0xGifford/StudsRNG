@@ -18,6 +18,13 @@
 	Keys (Controllers/KeyLabels), KeyRole:
 	  KeyReward            Text ("+1"), a SurfaceGui on the key's top (pulses)
 
+	Zone barriers (Controllers/ZonesMenu), SignRole:
+	  BarrierSign          a SurfaceGui put on both faces of a locked zone's
+	                       barrier: Panel (centred near the bottom, scaled to
+	                       fit the barrier; its UIStroke "Outline" is tinted),
+	                       Title, Icon, Amount (the price), Buy (kit button),
+	                       Note ("Unlock Zone 3 first", instead of Buy)
+
 	Titles (Systems/Achievements, on the server: read from StarterGui), TitleRole:
 	  TitleTag             Text ("« Voyager »", tinted by the title's colour)
 
@@ -111,6 +118,52 @@ local levelUp = billboard("LevelUpPopup", UDim2.fromScale(8, 1.6), { AlwaysOnTop
 local levelText = text(levelUp, "Text", "⭐ STUD LV 5", BOSS_GOLD, UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5), "PopupRole")
 levelText:FindFirstChildOfClass("UIStroke").Thickness = 3
 Kit.new("UIScale", {}, levelText)
+
+---------------------------------------------------------------- Zone barriers
+
+local sign = template("SurfaceGui", "BarrierSign", {
+	SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 25, LightInfluence = 0, MaxDistance = 150,
+	ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+})
+-- Designed at 22 x 12 studs (550 x 300 px): the code scales it down on a
+-- narrower barrier and lifts it 8 studs off the bottom.
+local panel = Kit.new("Frame", {
+	Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.fromOffset(550, 300),
+	BackgroundColor3 = Color3.fromRGB(36, 38, 50), BackgroundTransparency = 0.05, BorderSizePixel = 0,
+}, sign)
+panel:SetAttribute("SignRole", "Panel")
+Kit.new("UICorner", { CornerRadius = UDim.new(0.12, 0) }, panel)
+Kit.new("UIStroke", { Name = "Outline", Thickness = 8, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, panel)
+Kit.new("UIScale", { Name = "Fit" }, panel)
+local signTitle = Kit.kitLabel("Zone 2", { Name = "Title", Position = UDim2.fromScale(0.5, 0.19), Size = UDim2.fromScale(0.9, 0.26) })
+signTitle:SetAttribute("SignRole", "Title")
+signTitle.Parent = panel
+local priceRow = Kit.new("Frame", {
+	Name = "Price", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.46), Size = UDim2.fromScale(0.9, 0.22),
+}, panel)
+Kit.new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center,
+	VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0.02, 0), SortOrder = Enum.SortOrder.LayoutOrder,
+}, priceRow)
+local icon = Kit.new("ImageLabel", {
+	Name = "Icon", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), SizeConstraint = Enum.SizeConstraint.RelativeYY,
+	ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1,
+}, priceRow)
+icon:SetAttribute("SignRole", "Icon")
+icon.Image = "rbxassetid://117187305699068" -- the Clacks icon (UIConfig.Icons.Clacks)
+local amount = Kit.new("TextLabel", {
+	Name = "Amount", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1),
+	FontFace = FONT, TextSize = 60, TextWrapped = false, TextColor3 = Color3.new(1, 1, 1), Text = "1.4K", LayoutOrder = 2,
+}, priceRow)
+amount:SetAttribute("SignRole", "Amount")
+Kit.new("UIStroke", { Thickness = 4, Color = Color3.fromRGB(12, 12, 16) }, amount)
+local buy = Kit.button("Green", "BUY", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.77), Size = UDim2.fromScale(0.5, 0.3) })
+buy.Name = "Buy"
+buy:SetAttribute("SignRole", "Buy")
+buy.Parent = panel
+local note = Kit.kitLabel("Unlock Zone 1 first", { Name = "Note", Position = UDim2.fromScale(0.5, 0.77), Size = UDim2.fromScale(0.9, 0.2), TextColor3 = Color3.fromRGB(255, 120, 120), Visible = false })
+note:SetAttribute("SignRole", "Note")
+note.Parent = panel
 
 ---------------------------------------------------------------- Titles
 

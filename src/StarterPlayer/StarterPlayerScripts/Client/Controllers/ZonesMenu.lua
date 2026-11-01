@@ -37,6 +37,7 @@ local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local State = require(Controllers.State)
 local Interface = require(UI.Interface)
+local Roles = require(UI.Roles)
 local Kit = require(UI.Kit)
 local Format = require(UI.Format)
 local UIConfig = require(UI.UIConfig)
@@ -45,10 +46,8 @@ local CombatFx = require(UI.CombatFx)
 local ZonesMenu = {}
 
 local MENU = "Zones"
-local ROW_COLOR = Color3.fromRGB(36, 38, 50)
 local SIGN_DISTANCE = 150 -- studs the barrier sign renders from
-local SIGN_SIZE = Vector2.new(22, 12) -- studs
-local SIGN_PIXELS = 25 -- per stud
+local SIGN_SIZE = Vector2.new(22, 12) -- studs the sign is designed at (WorldUI.BarrierSign)
 local SIGN_LIFT = 8 -- studs from the barrier's bottom to the sign's centre
 
 local player = Players.LocalPlayer
@@ -150,52 +149,23 @@ local function onZone(def: Zones.ZoneDef)
 	end
 end
 
--- One Teleporter row: "3  Polar ............ [Teleport]".
+-- One Teleporter row: a copy of StarterGui.Templates.ZoneRow (ZoneRole:
+-- Number, ZoneName, Info, Action).
 local function makeRow(def: Zones.ZoneDef): Frame
-	local row = Instance.new("Frame")
+	local row = Kit.template("ZoneRow") :: Frame
 	row.Name = def.Id
-	row.BackgroundColor3 = ROW_COLOR
-	row.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.18, 0)
-	corner.Parent = row
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(12, 12, 18)
-	stroke.Thickness = 2
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = row
-
-	local number = Kit.label(tostring(def.Order))
-	number.Name = "Number"
-	number.AnchorPoint = Vector2.new(0.5, 0.5)
-	number.Position = UDim2.fromScale(0.065, 0.5)
-	number.Size = UDim2.fromScale(0.07, 0.5)
-	number.Parent = row
-
-	local name = Kit.label(Zones.title(def))
-	name.Name = "ZoneName"
-	name.AnchorPoint = Vector2.new(0, 0.5)
-	name.Position = UDim2.fromScale(0.13, 0.4)
-	name.Size = UDim2.fromScale(0.52, 0.46)
-	name.TextXAlignment = Enum.TextXAlignment.Left
-	name.Parent = row
-
-	local studs = Zones.studCount(def.Id)
-	local info = Kit.label(`x{Format.number(def.KeyMultiplier)} Clacks per key` .. (if studs > 0 then ` · {studs} zone studs` else ""))
-	info.Name = "Info"
-	info.AnchorPoint = Vector2.new(0, 0.5)
-	info.Position = UDim2.fromScale(0.13, 0.78)
-	info.Size = UDim2.fromScale(0.52, 0.24)
-	info.TextXAlignment = Enum.TextXAlignment.Left
-	info.TextColor3 = def.Color
-	info.Parent = row
-
-	local button = Kit.button("Green", "Teleport")
+	local number = Roles.find(row, "ZoneRole", "Number")
+	if number then number.Text = tostring(def.Order) end
+	local name = Roles.find(row, "ZoneRole", "ZoneName")
+	if name then name.Text = Zones.title(def) end
+	local info = Roles.find(row, "ZoneRole", "Info")
+	if info then
+		local studs = Zones.studCount(def.Id)
+		info.Text = `x{Format.number(def.KeyMultiplier)} Clacks per key` .. (if studs > 0 then ` · {studs} zone studs` else "")
+		info.TextColor3 = def.Color
+	end
+	local button = Roles.get(row, "ZoneRole", "Action") :: Frame
 	button.Name = "Action"
-	button.AnchorPoint = Vector2.new(1, 0.5)
-	button.Position = UDim2.fromScale(0.97, 0.5)
-	button.Size = UDim2.fromScale(0.27, 0.62)
-	button.Parent = row
 	Interface.bindButton(button, function()
 		onZone(def)
 	end)
@@ -248,97 +218,31 @@ local function makeFace(part: BasePart, face: Enum.NormalId, maxDistance: number
 	local scale = math.min(1, width * 0.9 / SIGN_SIZE.X, height * 0.9 / SIGN_SIZE.Y)
 	local lift = math.min(SIGN_LIFT, height / 2)
 
-	-- Parented to PlayerGui (adorned to the part) so the button takes clicks.
-	local gui = Instance.new("SurfaceGui")
+	-- A copy of StarterGui.WorldUI's BarrierSign, parented to PlayerGui
+	-- (adorned to the part) so the button takes clicks.
+	local gui = Roles.template(Roles.gui("WorldUI"), "BarrierSign") :: SurfaceGui
 	gui.Name = "ZoneSign"
 	gui.Adornee = part
 	gui.Face = face
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = SIGN_PIXELS
-	gui.LightInfluence = 0
 	gui.MaxDistance = maxDistance
-	gui.ResetOnSpawn = false
-	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-	local panel = Instance.new("Frame")
-	panel.Name = "Panel"
+	local pixels = gui.PixelsPerStud
+	local panel = Roles.get(gui, "SignRole", "Panel") :: Frame
+	-- Lifted off the barrier's bottom, scaled down to fit a narrow barrier.
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
-	panel.Position = UDim2.new(0.5, 0, 0, (height - lift) * SIGN_PIXELS)
-	panel.Size = UDim2.fromOffset(SIGN_SIZE.X * SIGN_PIXELS * scale, SIGN_SIZE.Y * SIGN_PIXELS * scale)
-	panel.BackgroundColor3 = ROW_COLOR
-	panel.BackgroundTransparency = 0.05
-	panel.BorderSizePixel = 0
-	panel.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.12, 0)
-	corner.Parent = panel
-	local stroke = Instance.new("UIStroke")
-	stroke.Name = "Outline"
-	stroke.Thickness = 8 * scale
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = panel
-
-	local title = Kit.label("")
-	title.Name = "Title"
-	title.Position = UDim2.fromScale(0.5, 0.19)
-	title.Size = UDim2.fromScale(0.9, 0.26)
-	title.Parent = panel
-
-	local priceRow = Instance.new("Frame")
-	priceRow.Name = "Price"
-	priceRow.BackgroundTransparency = 1
-	priceRow.AnchorPoint = Vector2.new(0.5, 0.5)
-	priceRow.Position = UDim2.fromScale(0.5, 0.46)
-	priceRow.Size = UDim2.fromScale(0.9, 0.22)
-	priceRow.Parent = panel
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Horizontal
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.Padding = UDim.new(0.02, 0)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = priceRow
-	local icon = Instance.new("ImageLabel")
-	icon.Name = "Icon"
-	icon.BackgroundTransparency = 1
-	icon.Size = UDim2.fromScale(1, 1)
-	icon.SizeConstraint = Enum.SizeConstraint.RelativeYY
-	icon.ScaleType = Enum.ScaleType.Fit
-	icon.LayoutOrder = 1
-	icon.Parent = priceRow
-	Kit.setIcon(icon, UIConfig.Icons.Clacks)
-	-- Its own label, never wrapping, so "400K" can't break across lines.
-	local price = Instance.new("TextLabel")
-	price.Name = "Amount"
-	price.BackgroundTransparency = 1
-	price.AutomaticSize = Enum.AutomaticSize.X
-	price.Size = UDim2.fromScale(0, 1)
-	price.FontFace = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
-	price.TextSize = SIGN_SIZE.Y * SIGN_PIXELS * scale * 0.2
-	price.TextWrapped = false
-	price.TextColor3 = Color3.new(1, 1, 1)
-	price.LayoutOrder = 2
-	local priceStroke = Instance.new("UIStroke")
-	priceStroke.Thickness = 4 * scale
-	priceStroke.Color = Color3.fromRGB(12, 12, 16)
-	priceStroke.Parent = price
-	price.Parent = priceRow
-
-	local button = Kit.button("Green", "BUY")
-	button.Name = "Buy"
-	button.AnchorPoint = Vector2.new(0.5, 0.5)
-	button.Position = UDim2.fromScale(0.5, 0.77)
-	button.Size = UDim2.fromScale(0.5, 0.3)
-	button.Parent = panel
-
-	-- Shown instead of the button when an earlier zone is still locked.
-	local note = Kit.label("")
-	note.Name = "Note"
-	note.Position = UDim2.fromScale(0.5, 0.77)
-	note.Size = UDim2.fromScale(0.9, 0.2)
-	note.TextColor3 = Color3.fromRGB(255, 120, 120)
+	panel.Position = UDim2.new(0.5, 0, 0, (height - lift) * pixels)
+	local fit = panel:FindFirstChildOfClass("UIScale")
+	if fit then
+		fit.Scale = scale
+	end
+	local title = Roles.get(gui, "SignRole", "Title") :: TextLabel
+	local price = Roles.get(gui, "SignRole", "Amount") :: TextLabel
+	local icon = Roles.find(gui, "SignRole", "Icon")
+	if icon and icon:IsA("ImageLabel") then
+		Kit.setIcon(icon, UIConfig.Icons.Clacks)
+	end
+	local button = Roles.get(gui, "SignRole", "Buy") :: Frame
+	local note = Roles.get(gui, "SignRole", "Note") :: TextLabel
 	note.Visible = false
-	note.Parent = panel
 
 	gui.Parent = playerGui
 	return { gui = gui, panel = panel, title = title, price = price, note = note, button = button }

@@ -13,6 +13,8 @@
 	  Paragraph  wrapped body text (Kit.paragraph)
 	  GridRow    a row of side-by-side cells (Kit.gridRow)
 	  OddsRow    a row of the Odds menu's table: 4 cells (OddsCell = 1..4)
+	  ZoneRow    a Teleporter row (ZonesMenu), ZoneRole: Number, ZoneName,
+	             Info, Action (the kit button: Teleport / price / Locked)
 	  StudViewport  the 3D stud preview (UI/StudCell): a ViewportFrame with its
 	             Camera (keep the stud centred at the origin in front of it)
 ]]
@@ -82,6 +84,24 @@ for i, width in widths do
 	cell.Parent = odds
 	x += width
 end
+
+-- A Teleporter row (ZonesMenu).
+local zoneRow = Kit.new("Frame", { Name = "ZoneRow", BackgroundColor3 = Color3.fromRGB(36, 38, 50), BorderSizePixel = 0, Size = UDim2.fromScale(0.925, 0.15) }, gui)
+Kit.new("UICorner", { CornerRadius = UDim.new(0.18, 0) }, zoneRow)
+Kit.new("UIStroke", { Color = Color3.fromRGB(12, 12, 18), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, zoneRow)
+local function zoneText(name: string, value: string, props: { [string]: any })
+	local l = Kit.kitLabel(value, props)
+	l.Name = name
+	l:SetAttribute("ZoneRole", name)
+	l.Parent = zoneRow
+end
+zoneText("Number", "1", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.065, 0.5), Size = UDim2.fromScale(0.07, 0.5) })
+zoneText("ZoneName", "Zone 1", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.13, 0.4), Size = UDim2.fromScale(0.52, 0.46), TextXAlignment = Enum.TextXAlignment.Left })
+zoneText("Info", "x1 Clacks per key", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.13, 0.78), Size = UDim2.fromScale(0.52, 0.24), TextXAlignment = Enum.TextXAlignment.Left })
+local action = Kit.button("Green", "Teleport", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(0.97, 0.5), Size = UDim2.fromScale(0.27, 0.62) })
+action.Name = "Action"
+action:SetAttribute("ZoneRole", "Action")
+action.Parent = zoneRow
 
 -- The 3D stud preview (StudCell.viewport).
 local viewport = Kit.new("ViewportFrame", {
