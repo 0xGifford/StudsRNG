@@ -104,7 +104,18 @@ function Interface.setup()
 	settingUp = true
 
 	local playerGui = player:WaitForChild("PlayerGui")
-	Interface.HUD = playerGui:WaitForChild("HUD") :: ScreenGui
+	-- StarterGui copies arrive when the character first spawns, which the
+	-- loading screen can hold back: wait as long as it takes, quietly.
+	local hud = playerGui:FindFirstChild("HUD")
+	local waited = 0
+	while not hud do
+		hud = playerGui:WaitForChild("HUD", 10)
+		waited += 10
+		if not hud and waited == 30 then
+			warn("[Interface] still waiting for PlayerGui.HUD (is there a ScreenGui named HUD in StarterGui?)")
+		end
+	end
+	Interface.HUD = hud :: ScreenGui
 
 	local assets = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("UI")
 	-- Reusable pieces live in StarterGui.Templates (a disabled ScreenGui);
@@ -153,15 +164,21 @@ function Interface.setup()
 end
 
 -- A menu's window (its MenuPanel frame), e.g. Interface.window("Store").
--- Yields until it has replicated.
+-- When panels are nested (a "Canva" holder and the window inside it), the
+-- innermost one is the window. Yields until it has replicated.
 function Interface.window(name: string): GuiObject
-	local playerGui = player:WaitForChild("PlayerGui")
-	local gui = playerGui:WaitForChild(name)
+	local gui = Roles.gui(name)
 	while true do
+		local found: GuiObject? = nil
 		for _, descendant in gui:GetDescendants() do
 			if descendant:GetAttribute("MenuPanel") == true and descendant:IsA("GuiObject") then
-				return descendant
+				if not found or descendant:IsDescendantOf(found) then
+					found = descendant
+				end
 			end
+		end
+		if found then
+			return found
 		end
 		task.wait(0.1)
 	end

@@ -242,6 +242,14 @@ function Scale.Add(panel: GuiObject)
 	-- so the authored pixel size is only available up to this point.
 	local design = designSizeOf(panel)
 	if not design then
+		-- Sized in scale and held to an aspect ratio: it's responsive already.
+		local holder: Instance? = panel
+		while holder and holder:IsA("GuiObject") do
+			if holder:FindFirstChildOfClass("UIAspectRatioConstraint") then
+				return
+			end
+			holder = holder.Parent
+		end
 		warn(("[Scale] %s is not sized in pixels; set a ScaleDesign Vector2 to scale it")
 			:format(panel:GetFullName()))
 		return

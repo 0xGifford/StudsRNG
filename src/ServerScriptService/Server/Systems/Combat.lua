@@ -261,6 +261,12 @@ end
 
 -- The server's enemy is an invisible proxy. EnemyVisuals builds the
 -- visible monster on each client and glides it after this proxy.
+-- The running event's enemy changes (Config.Events: Enemies), or nil.
+local function eventEnemies(): { Glow: Color3?, Health: number?, Damage: number?, Reward: number?, Size: number? }?
+	local def = RollLogic.eventById(ServerEffects.currentEvent())
+	return if def then def.Enemies else nil
+end
+
 local function buildModel(enemy: Enemy): (Model, BasePart)
 	local s = enemy.size
 
@@ -305,12 +311,6 @@ local function buildModel(enemy: Enemy): (Model, BasePart)
 end
 
 -- (Re)spawns at home, rolling whether this one is a Mini Boss.
--- The running event's enemy changes (Config.Events: Enemies), or nil.
-local function eventEnemies(): { Glow: Color3?, Health: number?, Damage: number?, Reward: number?, Size: number? }?
-	local def = RollLogic.eventById(ServerEffects.currentEvent())
-	return if def then def.Enemies else nil
-end
-
 local function spawnEnemy(enemy: Enemy)
 	local def = enemy.def
 	local mega = enemy.mega and enemy.mega.MegaBoss

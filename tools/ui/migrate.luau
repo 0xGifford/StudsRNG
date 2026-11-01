@@ -404,10 +404,41 @@ local function replaceBuilt(starterGui: any, log: { string })
 	end
 end
 
+-- Menus split out of the kit's Menu.Canva keep a "Canva" holder sized in
+-- scale (with the Canva's aspect ratio), so MenuSystem's Scale must leave
+-- them alone (Scale = false). Only the window inside is the MenuPanel: a
+-- MenuPanel holding another MenuPanel loses the attribute.
+local function normalizeMenus(starterGui: any, log: { string })
+	for _, gui in starterGui:GetChildren() do
+		if not (gui:IsA("ScreenGui") and gui:HasTag("Menu")) then continue end
+		local canva = gui:FindFirstChild("Canva")
+		if canva and gui:GetAttribute("Scale") ~= false then
+			gui:SetAttribute("Scale", false)
+			table.insert(log, `{gui.Name}: Scale = false (its Canva is sized in scale)`)
+		end
+		local panels = {}
+		for _, d in gui:GetDescendants() do
+			if d:GetAttribute("MenuPanel") == true then
+				table.insert(panels, d)
+			end
+		end
+		for _, outer in panels do
+			for _, inner in panels do
+				if inner ~= outer and inner:IsDescendantOf(outer) then
+					outer:SetAttribute("MenuPanel", nil)
+					table.insert(log, `{gui.Name}: {outer.Name} is not the window ({inner.Name} is), MenuPanel removed`)
+					break
+				end
+			end
+		end
+	end
+end
+
 local function migrate(starterGui: any): { string }
 	local log = {}
 	splitMenu(starterGui, log)
 	replaceBuilt(starterGui, log)
+	normalizeMenus(starterGui, log)
 	for _, gui in starterGui:GetChildren() do
 		if gui:IsA("ScreenGui") then
 			moveButtonAttributes(gui, log)

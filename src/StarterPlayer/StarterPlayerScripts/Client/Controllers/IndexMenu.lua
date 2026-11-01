@@ -86,7 +86,7 @@ local function highlight(stroke: UIStroke?, on: boolean)
 end
 
 local function viewportOf(frame: Instance): ViewportFrame
-	local viewport = frame:FindFirstChildWhichIsA("ViewportFrame", true) :: ViewportFrame
+	local viewport = (if frame:IsA("ViewportFrame") then frame else frame:FindFirstChildWhichIsA("ViewportFrame", true)) :: ViewportFrame
 	assert(viewport, `{frame:GetFullName()} needs a ViewportFrame`)
 	if not viewport.CurrentCamera then
 		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")

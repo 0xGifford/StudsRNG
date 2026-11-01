@@ -424,7 +424,18 @@ function ZonesMenu.start()
 	Interface.setup()
 	playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 	local window = Interface.window(MENU)
-	items = window:WaitForChild("Main"):WaitForChild("Items") :: ScrollingFrame
+	-- The rows go in the window's list: ZoneRole = "List", else its Items.
+	local list = Roles.find(window, "ZoneRole", "List")
+	while not list do
+		for _, d in window:GetDescendants() do
+			if d.Name == "Items" and d:IsA("ScrollingFrame") then
+				list = d
+				break
+			end
+		end
+		if not list then task.wait(0.2) end
+	end
+	items = list :: ScrollingFrame
 
 	Interface.MenuOpened:Connect(function(name)
 		if name == MENU then
