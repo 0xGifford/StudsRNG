@@ -376,6 +376,8 @@ end
 -- is added when there's none. Keyed by the role attribute its code finds.
 local REPLACED = {
 	Index = "IndexRole",
+	Achievements = "AchievementRole",
+	StudPass = "PassRole",
 }
 
 local function hasRole(root: any, attribute: string): boolean
