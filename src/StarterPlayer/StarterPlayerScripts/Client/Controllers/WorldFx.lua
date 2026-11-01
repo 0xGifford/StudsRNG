@@ -121,7 +121,7 @@ function WorldFx.start()
 			task.wait(DETAIL_CHECK)
 			local camera = workspace.CurrentCamera
 			if camera then
-				local from = camera.CFrame.Position
+				local from = camera.Focus.Position -- what it looks at (the isometric camera is far off)
 				for _, detail in details do
 					local position = positionOf(detail.root)
 					if position then

@@ -71,14 +71,39 @@ function Juice.shake(strength: number, duration: number)
 	shakeEnd = now + duration
 end
 
+-- FOV punch. `amount` is in degrees at a normal 70 degree view; it scales
+-- with the real one, so the narrow isometric camera punches by the same
+-- share. When a camera controller owns the FOV (Juice.ownFov), it reads
+-- Juice.fovScale() each frame instead of the camera being tweened here.
 local baseFov: number? = nil
+local fovOwned = false
+local kickAmount = 0
+local kickStart = 0
+local kickDuration = 1
+
+function Juice.ownFov(owned: boolean)
+	fovOwned = owned
+end
+
+-- The current punch as a multiplier on the base FOV (1 = none).
+function Juice.fovScale(): number
+	local t = (os.clock() - kickStart) / kickDuration
+	if t >= 1 or kickAmount == 0 then return 1 end
+	-- Elastic settle back to 1.
+	local settle = 2 ^ (-10 * t) * math.cos(t * math.pi * 4)
+	return 1 + kickAmount * settle
+end
 
 function Juice.fov(amount: number, duration: number)
+	kickAmount = amount / 70
+	kickStart = os.clock()
+	kickDuration = math.max(duration, 0.05)
+	if fovOwned then return end
 	local camera = workspace.CurrentCamera
 	if not camera then return end
 	local base = baseFov or camera.FieldOfView
 	baseFov = base
-	camera.FieldOfView = base + amount
+	camera.FieldOfView = base * (1 + kickAmount)
 	local tween = TweenService:Create(camera, TweenInfo.new(duration, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), { FieldOfView = base })
 	tween:Play()
 	tween.Completed:Once(function()

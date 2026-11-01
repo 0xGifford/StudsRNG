@@ -131,7 +131,9 @@ local function rebuild(player: Player)
 			tag.Name = "Nametag"
 			tag.StudsOffset = Vector3.new(0, part.Size.Y / 2 + 0.9, 0)
 			if player ~= localPlayer then
-				tag.MaxDistance = tag.MaxDistance / 2
+				-- Others' tags show from half as far (the camera's own
+				-- distance, Roles.distanceBonus, isn't halved).
+				tag.MaxDistance = (tag.MaxDistance - Roles.distanceBonus) / 2 + Roles.distanceBonus
 			end
 			local rarity = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 			local odds = Roles.find(tag, "NametagRole", "Odds")
@@ -230,7 +232,7 @@ end
 local function update(dt: number)
 	local t = os.clock()
 	local camera = workspace.CurrentCamera
-	local cameraPos = camera and camera.CFrame.Position or Vector3.zero
+	local cameraPos = camera and camera.Focus.Position or Vector3.zero -- what it looks at (IsoCamera)
 
 	for player, entry in entries do
 		local character = player.Character

@@ -447,7 +447,7 @@ end
 local function refreshOutlines()
 	local camera = workspace.CurrentCamera
 	if not camera then return end
-	local from = camera.CFrame.Position
+	local from = camera.Focus.Position
 	local order: { Visual } = {}
 	for visual in glowing do
 		table.insert(order, visual)
@@ -489,7 +489,7 @@ local function untrack(instance: Instance)
 		connection:Disconnect()
 	end
 	local camera = workspace.CurrentCamera
-	local near = camera and (visual.position - camera.CFrame.Position).Magnitude <= ANIMATE_RANGE
+	local near = camera and (visual.position - camera.Focus.Position).Magnitude <= ANIMATE_RANGE
 	if visual.lastHealth <= 0 and near then
 		visual.dyingAt = os.clock()
 		table.insert(dying, visual)
@@ -511,7 +511,7 @@ local function track(instance: Instance): Visual?
 		task.delay(0.55, function()
 			if visuals[instance] ~= visual then return end
 			local camera = workspace.CurrentCamera
-			local distance = if camera then (visual.position - camera.CFrame.Position).Magnitude else math.huge
+			local distance = if camera then (visual.position - camera.Focus.Position).Magnitude else math.huge
 			if distance > STOMP_RANGE then return end
 			local ground = visual.position - Vector3.new(0, visual.size * 0.45, 0)
 			CombatFx.shockwave(ground, RED, visual.size * 1.6)
@@ -592,7 +592,9 @@ end
 
 local function update(dt: number)
 	local camera = workspace.CurrentCamera
-	local cameraPos = camera and camera.CFrame.Position or Vector3.zero
+	-- Measured from what the camera looks at (the player), not the lens: an
+	-- isometric camera sits far away (Controllers/IsoCamera keeps Focus on you).
+	local cameraPos = camera and camera.Focus.Position or Vector3.zero
 	local now = os.clock()
 	table.clear(parts)
 	table.clear(cframes)

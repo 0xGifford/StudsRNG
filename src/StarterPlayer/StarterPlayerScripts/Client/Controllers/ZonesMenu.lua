@@ -231,7 +231,7 @@ local function makeFace(part: BasePart, face: Enum.NormalId, maxDistance: number
 	gui.Name = "ZoneSign"
 	gui.Adornee = part
 	gui.Face = face
-	gui.MaxDistance = maxDistance
+	gui.MaxDistance = maxDistance + Roles.distanceBonus -- from you, not the far-off camera
 	local pixels = gui.PixelsPerStud
 	local panel = Roles.get(gui, "SignRole", "Panel") :: Frame
 	-- Lifted off the barrier's bottom, scaled down to fit a narrow barrier.
