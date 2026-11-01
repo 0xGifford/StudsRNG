@@ -57,7 +57,7 @@ local steps: { Step } = {
 	},
 	{
 		Id = "Tile",
-		Text = "Step on a glowing +1 tile for a free roll",
+		Text = "Step on a glowing reward tile on the keys",
 		Target = "Tile",
 		Done = function(data)
 			return (data.TilesClaimed or 0) >= 1

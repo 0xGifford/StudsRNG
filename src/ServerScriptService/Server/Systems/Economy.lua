@@ -31,13 +31,14 @@ local PlayerData = require(Systems.PlayerData)
 local StateSync = require(Systems.StateSync)
 local Modifiers = require(Systems.Modifiers)
 local PressTracker = require(Systems.PressTracker)
+local Boosts = require(Systems.Boosts)
 
 local Economy = {}
 
 -- (player, presses, clacksGained) after every counted press sample
 Economy.Earned = Signal.new() :: Signal.Signal<Player, number, number>
 
-type Combo = { count: number, last: number }
+type Combo = { count: number, last: number, rushes: number? }
 local combos: { [Player]: Combo } = {}
 
 local rng = Random.new()
@@ -155,11 +156,19 @@ local function onPressed(player: Player, count: number, valueSum: number)
 	local now = os.clock()
 	local combo = combos[player]
 	if not combo or now - combo.last > Config.Combo.Window then
-		combo = { count = 0, last = now }
+		combo = { count = 0, last = now, rushes = 0 }
 		combos[player] = combo
 	end
 	combo.count += count
 	combo.last = now
+	-- Key Rush: an unbroken streak doubles Clacks for a few seconds.
+	local rush = Config.Combo.Rush
+	local earned = math.floor(combo.count / rush.Every)
+	if earned > (combo.rushes or 0) then
+		combo.rushes = earned
+		Boosts.add(player, "Clacks", rush.Seconds)
+		Net.fire(player, "Notify", { Kind = "KeyRush", Count = combo.count, Seconds = rush.Seconds })
+	end
 	local comboBonus = math.min(combo.count * Config.Combo.Step, Config.Combo.Max)
 	StateSync.push(player, "Combo", { Count = combo.count, Bonus = comboBonus })
 

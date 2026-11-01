@@ -61,9 +61,16 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 	for _ = 1, count do
 		-- Stats are re-read per roll: a new index milestone mid-batch applies at once.
 		local stats = Modifiers.get(player)
-		local def = RollLogic.rollStud(rng, stats.Luck * boost, data.UnlockedWorlds)
+		-- Lucky Meter: every roll fills it; a full meter makes this roll lucky.
+		data.LuckyMeter = (data.LuckyMeter or 0) + 1
+		local lucky = data.LuckyMeter >= Config.LuckyMeter.Rolls
+		if lucky then
+			data.LuckyMeter = 0
+		end
+		local luck = boost * (if lucky then Config.LuckyMeter.Luck else 1)
+		local def = RollLogic.rollStud(rng, stats.Luck * luck, data.UnlockedWorlds)
 		if not def then break end
-		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * boost, stats.VariantBoosts)
+		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * luck, stats.VariantBoosts)
 
 		local grant = Inventory.grant(player, def.Id, variant.Name)
 		if grant then
@@ -76,6 +83,7 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 				New = grant.New,
 				Kept = grant.Kept,
 				Reason = grant.Reason,
+				Lucky = if lucky then true else nil,
 			})
 
 			if oneIn >= Config.Announce.ChannelMinOneIn then
@@ -92,6 +100,7 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 
 	data.TotalRolls += #results
 	StateSync.push(player, "TotalRolls", data.TotalRolls)
+	StateSync.push(player, "LuckyMeter", data.LuckyMeter)
 	if #results > 0 then
 		-- Shown in the Index ("Rolls: 23").
 		for _, result in results do

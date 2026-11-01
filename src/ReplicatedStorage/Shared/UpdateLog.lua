@@ -22,6 +22,20 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.9",
+		Date = "Nov 1, 2026",
+		Title = "Lucky Streaks",
+		Notes = {
+			"88 new studs: every zone from 8 to 34 has its own Epic, Legendary and Mythic, plus Secrets to chase.",
+			"Lucky Meter: every roll fills it, and when it's full your next roll is a LUCKY ROLL with x10 luck.",
+			"Key Rush: keep your combo going for 150 presses and your Clacks double for a few seconds.",
+			"New tiles on the keys: 💰 Golden (Clacks), 🍀 Lucky (luck boost) and ⚡ Frenzy (x2 Clacks), as well as +1 rolls.",
+			"Rebirth keeps your zones now, and its bonus multiplies with every rebirth.",
+			"The whole game is rebalanced: a quick start, then plenty to chase. Paid rolls cost more in later zones.",
+			"More Index milestones and new achievements and titles for the long haul.",
+		},
+	},
+	{
 		Version = "1.8",
 		Date = "Oct 31, 2026",
 		Title = "A Whole New World",

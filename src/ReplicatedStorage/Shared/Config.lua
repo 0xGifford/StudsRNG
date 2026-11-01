@@ -61,6 +61,9 @@ Config.Combo = {
 	Window = 1.25,
 	Step = 0.005,
 	Max = 0.5,
+	-- Key Rush: every Every presses without breaking the combo, Clacks are
+	-- doubled for Seconds (the Clacks boost; it stacks while you keep going).
+	Rush = { Every = 150, Seconds = 8 },
 }
 
 -- Clacks earned while away: ClacksPerSecond × reward scale, for at most
@@ -86,12 +89,31 @@ Config.KeyRewards = {
 	Interval = 3, -- seconds between new reward tiles
 	MaxActive = 8, -- reward tiles on the board at once
 	Lifetime = 40, -- seconds before an unclaimed tile fades
-	Text = "+1",
-	-- Any Shared/Rewards kind: Clacks (scaled by progress), FreeRolls, Spins...
-	Reward = { Kind = "FreeRolls", Amount = 1 },
 	Attribute = "RewardTile", -- set on the key Model while active
 	NearRadius = 60, -- studs: tiles favour keys this close to a player...
 	NearChance = 0.6, -- ...this often
+	-- Kinds of tile, picked by Weight. The tile shows Text (in Color); the
+	-- first player to step on it gets Reward (any Shared/Rewards kind;
+	-- Clacks scale with progress). KindAttribute names the kind on the key.
+	KindAttribute = "RewardTileKind",
+	Kinds = {
+		{ Id = "Roll", Text = "+1", Weight = 60, Color = Color3.fromRGB(255, 255, 255),
+			Reward = { Kind = "FreeRolls", Amount = 1 } },
+		{ Id = "Golden", Text = "💰", Weight = 22, Color = Color3.fromRGB(255, 215, 70),
+			Reward = { Kind = "Clacks", Amount = 400 } },
+		{ Id = "Lucky", Text = "🍀", Weight = 12, Color = Color3.fromRGB(120, 255, 140),
+			Reward = { Kind = "Boost", Amount = 1, Boost = "Luck", Minutes = 2 } },
+		{ Id = "Frenzy", Text = "⚡", Weight = 6, Color = Color3.fromRGB(255, 150, 60),
+			Reward = { Kind = "Boost", Amount = 1, Boost = "Clacks", Minutes = 1 } },
+	},
+}
+
+-- Lucky Meter: every roll fills it; when it's full the next roll is a
+-- LUCKY ROLL with Luck times the luck (and variant luck). Saved, so it
+-- carries across sessions (PlayerData.LuckyMeter).
+Config.LuckyMeter = {
+	Rolls = 100,
+	Luck = 10,
 }
 
 Config.Economy = {

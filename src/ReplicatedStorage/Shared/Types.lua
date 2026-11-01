@@ -70,6 +70,7 @@ export type PlayerData = {
 	Quests: { Day: number, List: { QuestState } },
 	LastOnline: number, -- unix time, for offline earnings
 	TilesClaimed: number,
+	LuckyMeter: number,
 	IndexClaims: { [string]: boolean },
 	RollCounts: { [string]: number },
 	EnemiesDefeated: number,
@@ -151,6 +152,7 @@ export type RollResult = {
 	New: boolean, -- first time in the index
 	Kept: boolean, -- added to inventory
 	Reason: string?, -- "AutoDelete" | "Full" when not kept
+	Lucky: boolean?, -- a Lucky Meter roll (Config.LuckyMeter)
 }
 
 -- Every RemoteFunction answers with this shape.

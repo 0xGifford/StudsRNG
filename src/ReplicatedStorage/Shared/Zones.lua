@@ -62,7 +62,7 @@ for n = 1, COUNT do
 end
 
 -- The first zones are priced by hand; after that the curve takes over.
-local HAND_PRICES = { 0, 600, 2_500, 8_000, 24_000, 65_000, 170_000 }
+local HAND_PRICES = { 0, 700, 3_200, 12_000, 40_000, 85_000, 180_000 }
 local HAND_MULTIPLIERS = { 1, 2, 3, 5, 8, 12, 17 }
 -- Each zone after the hand-priced ones costs PRICE_GROWTH times the last,
 -- easing to PRICE_GROWTH_END by the last zone (steep mid-game, gentler at

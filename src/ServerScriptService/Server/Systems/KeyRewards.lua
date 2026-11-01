@@ -9,10 +9,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 ]]
 
 --!strict
--- Reward tiles. Every Config.KeyRewards.Interval a random key gets the
--- attribute RewardTile = "+1" on its Model (clients draw the text). The
+-- Reward tiles. Every Config.KeyRewards.Interval a random key becomes a
+-- tile of a random kind (Config.KeyRewards.Kinds, by weight: "+1" free roll,
+-- 💰 Golden Clacks, 🍀 Lucky boost, ⚡ Frenzy): its Model gets RewardTile =
+-- the kind's Text and RewardTileKind = its Id (clients draw them). The
 -- first player whose press PressTracker counts on that key claims it: the
--- tile clears and they get Config.KeyRewards.Reward. Unclaimed tiles expire
+-- tile clears and they get that kind's Reward. Unclaimed tiles expire
 -- after Lifetime. Presses only count in zones the player owns, so locked
 -- zones' tiles can't be claimed.
 
@@ -38,8 +40,25 @@ local KeyRewards = {}
 local Settings = Config.KeyRewards
 local rng = Random.new()
 
--- hitbox → server time the tile expires
+-- hitbox → server time the tile expires, and the kind of tile it is
 local active: { [BasePart]: number } = {}
+local kinds: { [BasePart]: any } = {}
+
+local totalWeight = 0
+for _, kind in Settings.Kinds do
+	totalWeight += kind.Weight
+end
+
+local function pickKind(): any
+	local roll = rng:NextNumber() * totalWeight
+	for _, kind in Settings.Kinds do
+		roll -= kind.Weight
+		if roll <= 0 then
+			return kind
+		end
+	end
+	return Settings.Kinds[1]
+end
 
 local function modelOf(hitbox: BasePart): Instance?
 	return hitbox.Parent
@@ -47,9 +66,11 @@ end
 
 local function clear(hitbox: BasePart)
 	active[hitbox] = nil
+	kinds[hitbox] = nil
 	local model = modelOf(hitbox)
 	if model then
 		model:SetAttribute(Settings.Attribute, nil)
+		model:SetAttribute(Settings.KindAttribute, nil)
 	end
 end
 
@@ -64,8 +85,11 @@ end
 local function activate(hitbox: BasePart): boolean
 	local model = modelOf(hitbox)
 	if not model or active[hitbox] or not hitbox:IsDescendantOf(workspace) then return false end
+	local kind = pickKind()
 	active[hitbox] = os.clock() + Settings.Lifetime
-	model:SetAttribute(Settings.Attribute, Settings.Text)
+	kinds[hitbox] = kind
+	model:SetAttribute(Settings.KindAttribute, kind.Id)
+	model:SetAttribute(Settings.Attribute, kind.Text)
 	return true
 end
 
@@ -129,6 +153,7 @@ end
 local function onKeysPressed(player: Player, pressed: { BasePart })
 	for _, hitbox in pressed do
 		if active[hitbox] then
+			local kind = kinds[hitbox] or Settings.Kinds[1]
 			clear(hitbox)
 			local data = PlayerData.get(player)
 			if data then
@@ -136,16 +161,16 @@ local function onKeysPressed(player: Player, pressed: { BasePart })
 				StateSync.push(player, "TilesClaimed", data.TilesClaimed)
 			end
 			QuestService.progress(player, "Tiles", 1)
-			local reward: Reward = Settings.Reward
+			local reward: Reward = kind.Reward
 			local given = RewardService.grant(player, reward)
-			-- Clacks already fly into the counter; anything else gets a toast.
-			if reward.Kind ~= "Clacks" then
-				local amount = given.Amount or reward.Amount
-				local what = if reward.Kind == "FreeRolls" then (if amount == 1 then "Free Roll" else "Free Rolls")
-					elseif reward.Kind == "Spins" then (if amount == 1 then "Spin" else "Spins")
-					else reward.Kind
-				Net.fire(player, "Notify", { Text = `+{amount} {what}!`, Color = Color3.fromRGB(255, 230, 90) })
-			end
+			-- The client bursts the tile (Controllers/KeyLabels) and names it.
+			Net.fire(player, "Notify", {
+				Kind = "Tile",
+				Tile = kind.Id,
+				Reward = given,
+				Position = hitbox.Position,
+				Color = kind.Color,
+			})
 		end
 	end
 end

@@ -668,6 +668,17 @@ local function miniReveal(results: { RollResult }, quick: boolean)
 end
 
 local function reveal(results: { RollResult }, quick: boolean)
+	-- A Lucky Meter roll (Config.LuckyMeter): announce it before the reel.
+	for _, result in results do
+		if result.Lucky then
+			local green = Color3.fromRGB(120, 255, 140)
+			Juice.banner("🍀 LUCKY ROLL!", `x{Config.LuckyMeter.Luck} luck on this one`, green, 1.1)
+			Juice.flash(green, 0.3, 0.45)
+			Juice.confetti(45)
+			Interface.play("Click", 1.6)
+			break
+		end
+	end
 	if auto and hidden then
 		miniReveal(results, quick)
 		return

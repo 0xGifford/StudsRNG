@@ -55,6 +55,10 @@ REBIRTH_BASE = config_value("Rebirth", "BaseCost")
 REBIRTH_GROWTH = config_value("Rebirth", "CostGrowth")
 REBIRTH_CLACKS = config_value("Rebirth", "ClacksPerRebirth")
 REBIRTH_LUCK = config_value("Rebirth", "LuckPerRebirth")
+LUCKY_ROLLS = config_value("LuckyMeter", "Rolls")
+LUCKY_LUCK = config_value("LuckyMeter", "Luck")
+_rush = re.search(r"Rush = \{ Every = ([\d_]+), Seconds = ([\d.]+) \}", config)
+RUSH_SHARE = float(_rush.group(2)) * PRESSES / lua_number(_rush.group(1))  # extra x1 Clacks this share of the time
 RESET_ZONES = re.search(r"ResetZones\s*=\s*(true|false)", config).group(1) == "true"
 milestones = [
     {k: lua_number(v) for k, v in re.findall(r"(\w+)\s*=\s*([\d_.]+)", m)}
@@ -162,6 +166,10 @@ class Player:
     def roll(self):
         luck = self.luck()
         self.rolls += 1
+        self.meter_lucky = getattr(self, "meter_lucky", 0) + 1
+        if self.meter_lucky >= LUCKY_ROLLS:
+            self.meter_lucky = 0
+            luck *= LUCKY_LUCK
         hit = None
         for st in studs:
             if st["zone"] <= self.zone and random.random() < luck / st["one_in"]:
@@ -179,7 +187,7 @@ class Player:
         _, key_mult = zones[self.zone - 1]
         crit = 1 + self.stat("CritChance")
         speed = 1 + self.stat("WalkSpeed") / 16
-        return PRESSES * speed * key_mult * self.clack_mult() * (1 + COMBO) * crit * (1 + ENEMY_SHARE)
+        return PRESSES * speed * key_mult * self.clack_mult() * (1 + COMBO) * crit * (1 + ENEMY_SHARE) * (1 + RUSH_SHARE)
 
     def zone_price(self, n):
         return zones[n - 1][0] * (1 - min(0.5, self.stat("ZoneDiscountPct")))

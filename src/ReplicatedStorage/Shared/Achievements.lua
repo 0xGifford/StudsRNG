@@ -63,19 +63,28 @@ local list: { AchievementDef } = {
 	{ Id = "Level50", Name = "Stud Master", Text = "Get a stud to Lv 50", Stat = "StudLevel", Target = 50, Reward = { Kind = "Luck", Amount = 2 }, Title = "Stud Master", TitleColor = GOLD },
 	-- Exploring
 	{ Id = "Zones5", Name = "Explorer", Text = "Own 5 zones", Stat = "Zones", Target = 5, Reward = { Kind = "Clacks", Amount = 25_000 } },
+	{ Id = "Zones10", Name = "Pathfinder", Text = "Own 10 zones", Stat = "Zones", Target = 10, Reward = { Kind = "FreeRolls", Amount = 25 } },
 	{ Id = "Zones20", Name = "Voyager", Text = "Own 20 zones", Stat = "Zones", Target = 20, Reward = { Kind = "Spins", Amount = 3 }, Title = "Voyager", TitleColor = CYAN },
+	{ Id = "Zones30", Name = "Trailblazer", Text = "Own 30 zones", Stat = "Zones", Target = 30, Reward = { Kind = "Spins", Amount = 5 } },
 	{ Id = "Zones50", Name = "World Walker", Text = "Own all 34 zones", Stat = "Zones", Target = 34, Reward = { Kind = "Luck", Amount = 3 }, Title = "World Walker", TitleColor = CYAN },
 	-- Collecting
 	{ Id = "Index25", Name = "Collector", Text = "Find 25 Index entries", Stat = "Index", Target = 25, Reward = { Kind = "FreeRolls", Amount = 15 } },
 	{ Id = "Index100", Name = "Curator", Text = "Find 100 Index entries", Stat = "Index", Target = 100, Reward = { Kind = "Spins", Amount = 3 }, Title = "Curator", TitleColor = PURPLE },
 	{ Id = "Index250", Name = "Archivist", Text = "Find 250 Index entries", Stat = "Index", Target = 250, Reward = { Kind = "Luck", Amount = 2 }, Title = "Archivist", TitleColor = PURPLE },
 	{ Id = "Rare10k", Name = "Lucky Break", Text = "Roll a 1 in 10,000", Stat = "BestRoll", Target = 10_000, Reward = { Kind = "Spins", Amount = 2 } },
+	{ Id = "Rare100k", Name = "Fortune's Pet", Text = "Roll a 1 in 100,000", Stat = "BestRoll", Target = 100_000, Reward = { Kind = "Luck", Amount = 1 } },
 	{ Id = "Rare1m", Name = "Chosen One", Text = "Roll a 1 in 1,000,000", Stat = "BestRoll", Target = 1_000_000, Reward = { Kind = "Luck", Amount = 2 }, Title = "Chosen One", TitleColor = PURPLE },
 	-- Progress
 	{ Id = "Rebirth1", Name = "Born Again", Text = "Rebirth once", Stat = "Rebirths", Target = 1, Reward = { Kind = "Spins", Amount = 2 } },
 	{ Id = "Rebirth10", Name = "Reborn", Text = "Rebirth 10 times", Stat = "Rebirths", Target = 10, Reward = { Kind = "Luck", Amount = 2 }, Title = "Reborn", TitleColor = GOLD },
+	{ Id = "Rare100m", Name = "Myth Maker", Text = "Roll a 1 in 100,000,000", Stat = "BestRoll", Target = 100_000_000, Reward = { Kind = "Luck", Amount = 5 }, Title = "Myth Maker", TitleColor = PURPLE },
+	{ Id = "Index500", Name = "Curator", Text = "Find 500 Index entries", Stat = "Index", Target = 500, Reward = { Kind = "Luck", Amount = 4 }, Title = "Curator", TitleColor = PURPLE },
+	{ Id = "Rebirth5", Name = "Second Wind", Text = "Rebirth 5 times", Stat = "Rebirths", Target = 5, Reward = { Kind = "Spins", Amount = 3 } },
+	{ Id = "Rebirth25", Name = "Phoenix", Text = "Rebirth 25 times", Stat = "Rebirths", Target = 25, Reward = { Kind = "Luck", Amount = 4 }, Title = "Phoenix", TitleColor = GOLD },
 	{ Id = "Clacks1m", Name = "Millionaire", Text = "Earn 1M Clacks in total", Stat = "Clacks", Target = 1e6, Reward = { Kind = "FreeRolls", Amount = 20 } },
 	{ Id = "Clacks1b", Name = "Tycoon", Text = "Earn 1B Clacks in total", Stat = "Clacks", Target = 1e9, Reward = { Kind = "Luck", Amount = 2 }, Title = "Tycoon", TitleColor = GOLD },
+	{ Id = "Clacks1t", Name = "Magnate", Text = "Earn 1T Clacks in total", Stat = "Clacks", Target = 1e12, Reward = { Kind = "Luck", Amount = 3 }, Title = "Magnate", TitleColor = GOLD },
+	{ Id = "Clacks1qa", Name = "Clack Emperor", Text = "Earn 1 quadrillion Clacks in total", Stat = "Clacks", Target = 1e15, Reward = { Kind = "Luck", Amount = 5 }, Title = "Clack Emperor", TitleColor = GOLD },
 }
 
 local byId: { [string]: AchievementDef } = {}
