@@ -90,6 +90,8 @@ Config.KeyRewards = {
 	-- Any Shared/Rewards kind: Clacks (scaled by progress), FreeRolls, Spins...
 	Reward = { Kind = "FreeRolls", Amount = 1 },
 	Attribute = "RewardTile", -- set on the key Model while active
+	NearRadius = 60, -- studs: tiles favour keys this close to a player...
+	NearChance = 0.6, -- ...this often
 }
 
 Config.Economy = {
@@ -205,6 +207,17 @@ export type EventDef = {
 	Look: EventLook?,
 	Enemies: { Glow: Color3?, Health: number?, Damage: number?, Reward: number?, Size: number? }?,
 	MegaBoss: { Health: number, Damage: number, Reward: number, Size: number, MaxZones: number }?,
+	-- How keys near you look while it runs (client only, Controllers/EventKeys):
+	--   Mode   "Rainbow" every key cycles hues, out of step with its
+	--          neighbours | "Pulse" all breathe in Color | "Wave" Color rolls
+	--          across the board in bands | "Flicker" random keys flash Color
+	--   Color  the event colour by default; Speed cycles per second (1);
+	--   Neon   true: keys glow while lit; Sparkle: keys you press burst bigger
+	Keys: { Mode: string, Color: Color3?, Speed: number?, Neon: boolean?, Sparkle: boolean? }?,
+	-- Particles drifting around you while it runs: Rate per second, Color
+	-- (default the event's), Rise = true floats them up (embers), else they
+	-- fall; Texture = any particle image.
+	Ambient: { Rate: number, Color: Color3?, Rise: boolean?, Texture: string? }?,
 }
 
 local events: { EventDef } = {
@@ -212,16 +225,22 @@ local events: { EventDef } = {
 		Look = {
 			Grade = { TintColor = Color3.fromRGB(225, 255, 228), Saturation = 0.15 },
 			Atmosphere = { Color = Color3.fromRGB(190, 255, 200), Haze = 1 },
-		} },
+		},
+		Keys = { Mode = "Pulse", Speed = 0.8, Neon = true },
+		Ambient = { Rate = 18 } },
 	{ Id = "ClackFrenzy", Name = "Clack Frenzy", Description = "x2 Clacks for everyone", Clacks = 2, Color = Color3.fromRGB(255, 230, 90),
 		Look = {
 			Lighting = { ClockTime = 17.4 },
 			Grade = { TintColor = Color3.fromRGB(255, 240, 210), Saturation = 0.1 },
 			Atmosphere = { Color = Color3.fromRGB(255, 210, 140), Haze = 1.6, Glare = 0.4 },
 		},
-		Enemies = { Glow = Color3.fromRGB(255, 210, 70), Reward = 1.5 } },
+		Enemies = { Glow = Color3.fromRGB(255, 210, 70), Reward = 1.5 },
+		Keys = { Mode = "Rainbow", Speed = 2.2, Neon = true, Sparkle = true },
+		Ambient = { Rate = 40, Color = Color3.fromRGB(255, 215, 80) } },
 	{ Id = "SpeedRush", Name = "Speed Rush", Description = "x1.5 roll speed", RollSpeed = 1.5, Color = Color3.fromRGB(110, 200, 255),
-		Look = { Grade = { TintColor = Color3.fromRGB(220, 238, 255), Contrast = 0.1 } } },
+		Look = { Grade = { TintColor = Color3.fromRGB(220, 238, 255), Contrast = 0.1 } },
+		Keys = { Mode = "Wave", Speed = 1.6, Neon = true },
+		Ambient = { Rate = 25 } },
 	{ Id = "BloodMoon", Name = "Blood Moon", Description = "Enemies are tougher and pay x3", Color = Color3.fromRGB(255, 70, 60),
 		Look = {
 			Lighting = { ClockTime = 0, Ambient = Color3.fromRGB(90, 30, 30), OutdoorAmbient = Color3.fromRGB(120, 50, 50), Brightness = 1 },
@@ -229,7 +248,9 @@ local events: { EventDef } = {
 			Grade = { TintColor = Color3.fromRGB(255, 200, 200), Saturation = -0.1, Contrast = 0.15 },
 			Sky = "BloodMoon",
 		},
-		Enemies = { Glow = Color3.fromRGB(255, 50, 40), Health = 2, Damage = 1.5, Reward = 3, Size = 1.15 } },
+		Enemies = { Glow = Color3.fromRGB(255, 50, 40), Health = 2, Damage = 1.5, Reward = 3, Size = 1.15 },
+		Keys = { Mode = "Pulse", Speed = 0.45, Color = Color3.fromRGB(200, 30, 30) },
+		Ambient = { Rate = 30, Color = Color3.fromRGB(255, 90, 40), Rise = true } },
 	{ Id = "MegaBoss", Name = "Mega Boss", Description = "A Mega Boss stomps into your zone!", Color = Color3.fromRGB(190, 90, 255),
 		Look = {
 			Lighting = { ClockTime = 19, Brightness = 1.5 },
@@ -238,7 +259,9 @@ local events: { EventDef } = {
 			Sky = "Storm",
 		},
 		Enemies = { Glow = Color3.fromRGB(190, 110, 255) },
-		MegaBoss = { Health = 160, Damage = 5, Reward = 120, Size = 5.5, MaxZones = 3 } },
+		MegaBoss = { Health = 160, Damage = 5, Reward = 120, Size = 5.5, MaxZones = 3 },
+		Keys = { Mode = "Flicker", Speed = 1.2, Neon = true },
+		Ambient = { Rate = 20, Rise = true } },
 }
 Config.Events = {
 	Interval = 20 * 60,

@@ -70,6 +70,7 @@ local function cell(parent: any, template: string, size: any): any
 	frame:SetAttribute("StatePreset", "Selected") -- MenuSystem's StateStyle: MainStroke turns white when picked
 	round(frame, 0.1)
 	outline(frame, EDGE, 2).Name = "MainStroke"
+	Kit.rarityBackdrop().Parent = frame -- tinted by the stud's rarity
 	Kit.viewport({ Position = UDim2.fromScale(0.5, 0.46), Size = UDim2.fromScale(0.82, 0.82), ZIndex = 2, Parent = frame })
 	text(frame, "Odds", "1/2", ODDS, UDim2.fromScale(0.95, 0.22), UDim2.fromScale(0.025, 0.76))
 	text(frame, "Count", "x2", WHITE, UDim2.fromScale(0.36, 0.18), UDim2.fromScale(0.62, 0.03), Enum.TextXAlignment.Right)

@@ -50,6 +50,8 @@ end
 local function pushClacks(player: Player, data: any)
 	StateSync.push(player, "Clacks", data.Clacks)
 	StateSync.push(player, "LifetimeClacks", data.LifetimeClacks)
+	-- The tutorial's "walk on 30 keys" and the press achievements read it.
+	StateSync.push(player, "TotalPresses", data.TotalPresses)
 	local values = leaderValues[player]
 	if values then
 		values.Clacks.Value = math.floor(data.Clacks)

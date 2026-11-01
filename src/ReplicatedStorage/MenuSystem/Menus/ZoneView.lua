@@ -101,7 +101,7 @@ local function rarestStud(zone: Zones.ZoneDef): Model?
 	return model
 end
 
-local function render(viewport: ViewportFrame, state: { [string]: any })
+local function render(viewport: ViewportFrame, state: { [string]: any }): ()
 	ViewportUtil.silhouette(viewport, state)
 
 	local id = viewport:GetAttribute("Zone")
@@ -115,6 +115,17 @@ local function render(viewport: ViewportFrame, state: { [string]: any })
 
 	local show = viewport:GetAttribute("ZoneShow")
 	local key = `{zone.Id}/{tostring(show)}/{tostring(viewport:GetAttribute("ViewTurn"))}/{tostring(viewport:GetAttribute("ViewZoom"))}`
+	if state.key ~= key and not ViewportUtil.onScreen(viewport) then
+		-- Built when it scrolls into view (a long Teleporter list costs
+		-- nothing until then).
+		state.key = nil
+		ViewportUtil.clear(viewport)
+		ViewportUtil.whenOnScreen(viewport, function()
+			render(viewport, state)
+		end)
+		return
+	end
+	ViewportUtil.cancelWait(viewport)
 	if state.key ~= key then
 		state.key = key
 		local model: Model?
@@ -142,6 +153,7 @@ local ZoneView = Component.new({
 	Class = "ViewportFrame",
 	Render = render,
 	Cleanup = function(viewport: ViewportFrame)
+		ViewportUtil.cancelWait(viewport)
 		ViewportUtil.stopSpin(viewport)
 	end,
 })

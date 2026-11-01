@@ -13,7 +13,9 @@
 	                attribute sizes it: MenuSystem ProgressBar)
 	  RewardLuck / RewardClacks     the tab reward amounts
 	  Claim           the claim button (kit button; KitColor = its colour)
-	Viewports carry Stud / StudVariant / ViewSilhouette (MenuSystem StudView).
+	Viewports carry Stud / StudVariant / ViewSilhouette (MenuSystem StudView);
+	Backdrop frames carry Rarity (MenuSystem RarityColor); DetailBackdrop is
+	the detail card's. IndexCell's Mystery is the "?" over unfound studs.
 	The ✕ has MenuAction = "close".
 ]]
 
@@ -95,9 +97,12 @@ cell:SetAttribute("UITemplate", "IndexCell")
 cell:SetAttribute("StatePreset", "Selected")
 round(cell, 0.1)
 outline(cell, DARK, 2).Name = "MainStroke"
+Kit.rarityBackdrop().Parent = cell -- tinted by the stud's rarity once found
 text(cell, "Name", "???", Color3.new(1, 1, 1), UDim2.fromScale(0.92, 0.17), UDim2.fromScale(0.5, 0.13))
-local cellView = Kit.viewport({ Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromScale(0.62, 0.62) })
+local cellView = Kit.viewport({ Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromScale(0.7, 0.7), ZIndex = 2 })
 cellView.Parent = cell
+-- "?" over studs not found yet (the controller shows / hides it).
+text(cell, "Mystery", "?", Color3.fromRGB(150, 160, 200), UDim2.fromScale(0.4, 0.4), UDim2.fromScale(0.5, 0.52)).ZIndex = 4
 local odds = text(cell, "Odds", "1/2", ODDS, UDim2.fromScale(0.6, 0.17), UDim2.fromScale(0.95, 0.88), Enum.TextXAlignment.Right)
 odds.AnchorPoint = Vector2.new(1, 0.5)
 Kit.new("TextButton", { Name = "Button", BackgroundTransparency = 1, Text = "", Size = UDim2.fromScale(1, 1), ZIndex = 5 }, cell)
@@ -117,7 +122,10 @@ role(text(barBack, "Text", "0/0", Color3.new(1, 1, 1), UDim2.fromScale(0.5, 0.85
 -- Detail card.
 local card = box(main, "Detail", UDim2.fromScale(0.31, 0.5), UDim2.fromScale(0.665, 0.06), Color3.fromRGB(18, 18, 24))
 round(card, 0.06)
-role(Kit.viewport({ Position = UDim2.fromScale(0.5, 0.25), Size = UDim2.fromScale(0.55, 0.55), Parent = card }), "DetailViewport")
+local detailBackdrop = role(Kit.rarityBackdrop({ Size = UDim2.fromScale(0.62, 0.5), Position = UDim2.fromScale(0.5, 0.25) }), "DetailBackdrop")
+detailBackdrop.Parent = card
+local detailView = role(Kit.viewport({ Position = UDim2.fromScale(0.5, 0.25), Size = UDim2.fromScale(0.55, 0.55), ZIndex = 2, Parent = card }), "DetailViewport")
+detailView:SetAttribute("ViewSpin", 35) -- turns slowly so you see all of it
 local white = Color3.new(1, 1, 1)
 role(text(card, "Name", "???", white, UDim2.fromScale(0.9, 0.11), UDim2.fromScale(0.5, 0.53)), "DetailName")
 role(text(card, "Odds", "1 / 2", white, UDim2.fromScale(0.6, 0.1), UDim2.fromScale(0.5, 0.64)), "DetailOdds")

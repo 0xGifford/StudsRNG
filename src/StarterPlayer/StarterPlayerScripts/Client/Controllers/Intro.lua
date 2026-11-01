@@ -11,7 +11,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --!strict
 -- First-join cinematic: letterbox, title, a camera flight over every zone
 -- (farthest first, so new players see what they're working towards) and a
--- swoop down to their character. Plays once per account
+-- swoop down to their character. Shots are found by raycasts in each zone
+-- (UI/Cinematic), and the camera is kept in front of anything between it
+-- and what it looks at, so it never clips through walls or roofs. Plays once per account
 -- (PlayerData.SeenIntro), skippable at any time. Intro.Finished fires when
 -- it ends or is skipped (or straight away for returning players).
 
@@ -32,6 +34,7 @@ local ZoneAmbience = require(Controllers.ZoneAmbience)
 local Interface = require(UI.Interface)
 local Juice = require(UI.Juice)
 local Roles = require(UI.Roles)
+local Cinematic = require(UI.Cinematic)
 
 local Intro = {}
 
@@ -53,13 +56,17 @@ function Intro.hasFinished(): boolean
 	return finished
 end
 
-local function zoneCenter(def: Zones.ZoneDef): Vector3?
+-- The middle of a zone's floor and its box size.
+local function zoneCenter(def: Zones.ZoneDef): (Vector3?, Vector3?)
 	local zone = Tags.forZone(Tags.Zone, def.Id)[1]
-	if not zone then return nil end -- not streamed in yet
+	if not zone then return nil, nil end -- not streamed in yet
+	local cframe, size = Tags.zoneBox(zone)
 	local center = zone:GetAttribute(Tags.Attr.Center)
-	if typeof(center) == "Vector3" then return center end
-	local cframe = Tags.zoneBox(zone)
-	return if cframe then cframe.Position else nil
+	if typeof(center) == "Vector3" then return center, size end
+	if cframe and size then
+		return cframe.Position - Vector3.new(0, size.Y / 2 - 10, 0), size
+	end
+	return nil, nil
 end
 
 local function finish()
@@ -122,19 +129,28 @@ local function play()
 		table.insert(shots, Zones.List[i])
 	end
 
+	-- Each shot's flight stops when the intro is skipped or the next shot cuts in.
+	local currentShot = 0
+	local function cancelled(): boolean
+		return skipped
+	end
+
 	for index, def in shots do
 		if skipped then break end
 		local center = zoneCenter(def)
 		if center then
 			pcall(player.RequestStreamAroundAsync, player, center, 2)
-			local side = if index % 2 == 0 then 1 else -1
-			-- Inside the valley walls (and under the Cave's roof).
-			local from = center + Vector3.new(side * 55, 34, -62)
-			local to = center + Vector3.new(side * 22, 16, -34)
-			camera.CFrame = CFrame.lookAt(from, center)
-			TweenService:Create(camera, TweenInfo.new(SHOT_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-				CFrame = CFrame.lookAt(to, center + Vector3.new(0, 2, 0)),
-			}):Play()
+		end
+		-- Streaming may have brought the zone in: read it again.
+		local size: Vector3?
+		center, size = zoneCenter(def)
+		if center then
+			local shot = Cinematic.shot(center, size, if index % 2 == 0 then 1 else -1)
+			currentShot = index
+			camera.CFrame = CFrame.lookAt(shot.from, shot.focus)
+			task.spawn(Cinematic.fly, shot.from, shot.to, shot.focus, SHOT_TIME, function()
+				return skipped or currentShot ~= index
+			end)
 			ZoneAmbience.apply(def.Id, true)
 
 			if index == 1 then
@@ -156,13 +172,15 @@ local function play()
 		end
 	end
 
-	-- Swoop down behind the player.
+	-- Swoop down behind the player (kept clear of walls on the way).
 	if not skipped and root and root:IsA("BasePart") then
-		local behind = root.CFrame * CFrame.new(0, 6, 14)
-		TweenService:Create(camera, TweenInfo.new(1.6, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {
-			CFrame = CFrame.lookAt(behind.Position, root.Position + Vector3.new(0, 2, 0)),
-		}):Play()
-		pause(1.6)
+		pcall(player.RequestStreamAroundAsync, player, root.Position, 2)
+		local function head(): Vector3
+			return root.Position + Vector3.new(0, 2, 0)
+		end
+		currentShot = -1
+		local behind = (root.CFrame * CFrame.new(0, 6, 14)).Position
+		Cinematic.fly(camera.CFrame.Position, behind, head, 1.6, cancelled)
 	end
 
 	for _, bar in bars do

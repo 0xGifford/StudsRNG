@@ -49,7 +49,13 @@ local seen: { [string]: boolean } = {}
 local function load(module: Instance)
 	if not module:IsA("ModuleScript") or seen[module.Name] then return end
 	seen[module.Name] = true
-	table.insert(controllers, { name = module.Name, module = require(module) :: any })
+	-- One broken module must not stop everything else from booting.
+	local ok, result = pcall(require, module)
+	if not ok then
+		warn(`[Client] {module.Name} failed to load: {result}`)
+		return
+	end
+	table.insert(controllers, { name = module.Name, module = result :: any })
 end
 
 local folder = script:WaitForChild("Controllers")
@@ -74,6 +80,11 @@ end
 
 for _, controller in controllers do
 	if typeof(controller.module.start) == "function" then
-		task.spawn(controller.module.start)
+		task.spawn(function()
+			local ok, err = xpcall(controller.module.start, debug.traceback)
+			if not ok then
+				warn(`[Client] {controller.name}.start failed: {err}`)
+			end
+		end)
 	end
 end

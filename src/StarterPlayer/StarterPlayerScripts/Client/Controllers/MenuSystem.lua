@@ -12,7 +12,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Boots ReplicatedStorage.MenuSystem (the attribute / tag driven UI system:
 -- menus, buttons, tabs, toggles, purchases, tooltips, data labels, motion,
 -- effects, HUD slide, admin panel, announcements, and the attribute
--- components: StudView, ZoneView, ProgressBar, KitColor, IconImage) and plugs the game's client
+-- components: StudView, ZoneView, ProgressBar, KitColor, IconImage, RarityColor) and plugs the game's client
 -- State into it (MenuSystem/Data). Runs in init(), before any controller's
 -- start(), so every menu is registered by the time controllers open them.
 --
@@ -52,6 +52,7 @@ local BOOT = {
 	"ProgressBar",
 	"KitColor",
 	"IconImage",
+	"RarityColor",
 	"Motion",
 }
 

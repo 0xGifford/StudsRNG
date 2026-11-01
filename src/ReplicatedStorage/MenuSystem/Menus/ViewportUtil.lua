@@ -137,4 +137,75 @@ end
 
 ViewportUtil.SHOWN = SHOWN
 
+-- Is the viewport actually on screen: its gui enabled, every frame up the
+-- chain visible, and inside whatever clips it (a list's scroll area) or
+-- close to it (MARGIN pixels, so rows just below the fold are ready)?
+local MARGIN = 80
+
+local function overlaps(aPos: Vector2, aSize: Vector2, bPos: Vector2, bSize: Vector2, margin: number): boolean
+	return aPos.X + aSize.X >= bPos.X - margin and aPos.X <= bPos.X + bSize.X + margin
+		and aPos.Y + aSize.Y >= bPos.Y - margin and aPos.Y <= bPos.Y + bSize.Y + margin
+end
+
+function ViewportUtil.onScreen(viewport: ViewportFrame): boolean
+	if not viewport.Visible then return false end
+	local size, position = viewport.AbsoluteSize, viewport.AbsolutePosition
+	if size.X < 2 or size.Y < 2 then return false end
+	local node = viewport.Parent
+	while node do
+		if node:IsA("LayerCollector") then
+			if not node.Enabled then return false end
+			break
+		elseif node:IsA("GuiObject") then
+			if not node.Visible then return false end
+			if node.ClipsDescendants or node:IsA("ScrollingFrame") then
+				if not overlaps(position, size, node.AbsolutePosition, node.AbsoluteSize, MARGIN) then
+					return false
+				end
+			end
+		end
+		node = node.Parent
+	end
+	if not node then return false end -- not under a gui
+	local camera = workspace.CurrentCamera
+	if camera and node:IsA("ScreenGui") then
+		return overlaps(position, size, Vector2.zero, camera.ViewportSize, MARGIN)
+	end
+	return true
+end
+
+-- Calls `draw` once the viewport is on screen (checked a few times a
+-- second); a later call for the same viewport replaces the earlier one.
+local waiting: { [ViewportFrame]: () -> () } = setmetatable({}, { __mode = "k" }) :: any
+local waitLoop: RBXScriptConnection? = nil
+
+function ViewportUtil.whenOnScreen(viewport: ViewportFrame, draw: () -> ())
+	waiting[viewport] = draw
+	if waitLoop then return end
+	local elapsed = 0
+	waitLoop = RunService.Heartbeat:Connect(function(dt)
+		elapsed += dt
+		if elapsed < 0.15 then return end
+		elapsed = 0
+		local any = false
+		for view, callback in waiting do
+			any = true
+			if not view.Parent then
+				waiting[view] = nil
+			elseif ViewportUtil.onScreen(view) then
+				waiting[view] = nil
+				task.spawn(callback)
+			end
+		end
+		if not any and waitLoop then
+			waitLoop:Disconnect()
+			waitLoop = nil
+		end
+	end)
+end
+
+function ViewportUtil.cancelWait(viewport: ViewportFrame)
+	waiting[viewport] = nil
+end
+
 return ViewportUtil

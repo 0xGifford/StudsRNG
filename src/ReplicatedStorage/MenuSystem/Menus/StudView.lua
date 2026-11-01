@@ -22,6 +22,10 @@
 	Rainbow studs cycle their hue while shown. Particles and lights, which
 	don't draw in a viewport, are left out.
 
+	Lazy: a stud is only built once its viewport is on screen (its menu
+	open, inside the list's scroll area), so a long Index costs nothing
+	until you scroll to it.
+
 	API
 		StudView.Start()
 		StudView.Set(viewport, { Stud = id, StudVariant = name, ... })
@@ -83,7 +87,9 @@ local function movePart(object: Instance, turn: CFrame)
 	end
 end
 
-local function render(viewport: ViewportFrame, state: { [string]: any })
+local render: (ViewportFrame, { [string]: any }) -> ()
+
+function render(viewport: ViewportFrame, state: { [string]: any })
 	ViewportUtil.silhouette(viewport, state)
 
 	local id = viewport:GetAttribute("Stud")
@@ -100,6 +106,17 @@ local function render(viewport: ViewportFrame, state: { [string]: any })
 	local turn = viewport:GetAttribute("ViewTurn")
 	local fitAttr = viewport:GetAttribute("StudFit")
 	local key = `{def.Id}/{variant.Name}/{tostring(turn)}/{tostring(fitAttr)}`
+	if state.key ~= key and not ViewportUtil.onScreen(viewport) then
+		-- Built when it comes on screen; drop the old stud so it never
+		-- shows the wrong one meanwhile.
+		state.key = nil
+		ViewportUtil.clear(viewport)
+		ViewportUtil.whenOnScreen(viewport, function()
+			render(viewport, state)
+		end)
+		return
+	end
+	ViewportUtil.cancelWait(viewport)
 	if state.key ~= key then
 		state.key = key
 		-- Normalised so the framing fits, but bigger variants still read
@@ -128,6 +145,7 @@ local StudView = Component.new({
 	Class = "ViewportFrame",
 	Render = render,
 	Cleanup = function(viewport: ViewportFrame)
+		ViewportUtil.cancelWait(viewport)
 		ViewportUtil.stopSpin(viewport)
 	end,
 })
