@@ -90,6 +90,8 @@ Config.KeyRewards = {
 	-- Any Shared/Rewards kind: Clacks (scaled by progress), FreeRolls, Spins...
 	Reward = { Kind = "FreeRolls", Amount = 1 },
 	Attribute = "RewardTile", -- set on the key Model while active
+	NearRadius = 60, -- studs: tiles favour keys this close to a player...
+	NearChance = 0.6, -- ...this often
 }
 
 Config.Economy = {

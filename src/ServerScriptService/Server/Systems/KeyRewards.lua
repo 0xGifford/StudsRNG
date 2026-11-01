@@ -61,29 +61,69 @@ local function count(): number
 	return n
 end
 
+local function activate(hitbox: BasePart): boolean
+	local model = modelOf(hitbox)
+	if not model or active[hitbox] or not hitbox:IsDescendantOf(workspace) then return false end
+	active[hitbox] = os.clock() + Settings.Lifetime
+	model:SetAttribute(Settings.Attribute, Settings.Text)
+	return true
+end
+
+local function claimable(hitbox: BasePart, unlocked: { [string]: boolean }): boolean
+	local world = PressTracker.zoneOf(hitbox)
+	return PressTracker.isEnabled(hitbox) and (world == nil or unlocked[world] == true)
+end
+
 -- Tiles go where people can grab them: a key in a zone that a random
--- online player owns.
+-- online player owns, near that player when they're on the keys.
 local function spawnTile()
 	if count() >= Settings.MaxActive then return end
 	local players = Players:GetPlayers()
 	if #players == 0 then return end
-	local data = PlayerData.get(players[rng:NextInteger(1, #players)])
+	local player = players[rng:NextInteger(1, #players)]
+	local data = PlayerData.get(player)
 	local unlocked = if data then data.UnlockedWorlds else {}
 
-	local hitboxes = PressTracker.getHitboxes()
-	if #hitboxes == 0 then return end
-	-- A few tries to land on a claimable key that isn't already a tile.
-	for _ = 1, 12 do
-		local hitbox = hitboxes[rng:NextInteger(1, #hitboxes)]
-		local model = modelOf(hitbox)
-		local world = PressTracker.zoneOf(hitbox)
-		local claimable = PressTracker.isEnabled(hitbox) and (world == nil or unlocked[world] == true)
-		if model and claimable and not active[hitbox] and hitbox:IsDescendantOf(workspace) then
-			active[hitbox] = os.clock() + Settings.Lifetime
-			model:SetAttribute(Settings.Attribute, Settings.Text)
-			return
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local origin = if root and root:IsA("BasePart") then root.Position else nil
+	local near, anywhere = {}, {}
+	for _, hitbox in PressTracker.getHitboxes() do
+		if not active[hitbox] and claimable(hitbox, unlocked) then
+			table.insert(anywhere, hitbox)
+			if origin and (hitbox.Position - origin).Magnitude <= Settings.NearRadius then
+				table.insert(near, hitbox)
+			end
 		end
 	end
+	local pool = if #near > 0 and rng:NextNumber() < Settings.NearChance then near else anywhere
+	if #pool > 0 then
+		activate(pool[rng:NextInteger(1, #pool)])
+	end
+end
+
+-- Makes sure there's a tile within `radius` of the player (the tutorial's
+-- "step on a +1 tile" step). Returns true if one is there now.
+function KeyRewards.ensureNear(player: Player, radius: number): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local data = PlayerData.get(player)
+	if not (root and root:IsA("BasePart") and data) then return false end
+	local origin = root.Position
+	for hitbox in active do
+		if (hitbox.Position - origin).Magnitude <= radius then
+			return true
+		end
+	end
+	local best, bestDistance = nil, math.huge
+	for _, hitbox in PressTracker.getHitboxes() do
+		local distance = (hitbox.Position - origin).Magnitude
+		-- Not the key under their feet: a few steps away reads as "go there".
+		if distance > 6 and distance < bestDistance and distance <= radius and claimable(hitbox, data.UnlockedWorlds) then
+			best, bestDistance = hitbox, distance
+		end
+	end
+	return best ~= nil and activate(best)
 end
 
 local function onKeysPressed(player: Player, pressed: { BasePart })

@@ -450,6 +450,21 @@ local function normalizeMenus(starterGui: any, log: { string })
 	end
 end
 
+-- The tutorial points at HUD buttons by TutorialTarget (Shared/Tutorial's
+-- Target names), so it finds them wherever the layout put them.
+local function markTutorialTargets(hud: any, log: { string })
+	local top = hud:FindFirstChild("Top")
+	local bar = top and top:FindFirstChild("Frame")
+	if not bar then return end
+	for _, name in { "Roll", "Studs", "Upgrades" } do
+		local button = bar:FindFirstChild(name)
+		if button and button:GetAttribute("TutorialTarget") == nil then
+			button:SetAttribute("TutorialTarget", name)
+			table.insert(log, `HUD: {name} marked TutorialTarget`)
+		end
+	end
+end
+
 local function migrate(starterGui: any): { string }
 	local log = {}
 	splitMenu(starterGui, log)
@@ -470,6 +485,7 @@ local function migrate(starterGui: any): { string }
 		arrangeHud(hud, log)
 		addCombo(hud, log)
 		addPopupLayer(hud, log)
+		markTutorialTargets(hud, log)
 	end
 	return log
 end

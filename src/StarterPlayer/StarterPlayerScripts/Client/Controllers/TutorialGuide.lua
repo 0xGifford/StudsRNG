@@ -38,6 +38,8 @@ local Roles = require(UI.Roles)
 local Juice = require(UI.Juice)
 local Format = require(UI.Format)
 
+local ProgressBar = require(ReplicatedStorage:WaitForChild("MenuSystem"):WaitForChild("Menus"):WaitForChild("ProgressBar"))
+
 local TutorialGuide = {}
 
 local ACCENT = Color3.fromRGB(255, 220, 90)
@@ -117,20 +119,39 @@ local function dataView(): { [string]: any }
 	}
 end
 
-local function hudTarget(name: string): GuiObject?
-	if name == "Roll" or name == "Studs" then
-		local top = Interface.HUD:FindFirstChild("Top")
-		local frame = top and top:FindFirstChild("Frame")
-		local target = frame and frame:FindFirstChild(name)
-		if name == "Studs" and Interface.isOpen("Studs") then
-			target = StudsMenu.equipBestButton()
-		end
-		return if target and target:IsA("GuiObject") then target else nil
+-- The HUD button for a step: a TutorialTarget = "<name>" attribute wins,
+-- else the first visible GuiObject of that name (the baked HUD layout moves
+-- buttons between the bars, so no fixed path).
+local hudCache: { [string]: GuiObject } = {}
+local function findHud(name: string): GuiObject?
+	local cached = hudCache[name]
+	if cached and cached:IsDescendantOf(Interface.HUD) then
+		return cached
 	end
-	if Interface.isOpen(name) then return nil end
-	-- Side buttons can sit in either column or the bottom bar (HudLayout).
-	local target = Interface.HUD:FindFirstChild(name, true)
-	return if target and target:IsA("GuiObject") then target else nil
+	local found: GuiObject? = Roles.find(Interface.HUD, "TutorialTarget", name)
+	if not found then
+		-- Only a button: a GuiButton, or a kit frame holding one (the kit's
+		-- tiled "Studs" texture images share names with real buttons).
+		for _, d in Interface.HUD:GetDescendants() do
+			if d.Name == name and d:IsA("GuiObject") and d.Visible
+				and (d:IsA("GuiButton") or d:FindFirstChildWhichIsA("GuiButton") ~= nil) then
+				found = d
+				break
+			end
+		end
+	end
+	if found then
+		hudCache[name] = found
+	end
+	return found
+end
+
+local function hudTarget(name: string): GuiObject?
+	if name == "Studs" and Interface.isOpen("Studs") then
+		return StudsMenu.equipBestButton()
+	end
+	if Interface.isOpen() then return nil end
+	return findHud(name)
 end
 
 local function nearestKey(root: Vector3, wantTile: boolean): Vector3?
@@ -176,17 +197,23 @@ end
 local function setHudTarget(target: GuiObject?)
 	if target and target.Visible then
 		local pad = 6
+		-- Screen positions differ between ScreenGuis that do / don't ignore
+		-- the topbar inset: measure from the highlight's own parent.
+		local origin = (highlight.Parent :: GuiBase2d).AbsolutePosition
+		local at = target.AbsolutePosition - origin
 		highlight.Visible = true
-		highlight.Position = UDim2.fromOffset(target.AbsolutePosition.X - pad, target.AbsolutePosition.Y - pad)
+		highlight.Position = UDim2.fromOffset(at.X - pad, at.Y - pad)
 		highlight.Size = UDim2.fromOffset(target.AbsoluteSize.X + pad * 2, target.AbsoluteSize.Y + pad * 2)
 		local stroke = highlight:FindFirstChildOfClass("UIStroke")
 		if stroke then
 			stroke.Transparency = 0.5 - math.sin(os.clock() * 6) * 0.5
 		end
+		local arrowOrigin = (arrow.Parent :: GuiBase2d).AbsolutePosition
+		local arrowAt = target.AbsolutePosition - arrowOrigin
 		arrow.Visible = true
 		arrow.Position = UDim2.fromOffset(
-			target.AbsolutePosition.X + target.AbsoluteSize.X / 2,
-			target.AbsolutePosition.Y - 30 + math.sin(os.clock() * 6) * 8
+			arrowAt.X + target.AbsoluteSize.X / 2,
+			arrowAt.Y - 30 + math.sin(os.clock() * 6) * 8
 		)
 	else
 		highlight.Visible = false
@@ -225,12 +252,19 @@ local function update()
 	local step = TutorialDefs.Steps[index]
 	local data = dataView()
 	local progress = step.Progress
+	local share
 	if progress then
 		local value, goal = progress(data)
-		bar.Size = UDim2.fromScale(math.clamp(value / math.max(goal, 1), 0, 1), 1)
-		textLabel.Text = `{step.Text} ({Format.number(value)}/{Format.number(goal)})`
+		share = value / math.max(goal, 1)
+		local text = `{step.Text} ({Format.number(value)}/{Format.number(goal)})`
+		if textLabel.Text ~= text then
+			textLabel.Text = text
+		end
 	else
-		bar.Size = UDim2.fromScale(if step.Done(data) then 1 else 0, 1)
+		share = if step.Done(data) then 1 else 0
+	end
+	if bar:GetAttribute("Progress") ~= share then
+		ProgressBar.Set(bar, { Progress = share })
 	end
 
 	local character = player.Character
