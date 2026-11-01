@@ -390,6 +390,15 @@ Config.Visuals = {
 	TemplateFolder = "Assets",
 	TemplateName = "StudTemplate",
 	EnemyTemplateFolder = "EnemyTemplates",
+	-- Enemy faces: every Decal on a part named "Body" in an enemy template
+	-- shows the idle face of its kind, and Angry while the enemy hunts
+	-- someone or is being fought.
+	EnemyFaces = {
+		Enemy = "rbxassetid://6375861436",
+		MiniBoss = "rbxassetid://7802853826",
+		Titan = "rbxassetid://7802852346",
+		Angry = "rbxassetid://6443708470",
+	},
 	FallbackTextureId = "",
 	Size = Vector3.new(1, 1, 1),
 }

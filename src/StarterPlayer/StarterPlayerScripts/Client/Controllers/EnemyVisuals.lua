@@ -30,6 +30,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Eye     blink                 Pupil   glow red while it hunts you
 --   Brow    tilt angrier while it hunts you
 -- Parts with the attribute Tint = true take the zone's enemy colour.
+-- Faces: every Decal on a part named Body shows the kind's idle face
+-- (Config.Visuals.EnemyFaces: Enemy / MiniBoss / Titan) and the Angry face
+-- while the enemy hunts someone or anyone's studs are fighting it.
 -- Without templates, enemies are the built-in brick monsters.
 --
 -- Other controllers anchor UI and effects to the visual, not the proxy:
@@ -66,6 +69,10 @@ type Visual = {
 	whites: { BasePart },
 	whiteHeights: { number }, -- each eye's open height (blink squashes it)
 	pupilRest: { { color: Color3, material: Enum.Material } }?, -- a template's own pupils, when calm
+	source: Model, -- the server's enemy (attributes: EnemyId, Hunting...)
+	faces: { Decal }, -- face decals on the template's Body parts
+	idleFace: string,
+	angry: boolean,
 	size: number,
 	boss: boolean,
 	position: Vector3,
@@ -181,6 +188,22 @@ local function buildFromTemplate(model: Model, proxy: BasePart, source: Model, b
 	for i, eye in whites do
 		heights[i] = eye.Size.Y
 	end
+
+	-- Decal faces live on the template's Body parts.
+	local faces: { Decal } = {}
+	for _, d in clone:GetDescendants() do
+		if d:IsA("Decal") and d.Parent and d.Parent:IsA("BasePart") and d.Parent.Name == "Body" then
+			table.insert(faces, d)
+		end
+	end
+	local faceSet = Config.Visuals.EnemyFaces
+	local idleFace = if model:GetAttribute("ZoneBoss") == true then faceSet.Titan
+		elseif model:GetAttribute("Boss") == true then faceSet.MiniBoss
+		else faceSet.Enemy
+	for _, face in faces do
+		face.Texture = idleFace
+	end
+
 	local health = model:GetAttribute("Health")
 	return {
 		model = visual,
@@ -191,6 +214,10 @@ local function buildFromTemplate(model: Model, proxy: BasePart, source: Model, b
 		whites = whites,
 		whiteHeights = heights,
 		pupilRest = pupilRest,
+		source = model,
+		faces = faces,
+		idleFace = idleFace,
+		angry = false,
 		size = s,
 		boss = boss,
 		position = proxy.Position,
@@ -271,6 +298,10 @@ local function build(model: Model, proxy: BasePart): Visual
 			for i, eye in whites do heights[i] = eye.Size.Y end
 			return heights
 		end)(),
+		source = model,
+		faces = {},
+		idleFace = "",
+		angry = false,
 		size = s,
 		boss = boss,
 		position = proxy.Position,
@@ -302,6 +333,37 @@ local function setEyeColor(visual: Visual, color: Color3, neon: boolean)
 	end
 end
 
+-- Angry while it hunts anyone or any player's studs fight it (FightTarget).
+local function isAngry(visual: Visual): boolean
+	local source = visual.source
+	if source:GetAttribute("Hunting") ~= nil then return true end
+	local id = source:GetAttribute("EnemyId")
+	if id == nil then return false end
+	for _, other in Players:GetPlayers() do
+		if other:GetAttribute("FightTarget") == id then
+			return true
+		end
+	end
+	return false
+end
+
+local function refreshFace(visual: Visual)
+	if #visual.faces == 0 then return end
+	local angry = isAngry(visual)
+	if angry == visual.angry then return end
+	visual.angry = angry
+	local texture = if angry then Config.Visuals.EnemyFaces.Angry else visual.idleFace
+	for _, face in visual.faces do
+		face.Texture = texture
+	end
+end
+
+local function refreshAllFaces()
+	for _, visual in visuals do
+		refreshFace(visual)
+	end
+end
+
 local function untrack(instance: Instance)
 	local visual = visuals[instance :: Model]
 	if not visual then return end
@@ -320,6 +382,7 @@ local function track(instance: Instance): Visual?
 	if not (proxy and proxy:IsA("BasePart")) then return nil end
 	local visual = build(instance, proxy)
 	visuals[instance] = visual
+	refreshFace(visual)
 
 	table.insert(visual.connections, instance.AttributeChanged:Connect(function(name)
 		if name == "Health" then
@@ -331,6 +394,7 @@ local function track(instance: Instance): Visual?
 				visual.lastHealth = health
 			end
 		elseif name == "Hunting" then
+			refreshFace(visual)
 			local hunting = instance:GetAttribute("Hunting") == player.UserId
 			if hunting ~= visual.hunting then
 				visual.hunting = hunting
@@ -459,6 +523,18 @@ function EnemyVisuals.start()
 		track(model)
 	end)
 	CollectionService:GetInstanceRemovedSignal(Tags.Enemy):Connect(untrack)
+	-- A player's studs starting or stopping a fight changes faces.
+	local function watchPlayer(other: Player)
+		other:GetAttributeChangedSignal("FightTarget"):Connect(refreshAllFaces)
+	end
+	for _, other in Players:GetPlayers() do
+		watchPlayer(other)
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+	Players.PlayerRemoving:Connect(function()
+		task.defer(refreshAllFaces)
+	end)
+
 	RunService.RenderStepped:Connect(update)
 end
 
