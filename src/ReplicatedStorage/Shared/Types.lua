@@ -81,6 +81,7 @@ export type PlayerData = {
 	Title: string, -- achievement id whose title is worn ("" = none)
 	Pass: { Season: string, Points: number, Free: { [string]: boolean }, Premium: { [string]: boolean } }, -- Stud Pass (claimed tiers by tostring(tier))
 	Bought: { [string]: boolean }, -- one-time products bought
+	Epochs: { Economy: number, All: number }, -- admin resets this save has had (Systems/Admin)
 }
 
 export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }

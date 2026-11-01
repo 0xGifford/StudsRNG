@@ -230,8 +230,12 @@ function RollLogic.milestoneBonuses(discovered: number): (number, number, number
 end
 
 local eventsById: { [string]: Config.EventDef } = {}
+local scheduled: { Config.EventDef } = {} -- the rotation (Scheduled ~= false)
 for _, event in Config.Events.List do
 	eventsById[event.Id] = event
+	if event.Scheduled ~= false then
+		table.insert(scheduled, event)
+	end
 end
 
 local EMPTY_CONTEXT: StatContext = {
@@ -252,7 +256,7 @@ end
 -- the next one starts.
 function RollLogic.eventSchedule(now: number): (Config.EventDef?, number, number)
 	local interval = Config.Events.Interval
-	local list = Config.Events.List
+	local list = scheduled
 	local cycle = math.floor(now / interval)
 	local start = cycle * interval
 	local nextStart = start + interval

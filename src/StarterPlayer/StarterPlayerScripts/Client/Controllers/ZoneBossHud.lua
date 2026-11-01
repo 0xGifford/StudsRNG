@@ -267,7 +267,11 @@ local function onEvent(payload: any)
 		Juice.pop(chip, 1.4)
 	elseif phase == "Spawn" then
 		local names = if typeof(payload.Zones) == "table" then table.concat(payload.Zones, ", ") else ""
-		Juice.banner("THE TITANS HAVE ARRIVED!", `{names} · teleport in and fight together!`, RED, 2.4)
+		if payload.Mega then
+			Juice.banner("A MEGA BOSS HAS APPEARED!", `{names} · everyone together!`, Color3.fromRGB(190, 110, 255), 2.6)
+		else
+			Juice.banner("THE TITANS HAVE ARRIVED!", `{names} · teleport in and fight together!`, RED, 2.4)
+		end
 		Juice.shake(0.8, 0.5)
 		CombatFx.sound("Explode", nil, 0.45, 0.8)
 	elseif phase == "Board" then

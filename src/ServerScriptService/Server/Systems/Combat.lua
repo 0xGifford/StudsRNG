@@ -70,6 +70,7 @@ local Boosts = require(Systems.Boosts)
 local Drops = require(Systems.Drops)
 local RewardService = require(Systems.RewardService)
 local Products = require(Systems.Products)
+local ServerEffects = require(Systems.ServerEffects)
 
 local Combat = {}
 
@@ -96,8 +97,9 @@ type Enemy = {
 	alive: boolean,
 	fighters: { [Player]: boolean },
 
-	-- Zone Bosses
+	-- Zone Bosses (a Mega Boss is one too: event-spawned, its own stats)
 	zoneBoss: boolean,
+	mega: Config.EventDef?, -- the event that spawned this Mega Boss
 	forceBoss: boolean,
 	summoned: boolean,
 	damageBy: { [Player]: number },
@@ -289,7 +291,10 @@ local function buildModel(enemy: Enemy): (Model, BasePart)
 	model:SetAttribute("ZoneId", enemy.zoneId)
 	model:SetAttribute("Level", enemy.def.Level)
 	model:SetAttribute("Boss", enemy.boss)
-	model:SetAttribute("ZoneBoss", if enemy.zoneBoss then true else nil)
+	model:SetAttribute("ZoneBoss", if enemy.zoneBoss and not enemy.mega then true else nil)
+	model:SetAttribute("MegaBoss", if enemy.mega then true else nil)
+	local changes = eventEnemies()
+	model:SetAttribute("Glow", if changes then changes.Glow else nil)
 	model:SetAttribute("MaxHealth", enemy.maxHealth)
 	model:SetAttribute("Health", enemy.maxHealth)
 
@@ -300,10 +305,25 @@ local function buildModel(enemy: Enemy): (Model, BasePart)
 end
 
 -- (Re)spawns at home, rolling whether this one is a Mini Boss.
+-- The running event's enemy changes (Config.Events: Enemies), or nil.
+local function eventEnemies(): { Glow: Color3?, Health: number?, Damage: number?, Reward: number?, Size: number? }?
+	local def = RollLogic.eventById(ServerEffects.currentEvent())
+	return if def then def.Enemies else nil
+end
+
 local function spawnEnemy(enemy: Enemy)
 	local def = enemy.def
+	local mega = enemy.mega and enemy.mega.MegaBoss
 
-	if enemy.zoneBoss then
+	if mega then
+		local zone = Zones.ById[enemy.zoneId]
+		enemy.boss = true
+		enemy.maxHealth = math.floor(def.Health * mega.Health)
+		enemy.damage = def.Damage * mega.Damage
+		enemy.reward = math.floor(def.Reward * mega.Reward)
+		enemy.size = def.Size * mega.Size
+		enemy.name = `{if zone then zone.Name else "Zone"} Mega Boss`
+	elseif enemy.zoneBoss then
 		local zoneBoss = Config.ZoneBoss
 		local zone = Zones.ById[enemy.zoneId]
 
@@ -320,6 +340,15 @@ local function spawnEnemy(enemy: Enemy)
 		enemy.reward = math.floor(def.Reward * (if enemy.boss then Settings.BossReward else 1))
 		enemy.size = def.Size * (if enemy.boss then Settings.BossSize else 1)
 		enemy.name = if enemy.boss then `Mini Boss {def.Name}` else def.Name
+	end
+
+	-- Event changes (Blood Moon...) on everything but Mega Bosses.
+	local changes = if mega then nil else eventEnemies()
+	if changes then
+		enemy.maxHealth = math.floor(enemy.maxHealth * (changes.Health or 1))
+		enemy.damage *= changes.Damage or 1
+		enemy.reward = math.floor(enemy.reward * (changes.Reward or 1))
+		enemy.size *= changes.Size or 1
 	end
 
 	table.clear(enemy.damageBy)
@@ -502,7 +531,8 @@ local function addEnemy(
 	zoneId: string,
 	home: Vector3,
 	zoneBoss: boolean?,
-	summoned: boolean?
+	summoned: boolean?,
+	mega: Config.EventDef?
 ): Enemy?
 	local def = Enemies.forZone(zoneId)
 
@@ -528,7 +558,7 @@ local function addEnemy(
 
 	-- Special enemies do not consume the normal enemy capacity.
 	-- This prevents a full zone from blocking Titans or summoned bosses.
-	if not zoneBoss and not summoned then
+	if not zoneBoss and not summoned and not mega then
 		local maxEnemies = getMaxEnemiesForZone(zone)
 		local currentEnemies = 0
 
@@ -563,11 +593,12 @@ local function addEnemy(
 		alive = false,
 		fighters = {},
 
-		zoneBoss = zoneBoss == true,
+		zoneBoss = zoneBoss == true or mega ~= nil,
+		mega = mega,
 		forceBoss = summoned == true,
 		summoned = summoned == true,
 		damageBy = {},
-		expiresAt = if zoneBoss then os.clock() + Config.ZoneBoss.Lifetime else math.huge,
+		expiresAt = if mega then math.huge elseif zoneBoss then os.clock() + Config.ZoneBoss.Lifetime else math.huge,
 
 		chasing = nil,
 		goal = nil,
@@ -1318,7 +1349,7 @@ function Combat.spawnZoneBosses(): { string }
 		local exists = false
 
 		for _, enemy in enemies do
-			if enemy.zoneBoss and enemy.zoneId == state.id and enemy.alive then
+			if enemy.zoneBoss and not enemy.mega and enemy.zoneId == state.id and enemy.alive then
 				exists = true
 				break
 			end
@@ -1400,6 +1431,79 @@ local function updateZoneBosses()
 				})
 			end
 		end
+	end
+end
+
+--------------------------------------------------------------------------
+-- Events: enemy glow and the Mega Boss
+--------------------------------------------------------------------------
+
+-- A Mega Boss in each zone players stand in (most players first).
+function Combat.spawnMegaBosses(event: Config.EventDef): { string }
+	local mega = event.MegaBoss
+	if not mega then return {} end
+	scanZones()
+
+	local counts: { [string]: number } = {}
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		local zoneId = if root then zoneAt(player, root.Position) else nil
+		if zoneId then
+			counts[zoneId] = (counts[zoneId] or 0) + 1
+		end
+	end
+	local order = {}
+	for zoneId in counts do
+		table.insert(order, zoneId)
+	end
+	table.sort(order, function(a, b)
+		return counts[a] > counts[b]
+	end)
+
+	local spawned: { string } = {}
+	for i = 1, math.min(#order, mega.MaxZones) do
+		local zoneId = order[i]
+		local zone: Instance? = nil
+		for instance, state in zoneStates do
+			if state.id == zoneId and instance.Parent then
+				zone = instance
+			end
+		end
+		local center = zone and zoneCenter(zone)
+		if center then
+			local enemy = addEnemy(zoneId, center, true, false, event)
+			if enemy then
+				table.insert(spawned, enemy.name)
+			end
+		end
+	end
+	if #spawned > 0 then
+		Net.fireAll("ZoneBoss", { Phase = "Spawn", Zones = spawned, Lifetime = 0, Mega = true })
+	end
+	return spawned
+end
+
+-- The event ended: Mega Bosses leave.
+local function removeMegaBosses()
+	for _, enemy in enemies do
+		if enemy.mega and enemy.alive then
+			Net.fireAll("ZoneBoss", { Phase = "Escaped", Name = enemy.name, ZoneId = enemy.zoneId })
+			removeEnemy(enemy)
+		end
+	end
+end
+
+local function onEventChanged(_id: string?, def: Config.EventDef?)
+	-- Glow on every enemy alive now (stats change as they respawn).
+	local glow = if def and def.Enemies then def.Enemies.Glow else nil
+	for _, enemy in enemies do
+		if enemy.model then
+			enemy.model:SetAttribute("Glow", glow)
+		end
+	end
+	removeMegaBosses()
+	if def and def.MegaBoss then
+		Combat.spawnMegaBosses(def)
 	end
 end
 
@@ -1613,6 +1717,15 @@ function Combat.start()
 	end)
 
 	task.spawn(zoneBossClock)
+
+	ServerEffects.EventChanged:Connect(onEventChanged)
+	-- An event already running at boot (zones load first).
+	task.delay(5, function()
+		local running = RollLogic.eventById(ServerEffects.currentEvent())
+		if running then
+			onEventChanged(running.Id, running)
+		end
+	end)
 
 	while true do
 		local dt = task.wait(Settings.Tick)
