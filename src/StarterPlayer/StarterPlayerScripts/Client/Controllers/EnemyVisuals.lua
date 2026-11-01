@@ -51,6 +51,10 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Tags = require(Shared.Tags)
 
+local UI = script.Parent.Parent:WaitForChild("UI")
+local CombatFx = require(UI.CombatFx)
+local Juice = require(UI.Juice)
+
 local EnemyVisuals = {}
 
 local ANIMATE_RANGE = 260 -- studs from the camera
@@ -89,10 +93,20 @@ type Visual = {
 	blinking: boolean,
 	hunting: boolean,
 	connections: { RBXScriptConnection },
+	-- Juice
+	wobble: number, -- after a hit: a damped side-to-side jiggle
+	wobbleSide: number,
+	jumpY: number, -- aggro hop: height and vertical speed
+	jumpVel: number,
+	fighting: boolean, -- some player's studs fight it: lunges at them
+	maxHealth: number,
+	dyingAt: number?, -- defeated: pops up and spins before it goes
 }
 
 local visuals: { [Model]: Visual } = {}
 local folder: Folder
+local live = false -- enemies tracked after join (not the ones already there)
+local STOMP_RANGE = 120 -- studs: a boss landing this close shakes your camera
 
 local function newPart(size: Vector3, color: Color3, material: Enum.Material?): Part
 	local part = Instance.new("Part")
@@ -238,6 +252,13 @@ local function buildFromTemplate(model: Model, proxy: BasePart, source: Model, b
 		blinking = false,
 		hunting = false,
 		connections = {},
+		wobble = 0,
+		wobbleSide = 1,
+		jumpY = 0,
+		jumpVel = 0,
+		fighting = false,
+		maxHealth = math.max(if typeof(model:GetAttribute("MaxHealth")) == "number" then model:GetAttribute("MaxHealth") :: number else 1, 1),
+		dyingAt = nil,
 	}
 end
 
@@ -323,6 +344,13 @@ local function build(model: Model, proxy: BasePart): Visual
 		blinking = false,
 		hunting = false,
 		connections = {},
+		wobble = 0,
+		wobbleSide = 1,
+		jumpY = 0,
+		jumpVel = 0,
+		fighting = false,
+		maxHealth = math.max(if typeof(model:GetAttribute("MaxHealth")) == "number" then model:GetAttribute("MaxHealth") :: number else 1, 1),
+		dyingAt = nil,
 	}
 end
 
@@ -356,10 +384,25 @@ local function isAngry(visual: Visual): boolean
 	return false
 end
 
+-- Some player's studs are fighting it (it lunges at them).
+local function isFought(visual: Visual): boolean
+	local id = visual.source:GetAttribute("EnemyId")
+	if id == nil then return false end
+	for _, other in Players:GetPlayers() do
+		if other:GetAttribute("FightTarget") == id then
+			return true
+		end
+	end
+	return false
+end
+
 local function refreshFace(visual: Visual)
-	if #visual.faces == 0 then return end
 	local angry = isAngry(visual)
-	if angry == visual.angry then return end
+	visual.fighting = isFought(visual)
+	if #visual.faces == 0 or angry == visual.angry then
+		visual.angry = angry
+		return
+	end
 	visual.angry = angry
 	local texture = if angry then Config.Visuals.EnemyFaces.Angry else visual.idleFace
 	for _, face in visual.faces do
@@ -432,6 +475,11 @@ local function refreshOutlines()
 	end
 end
 
+-- Defeated enemies pop up and spin for a moment (the bricks and shockwave
+-- burst out of them, Controllers/Enemies) before they go.
+local DEATH_TIME = 0.22
+local dying: { Visual } = {}
+
 local function untrack(instance: Instance)
 	local visual = visuals[instance :: Model]
 	if not visual then return end
@@ -440,7 +488,14 @@ local function untrack(instance: Instance)
 	for _, connection in visual.connections do
 		connection:Disconnect()
 	end
-	visual.model:Destroy()
+	local camera = workspace.CurrentCamera
+	local near = camera and (visual.position - camera.CFrame.Position).Magnitude <= ANIMATE_RANGE
+	if visual.lastHealth <= 0 and near then
+		visual.dyingAt = os.clock()
+		table.insert(dying, visual)
+	else
+		visual.model:Destroy()
+	end
 end
 
 local function track(instance: Instance): Visual?
@@ -451,6 +506,21 @@ local function track(instance: Instance): Visual?
 	if not (proxy and proxy:IsA("BasePart")) then return nil end
 	local visual = build(instance, proxy)
 	visuals[instance] = visual
+	-- A boss arriving near you lands with a stomp once it has risen.
+	if live and visual.boss then
+		task.delay(0.55, function()
+			if visuals[instance] ~= visual then return end
+			local camera = workspace.CurrentCamera
+			local distance = if camera then (visual.position - camera.CFrame.Position).Magnitude else math.huge
+			if distance > STOMP_RANGE then return end
+			local ground = visual.position - Vector3.new(0, visual.size * 0.45, 0)
+			CombatFx.shockwave(ground, RED, visual.size * 1.6)
+			CombatFx.impact(ground, Color3.new(1, 1, 1), visual.size)
+			CombatFx.sound("Explode", ground, 0.5, 0.7)
+			local closeness = 1 - distance / STOMP_RANGE
+			Juice.shake(0.3 + 0.7 * closeness, 0.35)
+		end)
+	end
 	refreshFace(visual)
 	local glow = instance:GetAttribute("Glow")
 	setGlow(visual, if typeof(glow) == "Color3" then glow else nil)
@@ -460,14 +530,25 @@ local function track(instance: Instance): Visual?
 			local health = instance:GetAttribute("Health")
 			if typeof(health) == "number" then
 				if health < visual.lastHealth then
-					visual.hit = 1
+					-- Bigger chunks (crits) shake it harder.
+					local share = (visual.lastHealth - health) / visual.maxHealth
+					visual.hit = math.min(1 + share * 6, 1.8)
+					visual.wobble = math.min(visual.wobble + 0.6 + share * 4, 1.6)
+					visual.wobbleSide = -visual.wobbleSide
 				end
 				visual.lastHealth = health
 			end
 		elseif name == "Glow" then
 			local glow = instance:GetAttribute("Glow")
 			setGlow(visual, if typeof(glow) == "Color3" then glow else nil)
+		elseif name == "MaxHealth" then
+			local max = instance:GetAttribute("MaxHealth")
+			visual.maxHealth = if typeof(max) == "number" and max > 0 then max else visual.maxHealth
 		elseif name == "Hunting" then
+			-- Spotted someone: a startled hop.
+			if instance:GetAttribute("Hunting") ~= nil and visual.jumpY <= 0 then
+				visual.jumpVel = 22 * math.sqrt(visual.size / 4)
+			end
 			refreshFace(visual)
 			local hunting = instance:GetAttribute("Hunting") == player.UserId
 			if hunting ~= visual.hunting then
@@ -538,10 +619,34 @@ local function update(dt: number)
 		local recoil = visual.hit ^ 2
 		local rise = math.clamp((now - visual.spawnedAt) / 0.6, 0, 1)
 		local riseOffset = -(1 - (1 - (1 - rise) ^ 3)) * s
-		local rootCFrame = CFrame.new(visual.position + Vector3.new(0, bob + hop + riseOffset, 0))
+
+		-- Hit jiggle: a quick damped roll.
+		visual.wobble = math.max(0, visual.wobble - dt * 3.2)
+		local roll = visual.wobble * math.sin(now * 32) * 0.22 * visual.wobbleSide
+		-- Aggro hop.
+		if visual.jumpVel ~= 0 or visual.jumpY > 0 then
+			visual.jumpY += visual.jumpVel * dt
+			visual.jumpVel -= 90 * dt
+			if visual.jumpY <= 0 then
+				visual.jumpY, visual.jumpVel = 0, 0
+			end
+		end
+		-- Fighting: lunge at the studs about once a second.
+		local lunge = 0
+		if visual.fighting then
+			local beat = (t * 1.4) % 1
+			lunge = if beat < 0.22 then math.sin(beat / 0.22 * math.pi) else 0
+		end
+		-- Nearly beaten: it trembles.
+		local tremble = Vector3.zero
+		if visual.lastHealth > 0 and visual.lastHealth / visual.maxHealth < 0.25 then
+			tremble = Vector3.new(math.random() - 0.5, 0, math.random() - 0.5) * 0.12 * s
+		end
+
+		local rootCFrame = CFrame.new(visual.position + tremble + Vector3.new(0, bob + hop + riseOffset + visual.jumpY, 0))
 			* visual.rotation
-			* CFrame.new(0, 0, recoil * 0.35 * s)
-			* CFrame.Angles(-lean + recoil * 0.35, 0, 0)
+			* CFrame.new(0, 0, recoil * 0.35 * s - lunge * 0.45 * s)
+			* CFrame.Angles(-lean + recoil * 0.35 - lunge * 0.25, 0, roll)
 		table.insert(parts, visual.root)
 		table.insert(cframes, rootCFrame)
 
@@ -557,6 +662,27 @@ local function update(dt: number)
 			end
 			table.insert(parts, piece.part)
 			table.insert(cframes, rootCFrame * offset)
+		end
+	end
+
+	-- Defeated: up, spin, gone.
+	for i = #dying, 1, -1 do
+		local visual = dying[i]
+		local k = (now - (visual.dyingAt :: number)) / DEATH_TIME
+		if k >= 1 then
+			table.remove(dying, i)
+			visual.model:Destroy()
+		else
+			local s = visual.size
+			local rootCFrame = CFrame.new(visual.position + Vector3.new(0, math.sin(k * math.pi * 0.5) * 0.9 * s, 0))
+				* visual.rotation
+				* CFrame.Angles(0, k * 2.5, k * 0.6)
+			table.insert(parts, visual.root)
+			table.insert(cframes, rootCFrame)
+			for _, piece in visual.pieces do
+				table.insert(parts, piece.part)
+				table.insert(cframes, rootCFrame * piece.offset)
+			end
 		end
 	end
 
@@ -590,6 +716,9 @@ function EnemyVisuals.start()
 	for _, model in CollectionService:GetTagged(Tags.Enemy) do
 		task.spawn(track, model)
 	end
+	task.defer(function()
+		live = true
+	end)
 	CollectionService:GetInstanceAddedSignal(Tags.Enemy):Connect(function(model)
 		if model:IsA("Model") and not (model.PrimaryPart or model:FindFirstChild("Body")) then
 			model:WaitForChild("Body", 5)
