@@ -321,7 +321,6 @@ function IsoCamera.start()
 	Juice.ownFov(true)
 	-- World UI distances are "from you": add how far the camera can be.
 	Roles.distanceBonus = math.ceil(Settings.Distance * Settings.MaxZoom)
-	player.DevEnableMouseLock = false -- shift lock makes no sense from up here
 	bindInput()
 	if player.Character then
 		task.spawn(listenFromHead, player.Character)
