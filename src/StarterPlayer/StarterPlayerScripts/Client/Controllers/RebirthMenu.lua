@@ -42,7 +42,7 @@ local function render()
 	local rebirths = State.get("Rebirths") or 0
 	local clacks = State.get("Clacks") or 0
 	local cost = RollLogic.rebirthCost(rebirths)
-	local perRebirth = Config.Rebirth.ClacksPerRebirth + (Upgrades.totals(State.get("Upgrades")).RebirthBonus or 0)
+	local bonus = Upgrades.totals(State.get("Upgrades")).RebirthBonus or 0
 
 	local fromTitle = main:FindFirstChild("FromTitle")
 	local toTitle = main:FindFirstChild("ToTitle")
@@ -51,8 +51,8 @@ local function render()
 
 	local from = main:FindFirstChild("From")
 	local to = main:FindFirstChild("To")
-	if from then Interface.setText(from, multiplierText(1 + rebirths * perRebirth)) end
-	if to then Interface.setText(to, multiplierText(1 + (rebirths + 1) * perRebirth)) end
+	if from then Interface.setText(from, multiplierText(Config.rebirthMultiplier(rebirths, bonus))) end
+	if to then Interface.setText(to, multiplierText(Config.rebirthMultiplier(rebirths + 1, bonus))) end
 
 	local info = main:FindFirstChild("Info")
 	if info then

@@ -101,7 +101,8 @@ Config.Economy = {
 }
 
 Config.Rolls = {
-	ClackCost = 250, -- per paid roll
+	ClackCost = 250, -- per paid roll, × (best zone's key multiplier ^ ZoneCostPower)
+	ZoneCostPower = 1,
 	MaxBatch = 3, -- rolls per request
 	Cooldown = 0.9, -- seconds between roll requests at x1 roll speed (lets the client animate)
 	MinCooldown = 0.2, -- floor however fast roll speed gets
@@ -123,14 +124,22 @@ Config.Movement = {
 }
 
 -- Rebirth costs Clacks and resets Clacks (and zones, if ResetZones). Studs,
--- the index, upgrades, Lucky Rolls, spins and boosts are kept.
+-- the index, upgrades, Lucky Rolls, spins and boosts are kept. The Clacks
+-- bonus compounds: × (1 + ClacksPerRebirth + Reborn upgrade) per rebirth,
+-- so rebirths keep mattering late, when upgrades are maxed
+-- (tools/simulate.py).
 Config.Rebirth = {
-	BaseCost = 500_000,
-	CostGrowth = 3, -- cost × this for every rebirth already done
-	ClacksPerRebirth = 0.5, -- +x0.5 Clacks multiplier per rebirth (1 → 1.5 → 2 ...)
-	LuckPerRebirth = 0.1, -- +10% luck per rebirth
-	ResetZones = true,
+	BaseCost = 250_000,
+	CostGrowth = 3.2, -- cost × this for every rebirth already done
+	ClacksPerRebirth = 0.15, -- × 1.15 Clacks per rebirth (× 1.25 with Reborn maxed)
+	LuckPerRebirth = 0.08, -- +8% luck per rebirth
+	ResetZones = false,
 }
+
+-- The Clacks multiplier from rebirths (bonus: the Reborn upgrade's total).
+function Config.rebirthMultiplier(rebirths: number, bonus: number?): number
+	return (1 + Config.Rebirth.ClacksPerRebirth + (bonus or 0)) ^ math.max(rebirths, 0)
+end
 
 -- Personal timed boosts (Robux, rewards, wheel). Time only counts down
 -- while the player is in the game; buying more adds time.
@@ -299,6 +308,15 @@ local milestones: { Milestone } = {
 	{ Count = 80, Luck = 0.25 },
 	{ Count = 100, Clacks = 1 },
 	{ Count = 120, Slots = 1, Luck = 0.5 },
+	-- The long tail: ~130 studs x 6 variants, a goal every so often.
+	{ Count = 160, Clacks = 1 },
+	{ Count = 200, Luck = 0.5 },
+	{ Count = 250, Clacks = 1.5 },
+	{ Count = 320, Luck = 0.75 },
+	{ Count = 400, Clacks = 2 },
+	{ Count = 500, Luck = 1 },
+	{ Count = 620, Clacks = 3 },
+	{ Count = 760, Luck = 1.5, Clacks = 4 },
 }
 Config.IndexMilestones = milestones
 

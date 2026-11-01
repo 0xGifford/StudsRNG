@@ -19,6 +19,7 @@ local Studs = require(Shared.Studs)
 local Variants = require(Shared.Variants)
 local Types = require(Shared.Types)
 local Upgrades = require(Shared.Upgrades)
+local Zones = require(Shared.Zones)
 
 type StudDef = Types.StudDef
 type VariantDef = Types.VariantDef
@@ -186,14 +187,18 @@ function RollLogic.countIndex(index: { [string]: boolean }): number
 end
 
 -- One Index tab: how many of its studs are found, out of how many.
+-- Secrets are bonus entries: they count when found, but a tab is complete
+-- without them (the rarest are a chase, not a wall).
 function RollLogic.tabProgress(index: { [string]: boolean }, variant: string): (number, number)
-	local found = 0
+	local found, total = 0, 0
 	for _, def in Studs.List do
-		if index[RollLogic.encodeKey(def.Id, variant)] then
-			found += 1
+		local has = index[RollLogic.encodeKey(def.Id, variant)] == true
+		if def.Rarity ~= "Secret" then
+			total += 1
+			if has then found += 1 end
 		end
 	end
-	return found, #Studs.List
+	return found, total
 end
 
 -- How many Index tab rewards are claimed.
@@ -320,7 +325,7 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 	local friends = math.min(ctx.Friends, Config.Social.MaxFriends)
 	local friendBonus = friends * Config.Social.FriendBonus
 	local premiumBonus = if ctx.Premium then Config.Social.PremiumBonus else 0
-	local rebirthClacks = 1 + rebirths * (Config.Rebirth.ClacksPerRebirth + up("RebirthBonus"))
+	local rebirthClacks = Config.rebirthMultiplier(rebirths, up("RebirthBonus"))
 	local rebirthLuck = 1 + rebirths * Config.Rebirth.LuckPerRebirth
 
 	local luck = (Config.Rolls.BaseLuck + luckyRolls + boostLuck)
@@ -343,6 +348,9 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 	local rollSpeed = (if passes.FastRoll then 2 else 1) * boostSpeed * (1 + up("RollSpeedPct")) * eventSpeed
 	local slots = Config.Inventory.BaseSlots + bonusSlots + up("Slots") + (if passes.ExtraEquip then 1 else 0)
 	local costFraction = math.max(Config.Rolls.MinCostFraction, 1 - up("RollCostPct"))
+	-- A paid roll costs about the same number of key presses wherever you
+	-- are: the price follows your best zone's key multiplier.
+	local zoneScale = Zones.bestMultiplier(data.UnlockedWorlds or {}) ^ Config.Rolls.ZoneCostPower
 	local presses = Config.Economy.PressesPerFreeRoll * (1 - up("MeterPct"))
 
 	return {
@@ -355,7 +363,7 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 		MaxStuds = Config.Inventory.MaxStuds + up("MaxStuds"),
 		RollSpeed = rollSpeed,
 		RollCooldown = math.max(Config.Rolls.MinCooldown, Config.Rolls.Cooldown / rollSpeed),
-		RollCost = math.floor(Config.Rolls.ClackCost * costFraction),
+		RollCost = math.floor(Config.Rolls.ClackCost * costFraction * zoneScale),
 		StudsPerRoll = if passes.DoubleRoll then 2 else 1,
 		ExtraRollChance = math.clamp(up("ExtraRollChance"), 0, 1),
 		VariantLuck = luck * (1 + up("VariantLuckPct")),

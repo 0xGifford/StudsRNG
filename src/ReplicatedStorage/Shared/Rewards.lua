@@ -84,7 +84,7 @@ local Rewards = {
 function Rewards.scale(data: any): number
 	local rebirths = if typeof(data.Rebirths) == "number" then data.Rebirths else 0
 	local unlocked = if typeof(data.UnlockedWorlds) == "table" then data.UnlockedWorlds else {}
-	return (1 + rebirths * Config.Rebirth.ClacksPerRebirth) * Zones.bestMultiplier(unlocked)
+	return Config.rebirthMultiplier(rebirths) * Zones.bestMultiplier(unlocked)
 end
 
 function Rewards.wheelTotalWeight(): number
