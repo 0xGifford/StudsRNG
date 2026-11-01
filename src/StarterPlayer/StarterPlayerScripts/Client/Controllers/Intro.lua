@@ -31,6 +31,7 @@ local State = require(Controllers.State)
 local ZoneAmbience = require(Controllers.ZoneAmbience)
 local Interface = require(UI.Interface)
 local Juice = require(UI.Juice)
+local Roles = require(UI.Roles)
 
 local Intro = {}
 
@@ -38,7 +39,6 @@ Intro.Finished = Signal.new() :: Signal.Signal<>
 
 local SHOT_TIME = 3.2
 local MAX_SHOTS = 5
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 
 local player = Players.LocalPlayer
 local playing = false
@@ -51,25 +51,6 @@ end
 
 function Intro.hasFinished(): boolean
 	return finished
-end
-
-local function text(parent: Instance, value: string, size: UDim2, position: UDim2, color: Color3): TextLabel
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	label.Size = size
-	label.Position = position
-	label.TextScaled = true
-	label.FontFace = FONT
-	label.TextColor3 = color
-	label.Text = value
-	label.ZIndex = 5
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
-	stroke.Color = Color3.fromRGB(15, 15, 20)
-	stroke.Parent = label
-	label.Parent = parent
-	return label
 end
 
 local function zoneCenter(def: Zones.ZoneDef): Vector3?
@@ -94,52 +75,31 @@ local function play()
 	local character = player.Character or player.CharacterAdded:Wait()
 	local root = character:WaitForChild("HumanoidRootPart", 10)
 
-	-- Overlay
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "Intro"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 40
-	gui.Parent = player:WaitForChild("PlayerGui")
-
-	local bars: { Frame } = {}
-	for _, top in { true, false } do
-		local bar = Instance.new("Frame")
-		bar.BackgroundColor3 = Color3.new(0, 0, 0)
-		bar.BorderSizePixel = 0
-		bar.Size = UDim2.fromScale(1, 0.12)
-		bar.AnchorPoint = Vector2.new(0, if top then 1 else 0)
-		bar.Position = UDim2.fromScale(0, if top then 0 else 1)
-		bar.Parent = gui
-		table.insert(bars, bar)
-		TweenService:Create(bar, TweenInfo.new(0.8, Enum.EasingStyle.Quart), {
-			AnchorPoint = Vector2.new(0, if top then 0 else 1),
-		}):Play()
+	-- Overlay: StarterGui.Intro (tools/ui/screens/Intro.luau), by IntroRole.
+	local gui = Roles.gui("Intro")
+	local bars: { GuiObject } = {}
+	for _, d in gui:GetDescendants() do
+		if d:GetAttribute("IntroRole") == "Bar" and d:IsA("GuiObject") then
+			table.insert(bars, d)
+			-- In from the edge it rests against.
+			local top = d:GetAttribute("IntroBar") ~= "Bottom"
+			local home = d.AnchorPoint
+			d.AnchorPoint = Vector2.new(home.X, if top then 1 else 0)
+			TweenService:Create(d, TweenInfo.new(0.8, Enum.EasingStyle.Quart), { AnchorPoint = home }):Play()
+		end
 	end
-
-	local title = text(gui, "STUDS RNG", UDim2.fromScale(0.6, 0.16), UDim2.fromScale(0.5, 0.42), Color3.fromRGB(255, 220, 90))
-	local subtitle = text(gui, "Walk the keys. Roll the studs.", UDim2.fromScale(0.5, 0.06), UDim2.fromScale(0.5, 0.54), Color3.new(1, 1, 1))
-	local caption = text(gui, "", UDim2.fromScale(0.5, 0.07), UDim2.fromScale(0.5, 0.82), Color3.new(1, 1, 1))
+	local title = Roles.get(gui, "IntroRole", "Title") :: TextLabel
+	local subtitle = Roles.get(gui, "IntroRole", "Subtitle") :: TextLabel
+	local caption = Roles.get(gui, "IntroRole", "Caption") :: TextLabel
 	caption.TextTransparency = 1
+	gui.Enabled = true
 
-	local skip = Instance.new("TextButton")
-	skip.Text = "Skip ▶"
-	skip.FontFace = FONT
-	skip.TextScaled = true
-	skip.TextColor3 = Color3.new(1, 1, 1)
-	skip.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-	skip.BackgroundTransparency = 0.3
-	skip.AnchorPoint = Vector2.new(1, 1)
-	skip.Position = UDim2.fromScale(0.97, 0.965)
-	skip.Size = UDim2.fromScale(0.1, 0.05)
-	skip.ZIndex = 6
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.3, 0)
-	corner.Parent = skip
-	skip.Parent = gui
-	skip.Activated:Connect(function()
-		skipped = true
-	end)
+	local skip = Roles.find(gui, "IntroRole", "Skip")
+	if skip and skip:IsA("GuiButton") then
+		skip.Activated:Connect(function()
+			skipped = true
+		end)
+	end
 
 	-- Hide the game UI while the camera flies.
 	local hudWasEnabled = Interface.HUD.Enabled
@@ -214,7 +174,8 @@ local function play()
 	local currentZone = ZoneAmbience.current()
 	ZoneAmbience.apply(currentZone or Zones.Default, true)
 	task.delay(0.6, function()
-		gui:Destroy()
+		-- Played once a session: the overlay's tweened state never needs resetting.
+		gui.Enabled = false
 	end)
 
 	Net.invoke("MarkIntroSeen")

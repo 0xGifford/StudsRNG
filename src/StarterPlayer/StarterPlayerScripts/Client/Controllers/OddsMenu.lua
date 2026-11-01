@@ -65,26 +65,18 @@ local function luckText(value: number): string
 	return text
 end
 
+-- A copy of StarterGui.Templates.OddsRow, cells filled left to right.
 local function oddsRow(cells: { string }, colors: { Color3 }?, order: number)
-	local row = Instance.new("Frame")
+	local row = Kit.template("OddsRow") :: Frame
 	row.Name = "Row"
-	row.BackgroundColor3 = Color3.new(0, 0, 0)
-	row.BackgroundTransparency = 0.55
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.25, 0)
-	corner.Parent = row
-	local widths = { 0.34, 0.2, 0.2, 0.26 }
-	local x = 0.01
-	for i, text in cells do
-		local label = Kit.label(text)
-		label.AnchorPoint = Vector2.new(0, 0.5)
-		label.Position = UDim2.fromScale(x, 0.5)
-		label.Size = UDim2.fromScale(widths[i] - 0.02, 0.7)
-		if colors and colors[i] then
-			label.TextColor3 = colors[i]
+	for _, cell in row:GetDescendants() do
+		local index = cell:GetAttribute("OddsCell")
+		if typeof(index) == "number" and cell:IsA("TextLabel") then
+			cell.Text = cells[index] or ""
+			if colors and colors[index] then
+				cell.TextColor3 = colors[index]
+			end
 		end
-		label.Parent = row
-		x += widths[i]
 	end
 	Kit.row(items, row, 13, order)
 end

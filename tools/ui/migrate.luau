@@ -20,6 +20,11 @@
 	    bounces, see Core/ButtonBounce).
 	  * The HUD ScreenGui is tagged "HudSlide" (it slides away while a menu is
 	    open).
+	  * The HUD gets what code used to do to it at runtime: the Slime RNG
+	    layout (right column, LeftButtons grid, bottom bar; HudArranged =
+	    true), side buttons for the Pass and Badges menus, and the combo
+	    meter label under the Clacks counter (HudRole = "Combo") and the layer
+	    the Clacks popups fly across (HudRole = "ClackPopups").
 ]]
 
 local fs = require("@lune/fs")
@@ -29,6 +34,9 @@ local roblox = require("@lune/roblox")
 local Instance = roblox.Instance
 local UDim2 = roblox.UDim2
 local Vector2 = roblox.Vector2
+local UDim = roblox.UDim
+local Color3 = roblox.Color3
+local Enum = roblox.Enum
 
 local BUTTON_ATTRIBUTES = { "Menu", "MenuAction", "Tab", "TabGroup", "Toggle" }
 
@@ -120,6 +128,246 @@ local function moveButtonAttributes(root: any, log: { string })
 	end
 end
 
+-- The Slime RNG style HUD layout (what Controllers/HudLayout used to do at
+-- runtime), baked in once: HudArranged = true on the HUD marks it done.
+--   bottom centre   BACKPACK · ROLL · UPGRADE (and AUTO)
+--   right column    SHOP · REBIRTH · INDEX · TELEPORT
+--   left column     LeftButtons: everything else, plus Pass and Badges
+local RIGHT = { "Store", "Rebirth", "Index", "Zones" }
+local LABELS = { Store = "SHOP", Rebirth = "REBIRTH", Index = "INDEX", Zones = "TELEPORT", Upgrades = "UPGRADE" }
+-- Side buttons for menus that have no kit button of their own.
+local EXTRA_BUTTONS = {
+	{ Menu = "StudPass", Label = "Pass", Emoji = "🎟️" },
+	{ Menu = "Achievements", Label = "Badges", Emoji = "🏅" },
+}
+
+local function setText(frame: any, text: string)
+	for _, name in { "Title", "TitleShadow" } do
+		local label = frame:FindFirstChild(name)
+		if label and label:IsA("TextLabel") then
+			label.Text = text
+		end
+	end
+end
+
+local function arrangeHud(hud: any, log: { string })
+	if hud:GetAttribute("HudArranged") == true then return end
+	local side = hud:FindFirstChild("Side")
+	local buttons = side and side:FindFirstChild("Buttons")
+	local top = hud:FindFirstChild("Top")
+	local bar = top and top:FindFirstChild("Frame")
+	if not (buttons and bar) then
+		table.insert(log, "HUD has no Side.Buttons / Top.Frame: layout left as it is")
+		return
+	end
+
+	-- Right column.
+	buttons.AnchorPoint = Vector2.new(1, 0.5)
+	buttons.Position = UDim2.new(1, -8, 0.52, 0)
+	buttons.Size = UDim2.fromScale(0.08, 0.62)
+	local ratio = buttons:FindFirstChildOfClass("UIAspectRatioConstraint")
+	if ratio then ratio:Destroy() end
+	local list = buttons:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Vertical
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	list.VerticalAlignment = Enum.VerticalAlignment.Center
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Padding = UDim.new(0.025, 0)
+	list.Wraps = false
+	list.Parent = buttons
+
+	-- Left column for the rest.
+	local left = Instance.new("Frame")
+	left.Name = "LeftButtons"
+	left.BackgroundTransparency = 1
+	left.AnchorPoint = Vector2.new(0, 0)
+	left.Position = UDim2.new(0, 8, 0.56, 0)
+	left.Size = UDim2.fromScale(0.13, 0.3)
+	left.Parent = side
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.fromScale(0.46, 0.46)
+	grid.CellPadding = UDim2.fromScale(0.04, 0.04)
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.FillDirectionMaxCells = 2
+	grid.Parent = left
+	local leftRatio = Instance.new("UIAspectRatioConstraint")
+	leftRatio.AspectRatio = 1
+	leftRatio.Parent = left
+
+	-- A kit side button to copy for the extra ones.
+	local template = nil
+	for _, name in { "Quests", "Rewards", "Zones", "Store" } do
+		local frame = buttons:FindFirstChild(name)
+		if frame and frame:FindFirstChild("Button") then
+			template = frame
+			break
+		end
+	end
+
+	-- UPGRADE joins the bottom bar, right of ROLL.
+	local upgrades = buttons:FindFirstChild("Upgrades")
+	if upgrades and upgrades:IsA("Frame") then
+		upgrades.Parent = bar
+		upgrades.Size = UDim2.fromScale(0.12, 1.2)
+		local upgradeRatio = upgrades:FindFirstChildOfClass("UIAspectRatioConstraint")
+		if upgradeRatio then
+			upgradeRatio.DominantAxis = Enum.DominantAxis.Height
+		end
+		setText(upgrades, LABELS.Upgrades)
+	end
+
+	for _, child in buttons:GetChildren() do
+		if child:IsA("Frame") and child:FindFirstChild("Button") then
+			local order = table.find(RIGHT, child.Name)
+			if order then
+				child.LayoutOrder = order
+				child.Size = UDim2.fromScale(1, 0.22)
+				local square = child:FindFirstChildOfClass("UIAspectRatioConstraint") or Instance.new("UIAspectRatioConstraint")
+				square.AspectRatio = 1
+				square.DominantAxis = Enum.DominantAxis.Height
+				square.Parent = child
+				if LABELS[child.Name] then
+					setText(child, LABELS[child.Name])
+				end
+			else
+				child.Parent = left
+			end
+		end
+	end
+
+	-- Pass, Badges...: copies of a kit side button, opening their menus.
+	if template then
+		for i, extra in EXTRA_BUTTONS do
+			if not hud:FindFirstChild(extra.Menu, true) then
+				local frame = template:Clone()
+				frame.Name = extra.Menu
+				frame.Visible = true
+				frame.LayoutOrder = 100 + i
+				local hit = frame:FindFirstChild("Button")
+				hit:SetAttribute("Menu", extra.Menu)
+				setText(frame, extra.Label)
+				local alert = frame:FindFirstChild("Alert")
+				if alert then alert.Visible = false end
+				local icon = frame:FindFirstChild("Icon", true)
+				if icon and icon:IsA("ImageLabel") then
+					icon.ImageTransparency = 1
+					local emoji = Instance.new("TextLabel")
+					emoji.Name = "Emoji"
+					emoji.BackgroundTransparency = 1
+					emoji.AnchorPoint = Vector2.new(0.5, 0.5)
+					emoji.Position = UDim2.fromScale(0.5, 0.5)
+					emoji.Size = UDim2.fromScale(0.8, 0.8)
+					emoji.TextScaled = true
+					emoji.TextColor3 = Color3.new(1, 1, 1)
+					emoji.Text = extra.Emoji
+					emoji.ZIndex = icon.ZIndex + 1
+					emoji.Parent = icon
+				end
+				frame.Parent = left
+			end
+		end
+	end
+
+	-- Bottom bar: BACKPACK · ROLL · UPGRADE · AUTO.
+	local order = { Studs = 1, Roll = 2, Upgrades = 3, Auto = 4 }
+	for name, index in order do
+		local frame = bar:FindFirstChild(name)
+		if frame then
+			frame.LayoutOrder = index
+		end
+	end
+	local barLayout = bar:FindFirstChildOfClass("UIListLayout")
+	if barLayout then
+		barLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		barLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		barLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	end
+	local studs = bar:FindFirstChild("Studs")
+	if studs then
+		setText(studs, "Backpack")
+	end
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.Position = UDim2.fromScale(0.5, 0.975)
+
+	hud:SetAttribute("HudArranged", true)
+	table.insert(log, "HUD: arranged (right column, LeftButtons, bottom bar, Pass and Badges buttons)")
+end
+
+-- The combo meter ("x1.25 COMBO") under the Clacks counter.
+local function addCombo(hud: any, log: { string })
+	for _, d in hud:GetDescendants() do
+		if d:GetAttribute("HudRole") == "Combo" then return end
+	end
+	local labels = hud:FindFirstChild("Labels")
+	local amounts = labels and labels:FindFirstChild("Amounts")
+	local clacks = amounts and amounts:FindFirstChild("Clacks")
+	local source = clacks and clacks:FindFirstChild("Amount")
+	if not (amounts and source) then
+		table.insert(log, "HUD has no Labels.Amounts.Clacks.Amount: no combo label added")
+		return
+	end
+	local label = source:Clone()
+	label.Name = "Combo"
+	label.AnchorPoint = Vector2.new(0.5, 0)
+	label.Position = UDim2.new(amounts.Position.X.Scale, 0, amounts.Position.Y.Scale + amounts.Size.Y.Scale * 0.55, 0)
+	label.Size = UDim2.fromScale(amounts.Size.X.Scale * 0.8, amounts.Size.Y.Scale * 0.38)
+	label.Text = "x1.25 COMBO"
+	label.TextTransparency = 1
+	label.Rotation = -4
+	label.ZIndex = 10
+	label:SetAttribute("HudRole", "Combo")
+	for _, child in label:GetChildren() do
+		if child:IsA("UIScale") then child:Destroy() end
+	end
+	local scale = Instance.new("UIScale")
+	scale.Parent = label
+	label.Parent = hud
+	table.insert(log, "HUD: added the combo label (HudRole = Combo)")
+end
+
+-- The full-screen layer the "+123" Clacks popups fly across.
+local function addPopupLayer(hud: any, log: { string })
+	for _, d in hud:GetDescendants() do
+		if d:GetAttribute("HudRole") == "ClackPopups" then return end
+	end
+	local layer = Instance.new("Frame")
+	layer.Name = "ClackPopups"
+	layer.BackgroundTransparency = 1
+	layer.Size = UDim2.fromScale(1, 1)
+	layer.ZIndex = 50
+	layer:SetAttribute("HudRole", "ClackPopups")
+	layer.Parent = hud
+	table.insert(log, "HUD: added the Clacks popup layer (HudRole = ClackPopups)")
+end
+
+-- The Daily window's week-streak line under the days.
+local function addDailyStreak(starterGui: any, log: { string })
+	local daily = starterGui:FindFirstChild("Daily")
+	if not daily then return end
+	for _, d in daily:GetDescendants() do
+		if d:GetAttribute("DailyRole") == "WeekStreak" then return end
+	end
+	local main = daily:FindFirstChild("Main", true)
+	if not main then return end
+	local label = Instance.new("TextLabel")
+	label.Name = "WeekStreak"
+	label.BackgroundTransparency = 1
+	label.AnchorPoint = Vector2.new(0.5, 0)
+	label.Position = UDim2.fromScale(0.5, 1.01)
+	label.Size = UDim2.fromScale(0.9, 0.07)
+	label.FontFace = roblox.Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(255, 170, 60)
+	label.Text = "🔥 Week 1"
+	label:SetAttribute("DailyRole", "WeekStreak")
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Color = Color3.fromRGB(15, 15, 20)
+	stroke.Parent = label
+	label.Parent = main
+	table.insert(log, "Daily: added the week streak label (DailyRole = WeekStreak)")
+end
+
 local function migrate(starterGui: any): { string }
 	local log = {}
 	splitMenu(starterGui, log)
@@ -128,10 +376,16 @@ local function migrate(starterGui: any): { string }
 			moveButtonAttributes(gui, log)
 		end
 	end
+	addDailyStreak(starterGui, log)
 	local hud = starterGui:FindFirstChild("HUD")
 	if hud and not hud:HasTag("HudSlide") then
 		hud:AddTag("HudSlide")
 		table.insert(log, "HUD tagged HudSlide")
+	end
+	if hud then
+		arrangeHud(hud, log)
+		addCombo(hud, log)
+		addPopupLayer(hud, log)
 	end
 	return log
 end

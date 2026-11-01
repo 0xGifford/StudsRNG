@@ -55,7 +55,7 @@ Interface.MenuClosed = Signal.new() :: Signal.Signal<string>
 
 -- Filled by Interface.setup()
 Interface.HUD = (nil :: any) :: ScreenGui
-Interface.Templates = (nil :: any) :: Folder
+Interface.Templates = (nil :: any) :: Instance -- StarterGui.Templates
 Interface.SFX = (nil :: any) :: SoundGroup
 Interface.Music = (nil :: any) :: SoundGroup
 
@@ -115,7 +115,10 @@ function Interface.setup()
 	Interface.HUD = playerGui:WaitForChild("HUD") :: ScreenGui
 
 	local assets = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("UI")
-	Interface.Templates = assets:WaitForChild("Templates") :: Folder
+	-- Reusable pieces live in StarterGui.Templates (a disabled ScreenGui);
+	-- older places still have them in ReplicatedStorage.Assets.UI.Templates.
+	local templates = playerGui:WaitForChild("Templates", 10) or assets:WaitForChild("Templates")
+	Interface.Templates = templates :: any
 
 	Interface.SFX = getSoundGroup("SFX")
 	Interface.Music = getSoundGroup("Music")

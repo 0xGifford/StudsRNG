@@ -28,15 +28,15 @@ end
 
 function Kit.template(name: string): Instance
 	local template = Interface.Templates:FindFirstChild(name)
-	assert(template, `Assets.UI.Templates.{name} missing`)
+	assert(template, `StarterGui.Templates.{name} is missing`)
 	return template:Clone()
 end
 
 local function buttonTemplate(color: string): Frame
 	local folder = Interface.Templates:FindFirstChild("Buttons")
-	assert(folder, "Assets.UI.Templates.Buttons missing")
+	assert(folder, "StarterGui.Templates.Buttons is missing")
 	local template = folder:FindFirstChild(color) or folder:FindFirstChild("Blue")
-	assert(template and template:IsA("Frame"), `Assets.UI.Templates.Buttons.{color} missing`)
+	assert(template and template:IsA("Frame"), `StarterGui.Templates.Buttons.{color} is missing`)
 	return template
 end
 
@@ -59,15 +59,8 @@ function Kit.setIcon(image: ImageLabel, icon: string)
 	if emoji and emoji:IsA("TextLabel") then
 		label = emoji
 	else
-		label = Instance.new("TextLabel")
+		label = Kit.template("Emoji") :: TextLabel
 		label.Name = "Emoji"
-		label.BackgroundTransparency = 1
-		label.AnchorPoint = Vector2.new(0.5, 0.5)
-		label.Position = UDim2.fromScale(0.5, 0.5)
-		label.Size = UDim2.fromScale(0.8, 0.8)
-		label.TextScaled = true
-		label.Font = Enum.Font.GothamBold
-		label.TextColor3 = Color3.new(1, 1, 1)
 		label.ZIndex = image.ZIndex + 1
 		label.Parent = image
 	end
@@ -105,18 +98,7 @@ end
 
 -- A white, outlined, gradient label in the kit's title font.
 function Kit.label(text: string): TextLabel
-	local source = Interface.Templates:FindFirstChild("StudCell")
-	local title = source and source:FindFirstChild("Title")
-	local label: TextLabel
-	if title and title:IsA("TextLabel") then
-		label = title:Clone()
-	else
-		label = Instance.new("TextLabel")
-		label.BackgroundTransparency = 1
-		label.TextScaled = true
-		label.Font = Enum.Font.GothamBlack
-		label.TextColor3 = Color3.new(1, 1, 1)
-	end
+	local label = Kit.template("Label") :: TextLabel
 	label.Name = "Label"
 	label.AnchorPoint = Vector2.new(0.5, 0.5)
 	label.Position = UDim2.fromScale(0.5, 0.5)
@@ -265,16 +247,8 @@ end
 
 -- A row holding `count` equal cells side by side; returns the row.
 function Kit.gridRow(count: number): Frame
-	local row = Instance.new("Frame")
+	local row = Kit.template("GridRow") :: Frame
 	row.Name = "Row"
-	row.BackgroundTransparency = 1
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Horizontal
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0.02, 0)
-	layout.Parent = row
 	row:SetAttribute("Cells", count)
 	return row
 end
@@ -292,37 +266,30 @@ end
 
 -- A section title row for a Kit.list.
 function Kit.header(items: ScrollingFrame, text: string, order: number)
-	local holder = Instance.new("Frame")
+	local holder = Kit.template("Header") :: Frame
 	holder.Name = "Header"
-	holder.BackgroundTransparency = 1
-	local label = Kit.label(text)
-	label.Size = UDim2.fromScale(1, 0.9)
-	label.Parent = holder
+	local label = holder:FindFirstChildWhichIsA("TextLabel", true)
+	if label then
+		label.Text = text
+	end
 	Kit.row(items, holder, 12, order)
 end
 
 -- Wrapped body text for a Kit.list (grows to fit; TextSize follows width).
 function Kit.paragraph(items: ScrollingFrame, text: string, order: number, color: Color3?): TextLabel
-	local label = Instance.new("TextLabel")
+	local label = Kit.template("Paragraph") :: TextLabel
 	label.Name = "Paragraph"
-	label.BackgroundTransparency = 1
-	label.TextWrapped = true
-	label.TextScaled = false
-	label.RichText = true
-	label.AutomaticSize = Enum.AutomaticSize.Y
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.TextYAlignment = Enum.TextYAlignment.Top
-	label.Font = Enum.Font.GothamMedium
-	label.TextColor3 = color or Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.6
+	if color then
+		label.TextColor3 = color
+	end
 	label.Text = text
-	label:SetAttribute("TextScale", 0.032)
 	label.AnchorPoint = Vector2.new(0, 0)
 	label.LayoutOrder = order
 	label.Parent = items
 	local width = items.AbsoluteSize.X * WIDTH
 	label.Size = UDim2.new(WIDTH, 0, 0, 0)
-	label.TextSize = math.max(12, math.floor(width * 0.032))
+	local textScale = label:GetAttribute("TextScale")
+	label.TextSize = math.max(12, math.floor(width * (if typeof(textScale) == "number" then textScale else 0.032)))
 	return label
 end
 

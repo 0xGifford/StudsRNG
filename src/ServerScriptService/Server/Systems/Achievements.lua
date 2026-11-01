@@ -19,6 +19,7 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- Also counts Mini Boss and Titan defeats (Combat.Defeated).
 
 local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -34,7 +35,6 @@ local Combat = require(Systems.Combat)
 local Achievements = {}
 
 local CHECK_INTERVAL = 5
-local FONT = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Bold)
 
 local function check(player: Player)
 	local data = PlayerData.get(player)
@@ -68,24 +68,23 @@ local function applyTitle(player: Player)
 		existing:Destroy()
 	end
 	if not (worn and def and def.Title) then return end
-	local tag = Instance.new("BillboardGui")
+	-- A copy of StarterGui.WorldUI's TitleTag (TitleRole = "Text").
+	local worldUI = StarterGui:FindFirstChild("WorldUI")
+	local template = worldUI and worldUI:FindFirstChild("TitleTag", true)
+	if not (template and template:IsA("BillboardGui")) then
+		warn("[Achievements] StarterGui.WorldUI.TitleTag is missing: no title over heads")
+		return
+	end
+	local tag = template:Clone()
 	tag.Name = "TitleTag"
-	tag.Size = UDim2.fromScale(6, 0.9)
-	tag.StudsOffset = Vector3.new(0, 2.6, 0)
-	tag.MaxDistance = 80
-	tag.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.FontFace = FONT
-	label.TextScaled = true
-	label.TextColor3 = def.TitleColor or Color3.new(1, 1, 1)
-	label.Text = `« {def.Title} »`
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(12, 12, 18)
-	stroke.Parent = label
-	label.Parent = tag
+	tag:SetAttribute("UITemplate", nil)
+	tag.Enabled = true
+	for _, d in tag:GetDescendants() do
+		if d:GetAttribute("TitleRole") == "Text" and d:IsA("TextLabel") then
+			d.Text = `« {def.Title} »`
+			d.TextColor3 = def.TitleColor or Color3.new(1, 1, 1)
+		end
+	end
 	tag.Parent = head
 end
 

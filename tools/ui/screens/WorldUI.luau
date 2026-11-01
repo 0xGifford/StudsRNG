@@ -8,6 +8,21 @@
 	  EnemyBar / BossBar   Name, Fill (Size X = health), Amount; BossBar: Tag
 	  DamagePopup / CritPopup   Text (floats up and fades)
 	  AggroPop             Text ("!")
+
+	Studs (Controllers/StudFollowers), NametagRole:
+	  StudNametag          Odds ("1/3.07M"), Name (tinted by rarity)
+
+	Level ups (Controllers/GameFeel), PopupRole:
+	  LevelUpPopup         Text ("⭐ EMBER LV 5"), rises off your head
+
+	Keys (Controllers/KeyLabels), KeyRole:
+	  KeyReward            Text ("+1"), a SurfaceGui on the key's top (pulses)
+
+	Titles (Systems/Achievements, on the server: read from StarterGui), TitleRole:
+	  TitleTag             Text ("« Voyager »", tinted by the title's colour)
+
+	Leaderboards (Controllers/LeaderboardBoards), BoardRole:
+	  LeaderboardBoard     Title, Row + Value (BoardRow = 1..10), Footer
 ]]
 
 local Kit = require("../Kit")
@@ -89,6 +104,18 @@ local nametag = billboard("StudNametag", UDim2.fromOffset(150, 44), { MaxDistanc
 local odds = text(nametag, "Odds", "1/100", Color3.fromRGB(150, 210, 255), UDim2.fromScale(1, 0.5), UDim2.fromScale(0.5, 0.25), "NametagRole")
 odds.TextWrapped = false
 text(nametag, "Name", "Stud", Color3.new(1, 1, 1), UDim2.fromScale(1, 0.5), UDim2.fromScale(0.5, 0.75), "NametagRole")
+
+---------------------------------------------------------------- Level ups
+
+local levelUp = billboard("LevelUpPopup", UDim2.fromScale(8, 1.6), { AlwaysOnTop = true })
+local levelText = text(levelUp, "Text", "⭐ STUD LV 5", BOSS_GOLD, UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5), "PopupRole")
+levelText:FindFirstChildOfClass("UIStroke").Thickness = 3
+Kit.new("UIScale", {}, levelText)
+
+---------------------------------------------------------------- Titles
+
+local title = billboard("TitleTag", UDim2.fromScale(6, 0.9), { MaxDistance = 80, StudsOffset = Vector3.new(0, 2.6, 0) })
+text(title, "Text", "« Voyager »", Color3.new(1, 1, 1), UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5), "TitleRole")
 
 ---------------------------------------------------------------- Keys
 

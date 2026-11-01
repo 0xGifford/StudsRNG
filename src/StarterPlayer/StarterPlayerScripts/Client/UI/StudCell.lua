@@ -22,13 +22,13 @@ local Types = require(Shared.Types)
 local StudVisuals = require(Shared.Util.StudVisuals)
 
 local Interface = require(script.Parent.Interface)
+local Kit = require(script.Parent.Kit)
 
 type StudDef = Types.StudDef
 type VariantDef = Types.VariantDef
 
 local StudCell = {}
 
-local CAMERA_DISTANCE = 3.4
 local SILHOUETTE = Color3.new(0, 0, 0)
 
 -- Weak set of rainbow parts currently inside a viewport.
@@ -64,26 +64,12 @@ end
 
 -- A ViewportFrame showing one stud, slightly turned so three faces read.
 function StudCell.viewport(def: StudDef, variant: VariantDef): ViewportFrame
-	local viewport = Instance.new("ViewportFrame")
+	-- A copy of StarterGui.Templates.StudViewport (with its Camera).
+	local viewport = Kit.template("StudViewport") :: ViewportFrame
 	viewport.Name = "Viewport"
-	viewport.BackgroundTransparency = 1
-	viewport.AnchorPoint = Vector2.new(0.5, 0.5)
-	viewport.Position = UDim2.fromScale(0.5, 0.42)
-	viewport.Size = UDim2.fromScale(0.72, 0.72)
-	viewport.Ambient = Color3.fromRGB(170, 170, 170)
-	viewport.LightColor = Color3.new(1, 1, 1)
-	viewport.LightDirection = Vector3.new(-1, -1.5, -1)
-	viewport.ZIndex = 1 -- under the name/count labels
-
-	local ratio = Instance.new("UIAspectRatioConstraint")
-	ratio.AspectRatio = 1
-	ratio.Parent = viewport
-
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 30
-	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0, CAMERA_DISTANCE), Vector3.zero)
-	camera.Parent = viewport
-	viewport.CurrentCamera = camera
+	if not viewport.CurrentCamera then
+		viewport.CurrentCamera = viewport:FindFirstChildOfClass("Camera")
+	end
 
 	StudCell.setViewport(viewport, def, variant)
 	return viewport
@@ -118,7 +104,7 @@ export type Cell = Frame
 -- Clones the template, adds the viewport, colours the inner outline by rarity.
 function StudCell.new(def: StudDef, variant: VariantDef): Cell
 	local template = Interface.Templates:FindFirstChild("StudCell")
-	assert(template and template:IsA("Frame"), "Assets.UI.Templates.StudCell missing")
+	assert(template and template:IsA("Frame"), "StarterGui.Templates.StudCell is missing")
 	local cell = template:Clone()
 	cell.Name = `{def.Id}:{variant.Name}`
 
