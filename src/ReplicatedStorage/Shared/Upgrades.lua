@@ -147,7 +147,7 @@ local list: { UpgradeDef } = {
 		Stat = "ZoneDiscountPct", PerLevel = 0.05, MaxLevel = 5, BaseCost = 2_000_000, CostGrowth = 1.9,
 		Q = -3, R = 3, Requires = { "Swift2" }, Format = "Percent", Suffix = "cheaper" },
 	{ Id = "Reborn", Name = "Reborn", Icon = "🔁", Description = "Every rebirth gives more Clacks.",
-		Stat = "RebirthBonus", PerLevel = 0.1, MaxLevel = 5, BaseCost = 1_000_000, CostGrowth = 2,
+		Stat = "RebirthBonus", PerLevel = 0.02, MaxLevel = 5, BaseCost = 1_000_000, CostGrowth = 2,
 		Q = -1, R = 2, Requires = { "Swift1" }, Format = "Flat", Suffix = "x Clacks per rebirth" },
 }
 

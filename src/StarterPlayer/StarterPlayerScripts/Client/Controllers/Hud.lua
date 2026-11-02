@@ -497,7 +497,10 @@ function Hud.start()
 	end)
 
 	State.Notified:Connect(function(payload)
-		Interface.toast(payload.Text, payload.Color)
+		-- Kinds with their own juice (tiles, Key Rush...) may carry no text.
+		if typeof(payload.Text) == "string" and payload.Text ~= "" then
+			Interface.toast(payload.Text, payload.Color)
+		end
 	end)
 
 	local function renderAll()

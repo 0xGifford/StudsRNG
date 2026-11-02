@@ -57,6 +57,7 @@ local TEMPLATE: PlayerData = {
 	Quests = { Day = -1, List = {} },
 	LastOnline = 0,
 	TilesClaimed = 0,
+	LuckyMeter = 0, -- rolls toward the next Lucky Roll (Config.LuckyMeter)
 	IndexClaims = {}, -- [variant] = true: Index tab rewards claimed
 	RollCounts = {}, -- [stud key] = times rolled
 	EnemiesDefeated = 0,

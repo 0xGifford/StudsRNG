@@ -62,10 +62,15 @@ for n = 1, COUNT do
 end
 
 -- The first zones are priced by hand; after that the curve takes over.
-local HAND_PRICES = { 0, 1_400, 3_700, 9_700, 22_000, 45_000, 91_000 }
-local HAND_MULTIPLIERS = { 1, 2, 4, 7, 11, 17, 26 }
-local PRICE_GROWTH = 1.95
-local MULTIPLIER_GROWTH = 1.5
+local HAND_PRICES = { 0, 700, 3_200, 12_000, 40_000, 85_000, 180_000 }
+local HAND_MULTIPLIERS = { 1, 2, 3, 5, 8, 12, 17 }
+-- Each zone after the hand-priced ones costs PRICE_GROWTH times the last,
+-- easing to PRICE_GROWTH_END by the last zone (steep mid-game, gentler at
+-- the end, where upgrades are maxed and only studs and rebirths still grow).
+-- Balance with tools/simulate.py.
+local PRICE_GROWTH = 3.4
+local PRICE_GROWTH_END = 1.55
+local MULTIPLIER_GROWTH = 1.22
 
 local function roundTo2Figures(value: number): number
 	local scale = 10 ^ math.max(0, math.floor(math.log10(value)) - 1)
@@ -79,7 +84,8 @@ for order, entry in zones do
 		Id = entry.Id,
 		Name = entry.Name,
 		Order = order,
-		Price = HAND_PRICES[order] or roundTo2Figures(previous.Price * PRICE_GROWTH),
+		Price = HAND_PRICES[order] or roundTo2Figures(previous.Price * (PRICE_GROWTH
+			+ (PRICE_GROWTH_END - PRICE_GROWTH) * (order - #HAND_PRICES) / math.max(COUNT - #HAND_PRICES, 1))),
 		KeyMultiplier = HAND_MULTIPLIERS[order] or math.floor(previous.KeyMultiplier * MULTIPLIER_GROWTH + 0.5),
 		Emoji = entry.Emoji,
 		Color = entry.Color,

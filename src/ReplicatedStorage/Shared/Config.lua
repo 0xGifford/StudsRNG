@@ -61,6 +61,9 @@ Config.Combo = {
 	Window = 1.25,
 	Step = 0.005,
 	Max = 0.5,
+	-- Key Rush: every Every presses without breaking the combo, Clacks are
+	-- doubled for Seconds (the Clacks boost; it stacks while you keep going).
+	Rush = { Every = 150, Seconds = 8 },
 }
 
 -- Clacks earned while away: ClacksPerSecond × reward scale, for at most
@@ -86,12 +89,31 @@ Config.KeyRewards = {
 	Interval = 3, -- seconds between new reward tiles
 	MaxActive = 8, -- reward tiles on the board at once
 	Lifetime = 40, -- seconds before an unclaimed tile fades
-	Text = "+1",
-	-- Any Shared/Rewards kind: Clacks (scaled by progress), FreeRolls, Spins...
-	Reward = { Kind = "FreeRolls", Amount = 1 },
 	Attribute = "RewardTile", -- set on the key Model while active
 	NearRadius = 60, -- studs: tiles favour keys this close to a player...
 	NearChance = 0.6, -- ...this often
+	-- Kinds of tile, picked by Weight. The tile shows Text (in Color); the
+	-- first player to step on it gets Reward (any Shared/Rewards kind;
+	-- Clacks scale with progress). KindAttribute names the kind on the key.
+	KindAttribute = "RewardTileKind",
+	Kinds = {
+		{ Id = "Roll", Text = "+1", Weight = 60, Color = Color3.fromRGB(255, 255, 255),
+			Reward = { Kind = "FreeRolls", Amount = 1 } },
+		{ Id = "Golden", Text = "💰", Weight = 22, Color = Color3.fromRGB(255, 215, 70),
+			Reward = { Kind = "Clacks", Amount = 400 } },
+		{ Id = "Lucky", Text = "🍀", Weight = 12, Color = Color3.fromRGB(120, 255, 140),
+			Reward = { Kind = "Boost", Amount = 1, Boost = "Luck", Minutes = 2 } },
+		{ Id = "Frenzy", Text = "⚡", Weight = 6, Color = Color3.fromRGB(255, 150, 60),
+			Reward = { Kind = "Boost", Amount = 1, Boost = "Clacks", Minutes = 1 } },
+	},
+}
+
+-- Lucky Meter: every roll fills it; when it's full the next roll is a
+-- LUCKY ROLL with Luck times the luck (and variant luck). Saved, so it
+-- carries across sessions (PlayerData.LuckyMeter).
+Config.LuckyMeter = {
+	Rolls = 100,
+	Luck = 10,
 }
 
 Config.Economy = {
@@ -101,7 +123,8 @@ Config.Economy = {
 }
 
 Config.Rolls = {
-	ClackCost = 250, -- per paid roll
+	ClackCost = 250, -- per paid roll, × (best zone's key multiplier ^ ZoneCostPower)
+	ZoneCostPower = 1,
 	MaxBatch = 3, -- rolls per request
 	Cooldown = 0.9, -- seconds between roll requests at x1 roll speed (lets the client animate)
 	MinCooldown = 0.2, -- floor however fast roll speed gets
@@ -123,14 +146,22 @@ Config.Movement = {
 }
 
 -- Rebirth costs Clacks and resets Clacks (and zones, if ResetZones). Studs,
--- the index, upgrades, Lucky Rolls, spins and boosts are kept.
+-- the index, upgrades, Lucky Rolls, spins and boosts are kept. The Clacks
+-- bonus compounds: × (1 + ClacksPerRebirth + Reborn upgrade) per rebirth,
+-- so rebirths keep mattering late, when upgrades are maxed
+-- (tools/simulate.py).
 Config.Rebirth = {
-	BaseCost = 500_000,
-	CostGrowth = 3, -- cost × this for every rebirth already done
-	ClacksPerRebirth = 0.5, -- +x0.5 Clacks multiplier per rebirth (1 → 1.5 → 2 ...)
-	LuckPerRebirth = 0.1, -- +10% luck per rebirth
-	ResetZones = true,
+	BaseCost = 250_000,
+	CostGrowth = 3.2, -- cost × this for every rebirth already done
+	ClacksPerRebirth = 0.15, -- × 1.15 Clacks per rebirth (× 1.25 with Reborn maxed)
+	LuckPerRebirth = 0.08, -- +8% luck per rebirth
+	ResetZones = false,
 }
+
+-- The Clacks multiplier from rebirths (bonus: the Reborn upgrade's total).
+function Config.rebirthMultiplier(rebirths: number, bonus: number?): number
+	return (1 + Config.Rebirth.ClacksPerRebirth + (bonus or 0)) ^ math.max(rebirths, 0)
+end
 
 -- Personal timed boosts (Robux, rewards, wheel). Time only counts down
 -- while the player is in the game; buying more adds time.
@@ -299,6 +330,15 @@ local milestones: { Milestone } = {
 	{ Count = 80, Luck = 0.25 },
 	{ Count = 100, Clacks = 1 },
 	{ Count = 120, Slots = 1, Luck = 0.5 },
+	-- The long tail: ~130 studs x 6 variants, a goal every so often.
+	{ Count = 160, Clacks = 1 },
+	{ Count = 200, Luck = 0.5 },
+	{ Count = 250, Clacks = 1.5 },
+	{ Count = 320, Luck = 0.75 },
+	{ Count = 400, Clacks = 2 },
+	{ Count = 500, Luck = 1 },
+	{ Count = 620, Clacks = 3 },
+	{ Count = 760, Luck = 1.5, Clacks = 4 },
 }
 Config.IndexMilestones = milestones
 
@@ -445,30 +485,6 @@ Config.Sync = {
 -- Keys inside workspace.Zones.<ZoneId> (or with a World attribute) only
 -- pay Clacks to players who own that zone.
 Config.ZoneFolder = "Zones"
-
--- The isometric camera (Controllers/IsoCamera). It looks down at you from
--- Distance studs away, Pitch degrees above the ground, Yaw degrees around,
--- through a narrow FieldOfView (the flat, isometric look). A Zone can
--- override any of these with attributes on its Zone model: CameraDistance,
--- CameraPitch, CameraYaw, CameraFov (e.g. pull in tighter in a cave).
-Config.Camera = {
-	Enabled = true,
-	FieldOfView = 7,
-	Distance = 208, -- 120 studs out on each axis, like Vector3.new(120, 120, 120)
-	Pitch = 35.26, -- true isometric (the (1, 1, 1) diagonal)
-	Yaw = 45,
-	FocusHeight = 1.5, -- studs above the HumanoidRootPart it looks at
-	MinZoom = 0.65, -- scroll wheel / pinch: times Distance
-	MaxZoom = 1.5,
-	ZoomStep = 0.1,
-	Follow = 12, -- how snappily it follows you (higher = tighter)
-	LookAhead = 3, -- studs it leads you in the direction you walk
-	Blend = 1.2, -- seconds to ease into a zone's own camera settings
-	RotateKeys = true, -- Q / E turn the view 90 degrees
-	-- Walls and roofs between the camera and you fade out (locally).
-	FadeWalls = true,
-	FadeTransparency = 0.8,
-}
 
 -- Unlocking zones: walk up to a locked zone and a small panel slides up at
 -- the bottom of the screen (StarterGui.ZonePrompt) with its price and an

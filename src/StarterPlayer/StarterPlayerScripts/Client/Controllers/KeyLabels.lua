@@ -13,7 +13,8 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- key's Cap; with Config.KeyRewards.HideLetters those are switched off here
 -- (locally), so the only text on the board is reward tiles: keys whose
 -- Model carries the RewardTile attribute (set by Systems/KeyRewards) show a
--- pulsing "+1" until someone claims it.
+-- pulsing label in its kind's colour ("+1", 💰, 🍀, ⚡) until someone
+-- claims it.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39,12 +40,28 @@ local function hideLetter(gui: Instance)
 	end
 end
 
--- A copy of StarterGui.WorldUI's KeyReward on the key's cap.
-local function buildRewardGui(cap: BasePart, text: string)
+-- The tile's kind (Config.KeyRewards.Kinds) from the key Model.
+local function kindOf(model: Instance): any
+	local id = model:GetAttribute(Settings.KindAttribute)
+	for _, kind in Settings.Kinds do
+		if kind.Id == id then
+			return kind
+		end
+	end
+	return nil
+end
+
+-- A copy of StarterGui.WorldUI's KeyReward on the key's cap, in the kind's
+-- colour; the rarer kinds pulse harder.
+local function buildRewardGui(cap: BasePart, text: string, kind: any)
 	local gui = Roles.template(Roles.gui("WorldUI"), "KeyReward") :: SurfaceGui
 	gui.Name = REWARD_GUI
 	local label = Roles.get(gui, "KeyRole", "Text") :: TextLabel
 	label.Text = text
+	if kind and typeof(kind.Color) == "Color3" then
+		label.TextColor3 = kind.Color
+	end
+	local rare = kind ~= nil and kind.Id ~= Settings.Kinds[1].Id
 
 	-- Gentle pulse so tiles catch the eye.
 	local scale = label:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", label)
@@ -53,8 +70,8 @@ local function buildRewardGui(cap: BasePart, text: string)
 	appear:Play()
 	appear.Completed:Once(function()
 		if scale.Parent then
-			TweenService:Create(scale, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-				Scale = 0.82,
+			TweenService:Create(scale, TweenInfo.new(if rare then 0.35 else 0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Scale = if rare then 0.7 else 0.82,
 			}):Play()
 		end
 	end)
@@ -75,7 +92,7 @@ local function refresh(model: Instance)
 	local existing = cap:FindFirstChild(REWARD_GUI)
 	if typeof(reward) == "string" and reward ~= "" then
 		if not existing then
-			buildRewardGui(cap, reward)
+			buildRewardGui(cap, reward, kindOf(model))
 		end
 	elseif existing then
 		existing:Destroy()

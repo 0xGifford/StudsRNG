@@ -83,7 +83,7 @@ end
 local function pick()
 	local camera = workspace.CurrentCamera
 	if not (camera and look) then return end
-	local origin = camera.Focus.Position -- around you, not the (far) isometric lens
+	local origin = camera.Focus.Position -- around you (what the camera looks at)
 	local found: { { cap: BasePart, distance: number } } = {}
 	for _, hitbox in CollectionService:GetTagged(Config.Press.HitboxTag) do
 		if hitbox:IsA("BasePart") then

@@ -592,8 +592,7 @@ end
 
 local function update(dt: number)
 	local camera = workspace.CurrentCamera
-	-- Measured from what the camera looks at (the player), not the lens: an
-	-- isometric camera sits far away (Controllers/IsoCamera keeps Focus on you).
+	-- Measured from what the camera looks at (Camera.Focus: the player).
 	local cameraPos = camera and camera.Focus.Position or Vector3.zero
 	local now = os.clock()
 	table.clear(parts)

@@ -158,6 +158,50 @@ end
 -- Celebrations
 --------------------------------------------------------------------------
 
+-- A reward tile claimed (Systems/KeyRewards): a burst where it was, the
+-- reward named, and bigger moments for the rarer kinds.
+local function onTile(payload: any)
+	local color = if typeof(payload.Color) == "Color3" then payload.Color else Color3.new(1, 1, 1)
+	local at = if typeof(payload.Position) == "Vector3" then payload.Position else nil
+	local reward = if typeof(payload.Reward) == "table" then payload.Reward else nil
+	if at then
+		CombatFx.impact(at, color, 3)
+		CombatFx.shockwave(at, color, 2.5)
+	end
+	local text = if reward then Format.reward(reward) else "Reward!"
+	if payload.Tile == "Golden" then
+		if at then CombatFx.coins(at, 10) end
+		CombatFx.sound("Coin", at, 1.2, 0.7)
+		Juice.shake(0.25, 0.2)
+		Interface.toast(`💰 GOLDEN TILE! {text}`, color)
+	elseif payload.Tile == "Frenzy" then
+		Juice.banner("⚡ FRENZY!", text, color, 1.4)
+		Juice.flash(color, 0.25, 0.35)
+		Juice.shake(0.4, 0.3)
+		CombatFx.sound("Coin", at, 0.9, 0.7)
+	elseif payload.Tile == "Lucky" then
+		Juice.banner("🍀 LUCKY TILE!", text, color, 1.4)
+		Juice.confetti(30)
+		CombatFx.sound("Coin", at, 1.4, 0.6)
+	else
+		Interface.toast(`+ {text}`, color)
+		CombatFx.sound("Coin", at, 1.6, 0.4)
+	end
+end
+
+-- Key Rush (Economy: an unbroken combo): ×2 Clacks for a few seconds.
+local function onKeyRush(payload: any)
+	local gold = Color3.fromRGB(255, 200, 60)
+	Juice.banner("KEY RUSH!", `x2 Clacks for {payload.Seconds or 8}s, keep going!`, gold, 1.2)
+	Juice.flash(gold, 0.2, 0.3)
+	Juice.fov(4, 0.4)
+	CombatFx.sound("Coin", nil, 1.1, 0.6)
+	local label = comboLabel
+	if label then
+		Juice.pop(label, 1.6)
+	end
+end
+
 local function countTrue(set: any): number
 	local n = 0
 	if typeof(set) == "table" then
@@ -283,6 +327,10 @@ local function watchMilestones()
 		elseif payload.Kind == "Welcome" then
 			Juice.banner("WELCOME BACK!", `+{Format.number(payload.Amount or 0)} Clacks while you were away`, Color3.fromRGB(255, 220, 90), 2.6)
 			Juice.confetti(70)
+		elseif payload.Kind == "Tile" then
+			onTile(payload)
+		elseif payload.Kind == "KeyRush" then
+			onKeyRush(payload)
 		end
 	end)
 

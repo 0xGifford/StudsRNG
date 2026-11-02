@@ -49,6 +49,7 @@ local CLIENT_FIELDS = {
 	"Tutorial",
 	"Quests",
 	"TilesClaimed",
+	"LuckyMeter",
 	"IndexClaims",
 	"RollCounts",
 	"EnemiesDefeated",
