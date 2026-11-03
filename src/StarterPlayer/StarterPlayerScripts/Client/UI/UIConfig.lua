@@ -104,5 +104,8 @@ return {
 		TitleLocked = "Unlock that achievement first",
 		NothingToClaim = "Nothing to claim yet",
 		PassLocked = "Unlock the premium track first",
+		SoldOut = "Sold out",
+		NotEnoughFocus = "Not enough Focus Points",
+		NotSubscribed = "Join the Stud Club first",
 	} :: { [string]: string },
 }

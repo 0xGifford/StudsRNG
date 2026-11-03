@@ -15,7 +15,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- they blend in when the player walks in (zones without them keep the
 -- place's own Lighting): ClockTime, Ambient, OutdoorAmbient, FogColor,
 -- FogEnd, AtmosphereColor, AtmosphereDensity, Gravity, and Subtitle (under
--- the title card that announces the zone).
+-- the title card that announces the zone). The title card also says when
+-- the zone is Favoured / Vintage today (Shared/ZoneRotation) and shows its
+-- Mastery stars (Shared/Mastery).
 
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
@@ -25,12 +27,15 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Zones = require(Shared.Zones)
+local Mastery = require(Shared.Mastery)
+local ZoneRotation = require(Shared.ZoneRotation)
 local Signal = require(Shared.Util.Signal)
 local Tags = require(Shared.Tags)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
 local Juice = require(UI.Juice)
+local State = require(Controllers.State)
 
 local ZoneAmbience = {}
 
@@ -153,7 +158,21 @@ function ZoneAmbience.start()
 				ZoneAmbience.Changed:Fire(zoneId)
 				local def = Zones.ById[zoneId]
 				if def and not ZoneAmbience.Quiet then
-					Juice.banner(string.upper(def.Name), lookOf(zoneId).Subtitle or "", def.Color, 1.4)
+					local lines = {}
+					local subtitle = lookOf(zoneId).Subtitle
+					if subtitle then
+						table.insert(lines, subtitle)
+					end
+					local mastery = State.get("Mastery")
+					local stars = if typeof(mastery) == "table" then mastery[zoneId] else nil
+					if typeof(stars) == "number" and stars > 0 then
+						table.insert(lines, `Mastery {Mastery.text(stars)}`)
+					end
+					local bonus = ZoneRotation.bonus(zoneId, State.serverNow())
+					if bonus then
+						table.insert(lines, ZoneRotation.describe(bonus))
+					end
+					Juice.banner(string.upper(def.Name), table.concat(lines, "  ·  "), def.Color, if bonus then 2.2 else 1.4)
 				end
 			end
 		end

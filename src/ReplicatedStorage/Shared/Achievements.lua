@@ -15,11 +15,14 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- client shows the same bars the server checks (Achievements.progress).
 --
 -- Stats: Presses, Rolls, Enemies, MiniBosses, Titans, Zones, Index,
---        Rebirths, BestRoll (1 in X), StudLevel (best stud), Clacks (lifetime)
+--        Rebirths, BestRoll (1 in X), StudLevel (best stud), Clacks (lifetime),
+--        Streak (longest login streak), Stars (Zone Mastery), Memories
 --
 -- Ids are saved in player data: never rename an Id once the game is live.
 
 local Shared = script.Parent
+local Config = require(Shared.Config)
+local Zones = require(Shared.Zones)
 local Types = require(Shared.Types)
 local RollLogic = require(Shared.Util.RollLogic)
 
@@ -41,6 +44,7 @@ local RED = Color3.fromRGB(255, 90, 80)
 local PURPLE = Color3.fromRGB(190, 120, 255)
 local CYAN = Color3.fromRGB(90, 220, 255)
 local GREEN = Color3.fromRGB(120, 255, 140)
+local ORANGE = Color3.fromRGB(255, 150, 60)
 
 local list: { AchievementDef } = {
 	-- Keys
@@ -85,6 +89,18 @@ local list: { AchievementDef } = {
 	{ Id = "Clacks1b", Name = "Tycoon", Text = "Earn 1B Clacks in total", Stat = "Clacks", Target = 1e9, Reward = { Kind = "Luck", Amount = 2 }, Title = "Tycoon", TitleColor = GOLD },
 	{ Id = "Clacks1t", Name = "Magnate", Text = "Earn 1T Clacks in total", Stat = "Clacks", Target = 1e12, Reward = { Kind = "Luck", Amount = 3 }, Title = "Magnate", TitleColor = GOLD },
 	{ Id = "Clacks1qa", Name = "Clack Emperor", Text = "Earn 1 quadrillion Clacks in total", Stat = "Clacks", Target = 1e15, Reward = { Kind = "Luck", Amount = 5 }, Title = "Clack Emperor", TitleColor = GOLD },
+	-- Login streaks (Daily.Best: the longest run of days, Grace Days included)
+	{ Id = "Streak7", Name = "Regular", Text = "Keep a 7 day login streak", Stat = "Streak", Target = 7, Reward = { Kind = "Spins", Amount = 3 } },
+	{ Id = "Streak14", Name = "Devoted", Text = "Keep a 14 day login streak", Stat = "Streak", Target = 14, Reward = { Kind = "MegaRoll", Amount = 100 }, Title = "Devoted", TitleColor = ORANGE },
+	{ Id = "Streak30", Name = "Clockwork", Text = "Keep a 30 day login streak", Stat = "Streak", Target = 30, Reward = { Kind = "Luck", Amount = 2 }, Title = "Clockwork", TitleColor = ORANGE },
+	{ Id = "Streak60", Name = "Unbreakable", Text = "Keep a 60 day login streak", Stat = "Streak", Target = 60, Reward = { Kind = "Luck", Amount = 3 }, Title = "Unbreakable", TitleColor = ORANGE },
+	{ Id = "Streak100", Name = "Centurion", Text = "Keep a 100 day login streak", Stat = "Streak", Target = 100, Reward = { Kind = "Luck", Amount = 5 }, Title = "Centurion", TitleColor = ORANGE },
+	-- Zone Mastery stars (Shared/Mastery) and Stud Memories (max-level studs)
+	{ Id = "Stars10", Name = "Apprentice", Text = "Earn 10 Mastery stars", Stat = "Stars", Target = 10, Reward = { Kind = "Spins", Amount = 2 } },
+	{ Id = "Stars40", Name = "Zone Expert", Text = "Earn 40 Mastery stars", Stat = "Stars", Target = 40, Reward = { Kind = "Luck", Amount = 2 }, Title = "Zone Expert", TitleColor = CYAN },
+	{ Id = "StarsAll", Name = "Grandmaster", Text = "Master every zone (3 stars each)", Stat = "Stars", Target = #Zones.List * 3, Reward = { Kind = "Luck", Amount = 5 }, Title = "Grandmaster", TitleColor = CYAN },
+	{ Id = "Memory1", Name = "Old Friend", Text = "Max out a stud's level (a Memory)", Stat = "Memories", Target = 1, Reward = { Kind = "Spins", Amount = 2 } },
+	{ Id = "Memory10", Name = "Nostalgic", Text = "Collect 10 Stud Memories", Stat = "Memories", Target = 10, Reward = { Kind = "Luck", Amount = 2 }, Title = "Nostalgic", TitleColor = PURPLE },
 }
 
 local byId: { [string]: AchievementDef } = {}
@@ -130,6 +146,30 @@ local STATS: { [string]: (data: any) -> number } = {
 	BestRoll = function(data) return data.BestRoll or 0 end,
 	StudLevel = function(data) return bestLevel(data.StudXP) end,
 	Clacks = function(data) return data.LifetimeClacks or 0 end,
+	Streak = function(data)
+		local daily = data.Daily
+		return if typeof(daily) == "table" then math.max(daily.Best or 0, daily.Days or 0) else 0
+	end,
+	Stars = function(data)
+		local total = 0
+		if typeof(data.Mastery) == "table" then
+			for _, stars in data.Mastery do
+				total += stars
+			end
+		end
+		return total
+	end,
+	Memories = function(data)
+		local n = 0
+		if typeof(data.StudXP) == "table" then
+			for _, amount in data.StudXP do
+				if RollLogic.levelOf(amount) >= Config.Levels.Max then
+					n += 1
+				end
+			end
+		end
+		return n
+	end,
 }
 
 -- How far along a player is (can exceed Target).

@@ -78,6 +78,11 @@ function Social.friendCount(player: Player): number
 	return n
 end
 
+function Social.isFriend(a: Player, b: Player): boolean
+	local set = friendsOf[a]
+	return set ~= nil and set[b] == true
+end
+
 function Social.init()
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	for _, player in Players:GetPlayers() do

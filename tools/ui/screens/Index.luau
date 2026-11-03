@@ -66,7 +66,7 @@ local tabColumn = role(box(root, "Tabs", UDim2.fromScale(0.085, 0.92), UDim2.fro
 tabColumn.BackgroundTransparency = 1
 Kit.new("UIListLayout", { Padding = UDim.new(0.018, 0), SortOrder = Enum.SortOrder.LayoutOrder }, tabColumn)
 local tab = Kit.new("TextButton", {
-	Name = "IndexTab", Text = "", AutoButtonColor = false, BackgroundColor3 = CARD, Size = UDim2.fromScale(1, 0.15), Visible = false,
+	Name = "IndexTab", Text = "", AutoButtonColor = false, BackgroundColor3 = CARD, Size = UDim2.fromScale(1, 0.125), Visible = false,
 }, tabColumn)
 tab:SetAttribute("UITemplate", "IndexTab")
 tab:SetAttribute("StatePreset", "Selected") -- MenuSystem's StateStyle: its MainStroke turns white when picked
@@ -167,4 +167,4 @@ round(close, 0.15)
 outline(close, white, 3)
 text(close, "X", "X", white, UDim2.fromScale(0.7, 0.75), UDim2.fromScale(0.5, 0.5)).ZIndex = 7
 
-Kit.save(gui)
+Kit.save(gui, 4) -- build 4: room for the seventh (Prismatic) tab

@@ -219,7 +219,7 @@ local function teamOf(player: Player): Team?
 		return nil
 	end
 
-	local strength, health = RollLogic.teamStats(data.Equipped or {}, data.StudXP)
+	local strength, health = RollLogic.teamStats(data.Equipped or {}, data.StudXP, data.StudRoles)
 	local stats = Modifiers.get(player)
 
 	strength = math.floor(strength * stats.TeamStrength)
@@ -1131,10 +1131,12 @@ local function defeat(enemy: Enemy)
 			local rank = ranks[player]
 			local tier = if rank then rankRewards(rank) else nil
 
-			-- Paid by the player's whole Clacks multiplier.
+			-- Paid by the player's whole Clacks multiplier (and Fortune studs).
+			local playerStats = Modifiers.get(player)
 			local amount = math.floor(
 				enemy.reward
-					* Modifiers.get(player).ClackMultiplier
+					* playerStats.ClackMultiplier
+					* (1 + playerStats.KillClacks)
 					* streakBonus
 					* (if tier then tier.Clacks else 1)
 			)
@@ -1160,6 +1162,9 @@ local function defeat(enemy: Enemy)
 
 			data.EnemiesDefeated += 1
 			StateSync.push(player, "EnemiesDefeated", data.EnemiesDefeated)
+			-- Zone Mastery counts kills per zone.
+			data.ZoneKills[enemy.zoneId] = (data.ZoneKills[enemy.zoneId] or 0) + 1
+			StateSync.push(player, "ZoneKills", data.ZoneKills)
 
 			-- Every equipped stud earns XP, once per stud, however many copies.
 			local levels = Config.Levels
@@ -1614,7 +1619,8 @@ local function step(dt: number)
 			if os.clock() - (engagedAt[player] or 0) >= Settings.ArriveTime then
 				local dps = math.min(team.strength, enemy.maxHealth / Settings.MinFightTime)
 
-				if rng:NextNumber() < Settings.CritChance then
+				-- Swift studs (Config.Roles) add to the crit chance.
+				if rng:NextNumber() < Settings.CritChance + Modifiers.get(player).FightCrit then
 					dps *= Settings.CritMultiplier
 
 					if enemy.model then

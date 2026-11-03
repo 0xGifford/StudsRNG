@@ -43,7 +43,23 @@ local pool: { QuestDef } = {
 	{ Id = "Upgrade3", Kind = "Upgrade", Target = 3, Text = "Buy {n} upgrade levels", Reward = { Kind = "Boost", Amount = 1, Boost = "Speed", Minutes = 10 } },
 }
 
+-- Weekly Grand Focus: three a week from this pool (Config.Focus).
+local weeklyPool: { QuestDef } = {
+	{ Id = "WPress", Kind = "Press", Target = 8000, Text = "Press {n} keys this week", Reward = { Kind = "FreeRolls", Amount = 30 } },
+	{ Id = "WRoll", Kind = "Roll", Target = 1500, Text = "Roll {n} studs this week", Reward = { Kind = "Spins", Amount = 2 } },
+	{ Id = "WDefeat", Kind = "Defeat", Target = 400, Text = "Defeat {n} enemies this week", Reward = { Kind = "Boost", Amount = 1, Boost = "Clacks", Minutes = 30 } },
+	{ Id = "WRush", Kind = "KeyRush", Target = 25, Text = "Trigger {n} Key Rushes this week", Reward = { Kind = "Boost", Amount = 1, Boost = "Luck", Minutes = 30 } },
+	{ Id = "WLucky", Kind = "LuckyRoll", Target = 8, Text = "Land {n} Lucky Rolls this week", Reward = { Kind = "Spins", Amount = 3 } },
+	{ Id = "WTiles", Kind = "Tiles", Target = 40, Text = "Grab {n} reward tiles this week", Reward = { Kind = "FreeRolls", Amount = 40 } },
+	{ Id = "WBoss", Kind = "Boss", Target = 10, Text = "Defeat {n} Mini Bosses this week", Reward = { Kind = "Boost", Amount = 1, Boost = "UltraLuck", Minutes = 15 } },
+	{ Id = "WEarn", Kind = "Earn", Target = 400_000, Text = "Earn {n} Clacks this week", Reward = { Kind = "MegaRoll", Amount = 20 } },
+}
+
 local byId: { [string]: QuestDef } = {}
+for _, def in weeklyPool do
+	assert(not byId[def.Id], `Duplicate quest id {def.Id}`)
+	byId[def.Id] = def
+end
 for _, def in pool do
 	assert(not byId[def.Id], `Duplicate quest id {def.Id}`)
 	byId[def.Id] = def
@@ -51,15 +67,18 @@ end
 
 local Quests = {
 	Pool = pool,
+	WeeklyPool = weeklyPool,
+	PerWeek = 3,
 	ById = byId,
 	PerDay = 3,
 	RareOneIn = 1000,
 }
 
--- Today's quest ids for a player (deterministic).
-function Quests.draw(day: number, userId: number): { string }
-	local rng = Random.new(day * 7919 + userId % 1_000_003)
-	local shuffled = table.clone(pool)
+-- Today's quest ids for a player (deterministic). weekly: draw this week's
+-- Grand Focus from the weekly pool instead (pass the week number as day).
+function Quests.draw(day: number, userId: number, weekly: boolean?): { string }
+	local rng = Random.new(day * 7919 + userId % 1_000_003 + (if weekly then 31 else 0))
+	local shuffled = table.clone(if weekly then weeklyPool else pool)
 	for i = #shuffled, 2, -1 do
 		local j = rng:NextInteger(1, i)
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
@@ -70,7 +89,7 @@ function Quests.draw(day: number, userId: number): { string }
 		if not kinds[def.Kind] then
 			kinds[def.Kind] = true
 			table.insert(ids, def.Id)
-			if #ids >= Quests.PerDay then break end
+			if #ids >= (if weekly then Quests.PerWeek else Quests.PerDay) then break end
 		end
 	end
 	return ids

@@ -14,8 +14,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 -- loops back to Day 1. Past days show Claimed, future days are locked, and
 -- the next day counts down to the reset. Day 7 is a jackpot bundle (its
 -- mega roll plays the roll reel); every full week kept boosts the rewards
--- (Rewards.dailyReward), shown under the days. Opens by itself on join when
--- today's reward is waiting.
+-- (Rewards.dailyReward), shown under the days with the streak length, the
+-- Grace Day (one missed day a week is forgiven) and the welcome-back bonus
+-- after a lost streak. Opens by itself on join when today's reward is waiting.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -45,18 +46,29 @@ local function today(): number
 	return RewardDefs.dayNumber(State.serverNow())
 end
 
--- Full weeks kept as of the next claim (that's what boosts the rewards).
-local function weeksForNextClaim(): number
+-- The streak as of the next claim: full weeks kept (they boost the
+-- rewards), consecutive days, whether it uses the Grace Day, and whether
+-- the welcome-back bonus applies.
+local function nextClaim(): RewardDefs.ClaimInfo
 	local state = State.get("Daily")
-	local canClaim, day = RewardDefs.dailyState(state, today())
+	local canClaim = RewardDefs.dailyState(state, today())
 	if canClaim then
-		return RewardDefs.weeksAfterClaim(state, today(), day)
+		local _, info = RewardDefs.afterClaim(state, today())
+		return info
 	end
-	return if typeof(state) == "table" and typeof(state.Weeks) == "number" then state.Weeks else 0
+	local recovery = if typeof(state) == "table" and typeof(state.Recovery) == "number" then state.Recovery else 0
+	return {
+		Day = 0,
+		Weeks = if typeof(state) == "table" and typeof(state.Weeks) == "number" then state.Weeks else 0,
+		Days = RewardDefs.days(state),
+		Graced = false,
+		Recovery = recovery > 0,
+	}
 end
 
 local function shownReward(index: number): { [string]: any }
-	local reward = RewardDefs.dailyReward(index, weeksForNextClaim())
+	local info = nextClaim()
+	local reward = RewardDefs.dailyReward(index, info.Weeks, info.Recovery)
 	local shown: { [string]: any } = { Kind = reward.Kind, Amount = reward.Amount, Boost = reward.Boost, Minutes = reward.Minutes, Items = reward.Items }
 	if reward.Kind == "Clacks" then
 		shown.Amount = math.floor(reward.Amount * RewardDefs.scale({
@@ -98,10 +110,23 @@ local function render()
 	end
 
 	if weekLabel then
-		local weeks = weeksForNextClaim()
-		weekLabel.Text = if weeks > 0
-			then `🔥 Week {weeks + 1} streak: x{RewardDefs.weekMultiplier(weeks)} Clacks & Rolls`
-			else `🔥 Keep a full week for x{RewardDefs.weekMultiplier(1)} rewards next week!`
+		local info = nextClaim()
+		local state = State.get("Daily")
+		local parts = {}
+		if info.Recovery then
+			table.insert(parts, `💖 Welcome back: x{RewardDefs.Recovery.Multiplier} rewards!`)
+		end
+		if info.Weeks > 0 then
+			table.insert(parts, `🔥 {info.Days} day streak: x{RewardDefs.weekMultiplier(info.Weeks)} Clacks & Rolls`)
+		else
+			table.insert(parts, `🔥 Keep a full week for x{RewardDefs.weekMultiplier(1)} rewards!`)
+		end
+		if info.Graced then
+			table.insert(parts, "🛟 Grace Day saved your streak")
+		elseif RewardDefs.graceReady(state, today()) then
+			table.insert(parts, "🛟 Grace Day ready")
+		end
+		weekLabel.Text = table.concat(parts, "  ·  ")
 	end
 end
 
@@ -139,6 +164,14 @@ local function onDay(index: number)
 	pending = false
 	if response.Ok and response.Reward then
 		Interface.toast(`Day {response.Day}: {Format.reward(response.Reward)}`, Color3.fromRGB(120, 255, 140))
+		if response.Graced then
+			Interface.toast("🛟 Grace Day used: your streak lives on!", Color3.fromRGB(120, 200, 255))
+		elseif response.Recovery then
+			Interface.toast(`💖 Welcome back! x{RewardDefs.Recovery.Multiplier} daily rewards`, Color3.fromRGB(255, 140, 200))
+		end
+		if typeof(response.Days) == "number" and response.Days > 1 and response.Days % 7 == 0 then
+			Juice.banner(`{response.Days} DAY STREAK!`, "Keep it going!", Color3.fromRGB(255, 150, 60), 2)
+		end
 		local frame = days[index]
 		if frame then
 			Juice.pop(frame, 1.2)

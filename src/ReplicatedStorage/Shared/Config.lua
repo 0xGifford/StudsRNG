@@ -108,6 +108,75 @@ Config.KeyRewards = {
 	},
 }
 
+-- Zone rotation (Shared/ZoneRotation): every UTC day two zones are
+-- Favoured (one early, one deep) and every week three are Vintage. Keys in
+-- them pay more and rolls made while you're playing there (your last keys
+-- were in it) get more luck; Favoured zones also roll the Limited
+-- Prismatic variant. The same everywhere, so friends can meet up there.
+Config.ZoneRotation = {
+	EarlyMax = 12, -- the "early" Favoured zone is one of zones 1..EarlyMax
+	Favoured = { Luck = 2, Clacks = 1.5 },
+	Vintage = { Luck = 1.25, Clacks = 1.15, Count = 3 },
+	PlayingWindow = 45, -- seconds: you count as "in" a zone this long after its last key
+}
+
+-- Zone Mastery (Shared/Mastery): stars per zone, kept forever.
+--   1 star  own the zone
+--   2 stars find every stud of the zone but its rarest (any variant; Secrets aside)
+--   3 stars find all of them and defeat Kills enemies there
+-- Each star adds GlobalClacks to your Clack multiplier everywhere, and keys
+-- in a 2 / 3 star zone pay KeyBonus more: a reason to go back.
+Config.Mastery = {
+	Kills = 150,
+	GlobalClacks = 0.002, -- per star (102 stars max: +20%)
+	KeyBonus = { [2] = 0.1, [3] = 0.3 },
+}
+
+-- Stud Memories: every stud you've levelled to the max adds this to your
+-- Clack multiplier for good, equipped or not (up to Max).
+Config.Memories = {
+	Clacks = 0.01,
+	Max = 0.5,
+}
+
+-- Squad roles (set on a stud in the Backpack). Multipliers on that stud's
+-- Strength / Health; Fortune adds to Clacks from kills. Synergies:
+-- FullSquad when all four roles are equipped, ZoneSet when SetSize+ equipped
+-- studs come from the same zone.
+Config.Roles = {
+	Order = { "None", "Guard", "Striker", "Swift", "Fortune" },
+	Guard = { Strength = 0.8, Health = 1.7, Emoji = "🛡️" },
+	Striker = { Strength = 1.5, Health = 0.8, Emoji = "⚔️" },
+	Swift = { Strength = 1.2, Health = 1, Crit = 0.03, Emoji = "💨" },
+	Fortune = { Strength = 0.9, Health = 0.9, KillClacks = 0.12, Emoji = "✨" },
+	FullSquad = { Strength = 0.15, Health = 0.15 },
+	ZoneSet = { SetSize = 3, Clacks = 0.05 },
+}
+
+-- Focus (Systems/QuestService): daily quests also pay Focus Points, all
+-- three a day pay DailyBonus more; three Weekly quests pay WeeklyPoints each
+-- and, all done, the Grand Focus reward. Spend points in the Focus Shop.
+Config.Focus = {
+	PointsPerQuest = 10,
+	DailyBonus = 15,
+	WeeklyPoints = 40,
+	Grand = { Kind = "Bundle", Amount = 1, Items = {
+		{ Kind = "MegaRoll", Amount = 60 },
+		{ Kind = "Boost", Amount = 1, Boost = "UltraLuck", Minutes = 20 },
+		{ Kind = "Spins", Amount = 3 },
+	} },
+	-- Limit: how many times ever (nil: unlimited).
+	Shop = {
+		{ Id = "Luck", Name = "Luck Boost · 15 min", Cost = 25, Reward = { Kind = "Boost", Amount = 1, Boost = "Luck", Minutes = 15 } },
+		{ Id = "Clacks", Name = "Clacks Boost · 15 min", Cost = 25, Reward = { Kind = "Boost", Amount = 1, Boost = "Clacks", Minutes = 15 } },
+		{ Id = "Rolls", Name = "20 Free Rolls", Cost = 30, Reward = { Kind = "FreeRolls", Amount = 20 } },
+		{ Id = "UltraLuck", Name = "Ultra Luck · 10 min", Cost = 50, Reward = { Kind = "Boost", Amount = 1, Boost = "UltraLuck", Minutes = 10 } },
+		{ Id = "MegaRoll", Name = "Mega Roll (x40 luck)", Cost = 90, Reward = { Kind = "MegaRoll", Amount = 40 } },
+		{ Id = "Storage", Name = "+10 Storage (forever)", Cost = 60, Limit = 10, Reward = { Kind = "Storage", Amount = 10 } },
+		{ Id = "LuckyRoll", Name = "+1 Lucky Roll (forever)", Cost = 150, Limit = 5, Reward = { Kind = "Luck", Amount = 1 } },
+	},
+}
+
 -- Lucky Meter: every roll fills it; when it's full the next roll is a
 -- LUCKY ROLL with Luck times the luck (and variant luck). Saved, so it
 -- carries across sessions (PlayerData.LuckyMeter).
@@ -316,6 +385,20 @@ Config.VIP = {
 	TrailColors = { Color3.fromRGB(255, 220, 90), Color3.fromRGB(255, 120, 200) },
 }
 
+-- Stud Club (a Roblox subscription, Shared/Products.Subscriptions): comfort
+-- and looks, never power. While subscribed: a daily bundle (ClaimClub, in
+-- the Store), extra stud storage and a [CLUB] chat tag.
+Config.Club = {
+	Storage = 100,
+	TagText = "[CLUB]",
+	TagColor = Color3.fromRGB(120, 220, 255),
+	Daily = { Kind = "Bundle", Amount = 1, Items = {
+		{ Kind = "Spins", Amount = 2 },
+		{ Kind = "FreeRolls", Amount = 25 },
+		{ Kind = "Boost", Amount = 1, Boost = "Luck", Minutes = 15 },
+	} },
+}
+
 -- Bonuses unlock automatically from the number of index entries discovered
 -- (each stud+variant pair is one entry). Values are additive.
 export type Milestone = { Count: number, Slots: number?, Luck: number?, Clacks: number? }
@@ -466,7 +549,36 @@ Config.Leaderboards = {
 		Clacks = "LB_Clacks_v1",
 		Enemies = "LB_Enemies_v1",
 		Rarest = "LB_Rarest_v1",
+		-- Weekly boards: a fresh store every week (name .. "_W" .. week number)
+		WeeklyClacks = "LB_WeeklyClacks_v1",
+		WeeklyEnemies = "LB_WeeklyEnemies_v1",
 	},
+	-- Last week's weekly boards pay out when you next join (best tier you
+	-- reached on either board; Rank = this rank or better).
+	WeeklyRewards = {
+		{ Rank = 1, Title = "Champion of the Week", Reward = { Kind = "Bundle", Amount = 1, Items = {
+			{ Kind = "Luck", Amount = 2 }, { Kind = "MegaRoll", Amount = 500 }, { Kind = "Spins", Amount = 10 },
+		} } },
+		{ Rank = 3, Reward = { Kind = "Bundle", Amount = 1, Items = {
+			{ Kind = "Luck", Amount = 1 }, { Kind = "MegaRoll", Amount = 250 }, { Kind = "Spins", Amount = 6 },
+		} } },
+		{ Rank = 10, Reward = { Kind = "Bundle", Amount = 1, Items = {
+			{ Kind = "MegaRoll", Amount = 150 }, { Kind = "Spins", Amount = 4 },
+		} } },
+		{ Rank = 50, Reward = { Kind = "Bundle", Amount = 1, Items = {
+			{ Kind = "MegaRoll", Amount = 60 }, { Kind = "Spins", Amount = 2 },
+		} } },
+	},
+}
+
+-- Squad combo (Systems/Economy): pressing keys near other players who are
+-- pressing too (their combo alive, within Radius studs) adds Step to the
+-- combo bonus each, friends FriendStep, up to Max. Play together!
+Config.SquadCombo = {
+	Radius = 70,
+	Step = 0.05,
+	FriendStep = 0.1,
+	Max = 0.3,
 }
 
 Config.Announce = {

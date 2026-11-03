@@ -32,11 +32,14 @@ local StateSync = require(Systems.StateSync)
 local Modifiers = require(Systems.Modifiers)
 local PressTracker = require(Systems.PressTracker)
 local Boosts = require(Systems.Boosts)
+local Social = require(Systems.Social)
 
 local Economy = {}
 
 -- (player, presses, clacksGained) after every counted press sample
 Economy.Earned = Signal.new() :: Signal.Signal<Player, number, number>
+-- (player) each time an unbroken streak sets off a Key Rush (weekly quests)
+Economy.Rushed = Signal.new() :: Signal.Signal<Player>
 
 type Combo = { count: number, last: number, rushes: number? }
 local combos: { [Player]: Combo } = {}
@@ -135,6 +138,31 @@ end
 -- Earning
 --------------------------------------------------------------------------
 
+local function rootOf(player: Player): BasePart?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return if root and root:IsA("BasePart") then root else nil
+end
+
+-- Squad combo: other players pressing keys near this one right now
+-- (their combo alive). Returns how many, and the bonus they add.
+local function squadOf(player: Player, now: number): (number, number)
+	local settings = Config.SquadCombo
+	local root = rootOf(player)
+	if not root then return 0, 0 end
+	local count, bonus = 0, 0
+	for other, combo in combos do
+		if other ~= player and now - combo.last <= Config.Combo.Window then
+			local otherRoot = rootOf(other)
+			if otherRoot and (otherRoot.Position - root.Position).Magnitude <= settings.Radius then
+				count += 1
+				bonus += if Social.isFriend(player, other) then settings.FriendStep else settings.Step
+			end
+		end
+	end
+	return count, math.min(bonus, settings.Max)
+end
+
 local function onPressed(player: Player, count: number, valueSum: number)
 	local data = PlayerData.get(player)
 	if not data then return end
@@ -168,11 +196,13 @@ local function onPressed(player: Player, count: number, valueSum: number)
 		combo.rushes = earned
 		Boosts.add(player, "Clacks", rush.Seconds)
 		Net.fire(player, "Notify", { Kind = "KeyRush", Count = combo.count, Seconds = rush.Seconds })
+		Economy.Rushed:Fire(player)
 	end
 	local comboBonus = math.min(combo.count * Config.Combo.Step, Config.Combo.Max)
-	StateSync.push(player, "Combo", { Count = combo.count, Bonus = comboBonus })
+	local squad, squadBonus = squadOf(player, now)
+	StateSync.push(player, "Combo", { Count = combo.count, Bonus = comboBonus, Squad = squad, SquadBonus = squadBonus })
 
-	local gain = (valueSum + bonus) * stats.ClackMultiplier * (1 + comboBonus)
+	local gain = (valueSum + bonus) * stats.ClackMultiplier * (1 + comboBonus + squadBonus)
 	data.Clacks += gain
 	data.LifetimeClacks += gain
 	data.TotalPresses += count

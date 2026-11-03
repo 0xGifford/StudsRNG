@@ -16,7 +16,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   * every stud you own below: odds, how many, its level, a size / Shiny /
 --     Inverted badge
 --   * tap one for its card: name, rarity, Clacks, Strength, Health, level
---     and XP, and EQUIP / UNEQUIP, FUSE x/5, DELETE
+--     and XP, and EQUIP / UNEQUIP, ROLE, FUSE x/5, DELETE
+--   * squad roles (Config.Roles): ROLE cycles the stud's role (Guard, Striker,
+--     Swift, Fortune); cells wear the role's emoji, the header shows the
+--     squad and its synergies (Full Squad, Zone Set)
 --   * storage used, and AUTO DELETE (Off → Common → ... → Epic, applied by
 --     the server to Base-size rolls)
 
@@ -24,6 +27,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Net = require(Shared.Net)
+local Zones = require(Shared.Zones)
 local Variants = require(Shared.Variants)
 local Types = require(Shared.Types)
 local RollLogic = require(Shared.Util.RollLogic)
@@ -128,6 +133,16 @@ local function owned(key: string): number
 	return (State.get("Studs") or {})[key] or 0
 end
 
+local function rolesOf(): { [string]: string }
+	local roles = State.get("StudRoles")
+	return if typeof(roles) == "table" then roles else {}
+end
+
+local function roleOf(key: string): string?
+	local role = rolesOf()[key]
+	return if role and Config.Roles[role] then role else nil
+end
+
 local function levelOf(def: StudDef): number
 	return RollLogic.levelOf((State.get("StudXP") or {})[def.Id])
 end
@@ -202,7 +217,13 @@ local function makeCell(parent: Instance, template: string, key: string, count: 
 	local level = levelOf(def)
 	show(frame, "Level", if level > 1 then `Lv. {level}` else nil)
 	local badge = BADGES[variant.Name]
-	show(frame, "Badge", if badge then `<font color="{badge[2]}">{badge[1]}</font>` else nil)
+	local role = roleOf(key)
+	local roleEmoji = if role then Config.Roles[role].Emoji else nil
+	local badgeText = if badge then `<font color="{badge[2]}">{badge[1]}</font>` else nil
+	if roleEmoji then
+		badgeText = if badgeText then `{roleEmoji} {badgeText}` else roleEmoji
+	end
+	show(frame, "Badge", badgeText)
 	show(frame, "Check", if template == "BackpackCell" and equippedCount(key) > 0 then "✓" else nil)
 
 	local hit = frame:FindFirstChildWhichIsA("GuiButton", true)
@@ -239,6 +260,12 @@ local function renderCard()
 	local level = levelOf(def)
 	local xp = (State.get("StudXP") or {})[def.Id] or 0
 	local strength, health = RollLogic.statsOf(def, variant, level)
+	local role = roleOf(key)
+	local roleDef = if role then Config.Roles[role] else nil
+	if roleDef then
+		strength *= roleDef.Strength
+		health *= roleDef.Health
+	end
 	StudCell.setViewport(cardParts.viewport, def, variant)
 	cardParts.name.Text = string.upper(Format.studName(def, variant))
 	cardParts.name.TextColor3 = rarityColor(def):Lerp(Color3.new(1, 1, 1), 0.2)
@@ -248,6 +275,9 @@ local function renderCard()
 		then `⭐ Lv. {level} (MAX)`
 		else `⭐ Lv. {level} · {Format.number(xp - RollLogic.xpForLevel(level))}/{Format.number(RollLogic.xpForLevel(level + 1) - RollLogic.xpForLevel(level))} XP`
 	cardParts.owned.Text = `{owned(key)} owned · {equippedCount(key)} equipped`
+	if cardParts.role then
+		setButtonText(cardParts.role, if roleDef then `{roleDef.Emoji} {string.upper(role :: string)}` else "ROLE: NONE")
+	end
 
 	local canEquipMore = equippedCount(key) < owned(key) and #equippedList() < State.stats().Slots
 	local equipping = canEquipMore or equippedCount(key) == 0
@@ -271,8 +301,28 @@ local function render()
 	if not gui then return end
 	local stats = State.stats()
 	local equipped = equippedList()
-	local strength = RollLogic.teamStats(equipped, State.get("StudXP")) * (stats.TeamStrength or 1)
-	header.Text = `{#equipped}/{stats.Slots} Equipped  •  {Format.number(strength)} DMG  •  {Format.multiplier(stats.ClackMultiplier)} Clacks`
+	local roles = rolesOf()
+	local strength = RollLogic.teamStats(equipped, State.get("StudXP"), roles) * (stats.TeamStrength or 1)
+	local parts = { `{#equipped}/{stats.Slots} Equipped`, `{Format.number(strength)} DMG`, `{Format.multiplier(stats.ClackMultiplier)} Clacks` }
+	-- Squad: role counts and synergies.
+	local counts, full = RollLogic.squad(equipped, roles)
+	local squad = {}
+	for _, name in Config.Roles.Order do
+		if counts[name] then
+			table.insert(squad, `{Config.Roles[name].Emoji}{counts[name]}`)
+		end
+	end
+	if #squad > 0 then
+		table.insert(parts, table.concat(squad, " "))
+	end
+	if full then
+		table.insert(parts, `FULL SQUAD +{math.floor(Config.Roles.FullSquad.Strength * 100 + 0.5)}%`)
+	end
+	local zoneSet = stats.ZoneSet
+	if typeof(zoneSet) == "string" and Zones.ById[zoneSet] then
+		table.insert(parts, `{Zones.ById[zoneSet].Name} SET +{math.floor(Config.Roles.ZoneSet.Clacks * 100 + 0.5)}% Clacks`)
+	end
+	header.Text = table.concat(parts, "  •  ")
 
 	clear(equippedRow)
 	for i, key in equipped do
@@ -371,6 +421,22 @@ local function onFuse()
 	end)
 end
 
+-- ROLE: the next role in Config.Roles.Order (None → Guard → ... → None).
+local function onRole()
+	local key = selected
+	if not key then return end
+	local order = Config.Roles.Order
+	local index = table.find(order, roleOf(key) or "None") or 1
+	local nextRole = order[index % #order + 1]
+	run(function()
+		local response = Net.invoke("SetStudRole", key, nextRole)
+		if response.Ok and cardParts.role then
+			Juice.pop(cardParts.role, 1.15)
+		end
+		return response
+	end)
+end
+
 local function onDelete()
 	local key = selected
 	if not key then return end
@@ -452,6 +518,8 @@ local function bind(): boolean
 	cardParts.owned = part("CardOwned")
 	cardParts.equip = part("Equip")
 	cardParts.fuse = part("Fuse")
+	-- Optional: places built before squad roles have no Role button.
+	cardParts.role = Roles.find(screen, ROLE, "Role")
 	equipColor = cardParts.equip.BackgroundColor3
 
 	onClick(sortButton, function()
@@ -464,6 +532,9 @@ local function bind(): boolean
 	onClick(autoButton, onAutoDelete)
 	onClick(cardParts.equip, onEquip)
 	onClick(cardParts.fuse, onFuse)
+	if cardParts.role then
+		onClick(cardParts.role, onRole)
+	end
 	onClick(part("Delete"), onDelete)
 	onClick(part("Deselect"), function()
 		StudsMenu.select(nil)
@@ -510,7 +581,7 @@ function StudsMenu.start()
 	local queued = false
 	State.Changed:Connect(function(field)
 		if not StudsMenu.isOpen() or queued then return end
-		if field == "Studs" or field == "Equipped" or field == "Stats" or field == "StudXP" or field == "AutoDelete" then
+		if field == "Studs" or field == "Equipped" or field == "Stats" or field == "StudXP" or field == "AutoDelete" or field == "StudRoles" then
 			queued = true
 			task.defer(function()
 				queued = false

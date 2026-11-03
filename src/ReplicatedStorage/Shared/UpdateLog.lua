@@ -22,6 +22,22 @@ export type Entry = {
 
 local entries: { Entry } = {
 	{
+		Version = "1.10",
+		Date = "Nov 3, 2026",
+		Title = "Come Back Stronger",
+		Notes = {
+			"🌟 Favoured zones: two zones a day (one early, one deep) give x2 luck, x1.5 Clacks and roll the new Limited PRISMATIC variant. Three Vintage zones change every week.",
+			"⭐ Zone Mastery: earn up to 3 stars in every zone by finding its studs and defeating its enemies. Stars boost your Clacks everywhere, and mastered zones' keys pay more.",
+			"💭 Stud Memories: max out a stud's level and it boosts your Clacks forever.",
+			"🎯 Focus Points from every quest, a Weekly Grand Focus with a big prize, and a Focus Shop to spend them in.",
+			"🛟 Forgiving streaks: one missed day a week is forgiven, a lost streak earns a welcome-back bonus, and new 7 to 100 day streak titles.",
+			"🛡️ Squad roles: make studs Guards, Strikers, Swift or Fortune in the Backpack. Field all four for a Full Squad bonus, or three from one zone for a Zone Set.",
+			"👥 Squad combo: pressing keys near other players (friends count double) boosts everyone's combo.",
+			"📅 Weekly leaderboards that reset every Monday, with prizes for last week's top players.",
+			"💎 Stud Club membership and one-time value packs for big milestones. Comfort and looks, never power.",
+		},
+	},
+	{
 		Version = "1.9",
 		Date = "Nov 1, 2026",
 		Title = "Lucky Streaks",

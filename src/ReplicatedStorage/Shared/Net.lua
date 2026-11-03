@@ -56,6 +56,11 @@ local FUNCTIONS = {
 	"StopFight",
 	"SetTitle",
 	"ClaimPass",
+	"SetStudRole", -- (key, role) Squad roles (Systems/Retention)
+	"ClaimWeekly", -- (id) Weekly Grand Focus quest (Systems/QuestService)
+	"ClaimGrandFocus", -- () all three weekly quests done
+	"BuyFocus", -- (itemId) Focus Shop
+	"ClaimClub", -- () Stud Club daily bundle (Systems/Products)
 }
 
 -- Server → client (RemoteEvent).

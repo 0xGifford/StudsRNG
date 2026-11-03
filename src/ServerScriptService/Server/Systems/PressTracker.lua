@@ -61,6 +61,10 @@ overlapParams.FilterType = Enum.RaycastFilterType.Include
 
 -- (player, zoneId?) -> may this player earn from a key in that zone?
 local filter: ((Player, string?) -> boolean)? = nil
+-- (player, zoneId?) -> multiplier on a key's value (Favoured zones, Mastery)
+local valueScale: ((Player, string?) -> number)? = nil
+-- The zone each player last pressed a key in, and when (os.clock)
+local lastZone: { [Player]: { zone: string, at: number } } = {}
 
 local function readKeyInfo(hitbox: BasePart): KeyInfo
 	local model = hitbox.Parent
@@ -229,7 +233,10 @@ local function sample(player: Player, state: Tracked, dt: number)
 			local info = hitboxes[part]
 			if info and info.enabled and (filter == nil or filter(player, info.world)) then
 				count += 1
-				valueSum += info.value
+				valueSum += info.value * (if valueScale then valueScale(player, info.world) else 1)
+				if info.world then
+					lastZone[player] = { zone = info.world, at = os.clock() }
+				end
 				table.insert(pressed, part)
 				if count >= PressConfig.MaxPressesPerSample then
 					break
@@ -268,6 +275,20 @@ function PressTracker.isEnabled(hitbox: BasePart): boolean
 end
 
 -- Economy sets this so keys in unowned zones never pay.
+function PressTracker.setValueScale(fn: (Player, string?) -> number)
+	valueScale = fn
+end
+
+-- The zone the player is playing in: where they pressed a key within the
+-- last `window` seconds, else nil.
+function PressTracker.playingIn(player: Player, window: number): string?
+	local last = lastZone[player]
+	if last and os.clock() - last.at <= window then
+		return last.zone
+	end
+	return nil
+end
+
 function PressTracker.setFilter(fn: (Player, string?) -> boolean)
 	filter = fn
 end
@@ -289,6 +310,7 @@ function PressTracker.init()
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		tracked[player] = nil
+		lastZone[player] = nil
 	end)
 end
 

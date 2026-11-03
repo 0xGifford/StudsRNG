@@ -58,6 +58,18 @@ local TEMPLATE: PlayerData = {
 	LastOnline = 0,
 	TilesClaimed = 0,
 	LuckyMeter = 0, -- rolls toward the next Lucky Roll (Config.LuckyMeter)
+	-- Retention systems
+	ZoneKills = {}, -- enemies defeated per zone (Zone Mastery)
+	Mastery = {}, -- stars last announced per zone
+	FocusPoints = 0,
+	FocusBought = {},
+	Weekly = { Week = 0, List = {}, Grand = false },
+	BonusStorage = 0,
+	StudRoles = {},
+	ClubClaimDay = -1,
+	WeeklyStats = { Week = 0, Clacks = 0, Enemies = 0 }, -- this week's scores (weekly leaderboards)
+	WeeklyPaid = 0, -- last week whose leaderboard reward was checked
+	Milestones = {}, -- [milestone id] = true: value-pack offers already shown (Systems/Products)
 	IndexClaims = {}, -- [variant] = true: Index tab rewards claimed
 	RollCounts = {}, -- [stud key] = times rolled
 	EnemiesDefeated = 0,

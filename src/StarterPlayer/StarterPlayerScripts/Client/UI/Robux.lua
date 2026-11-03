@@ -83,4 +83,20 @@ function Robux.available(isPass: boolean, key: string): boolean
 	return idOf(isPass, key) ~= 0
 end
 
+-- Subscriptions (Shared/Products.Subscriptions, "EXP-..." ids).
+function Robux.subscriptionAvailable(key: string): boolean
+	local def = Products.Subscriptions[key]
+	return def ~= nil and def.Id ~= ""
+end
+
+-- Opens the Roblox subscription prompt. Returns false when the id isn't set.
+function Robux.promptSubscription(key: string): boolean
+	if not Robux.subscriptionAvailable(key) then return false end
+	local ok, err = pcall(MarketplaceService.PromptSubscriptionPurchase, MarketplaceService, player, Products.Subscriptions[key].Id)
+	if not ok then
+		warn(`[Robux] subscription prompt failed: {err}`)
+	end
+	return ok
+end
+
 return Robux

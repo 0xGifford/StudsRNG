@@ -41,6 +41,7 @@ local ORDER = {
 	"QuestService",
 	"KeyRewards",
 	"Tutorial",
+	"Retention",
 	"Products",
 	"Session",
 	"DevCommands",

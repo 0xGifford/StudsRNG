@@ -25,6 +25,7 @@ local Net = require(Shared.Net)
 local Types = require(Shared.Types)
 local RollLogic = require(Shared.Util.RollLogic)
 local Signal = require(Shared.Util.Signal)
+local ZoneRotation = require(Shared.ZoneRotation)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -32,6 +33,7 @@ local StateSync = require(Systems.StateSync)
 local Inventory = require(Systems.Inventory)
 local Economy = require(Systems.Economy)
 local Modifiers = require(Systems.Modifiers)
+local PressTracker = require(Systems.PressTracker)
 
 type RollResult = Types.RollResult
 type Response = Types.Response
@@ -67,10 +69,13 @@ function Rolls.rollFor(player: Player, count: number, luckMultiplier: number?): 
 		if lucky then
 			data.LuckyMeter = 0
 		end
-		local luck = boost * (if lucky then Config.LuckyMeter.Luck else 1)
+		-- Rolling while playing in a Favoured / Vintage zone (Shared/ZoneRotation).
+		local zone = PressTracker.playingIn(player, Config.ZoneRotation.PlayingWindow)
+		local rotation = ZoneRotation.bonus(zone, os.time())
+		local luck = boost * (if lucky then Config.LuckyMeter.Luck else 1) * (if rotation then rotation.Luck else 1)
 		local def = RollLogic.rollStud(rng, stats.Luck * luck, data.UnlockedWorlds)
 		if not def then break end
-		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * luck, stats.VariantBoosts)
+		local variant = RollLogic.rollVariant(rng, stats.VariantLuck * luck, stats.VariantBoosts, rotation ~= nil and rotation.Prismatic)
 
 		local grant = Inventory.grant(player, def.Id, variant.Name)
 		if grant then
