@@ -3,13 +3,13 @@
 	pieces show while rolling. RevealRole marks what the code uses:
 	  Dim        the screen dim while rolling (DimTransparency attribute: how
 	             dark; it rests fully transparent)
-	  Stage      follows the player's head; the reels and decorations go in it
+	  Stage      the reels and dashes go in it: big at the screen centre while
+	             rolling, small at the top centre to rest (and in HIDE mode)
 	  Controls   AUTO / HIDE: Auto and Hide buttons, each with Icon + Label.
 	             Their designed positions are the "Auto on" layout (AUTO alone
 	             is centred). OnColor / OffColor attributes tint the Labels.
 	             HiddenSize: its size under the small display in HIDE mode.
-	  Mini       the small top display in HIDE mode: Viewport, Odds, Name,
-	             a UIStroke (tinted by rarity on landing), a UIScale
+	  Mini       (unused since build 4: HIDE shrinks the reel to the top)
 
 	Templates (in the hidden "Templates" frame; UITemplate = name), designed
 	for a reel cell 100 px tall (the Templates frame's DesignHeight): the code
@@ -17,10 +17,10 @@
 	  ReelHolder  one reel (transparent)
 	  ReelCell    a reel entry: Viewport, Odds, Name, a UIScale
 	  ReelDash    the centre-line dashes (the right one is turned 180°)
-	  LuckBadge   the clover badge: Text ("2X")
-	  BonusTag    shown under the badge while any boost / event runs
+	  LuckBadge   the "2X" clover that rides the reel between studs: Text
+	  BonusTag    "BONUS", rides the reel too while any boost / event runs
 	  SoClose     "SO CLOSE!" over a near miss
-	  Rays        the light burst behind a landed stud (spins)
+	  Rays        the light burst behind the studs near the centre (spins)
 	  Clover      clover rain for lucky players
 	  ResultBoard a BillboardGui over the player after a roll: Odds, Name
 ]]
@@ -110,7 +110,8 @@ template(Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.ne
 local cell = template(Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(160, 100) }, templates), "ReelCell")
 Kit.new("UIScale", {}, cell)
 Kit.viewport({ Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.62, 0.62), ZIndex = 2, Parent = cell })
-text(cell, "Odds", "1 / 2", ODDS, UDim2.fromScale(1, 0.2), UDim2.fromScale(0.5, 0.1), 3)
+-- Odds tilted up over the stud's top-left, like a sticker (coloured by rarity in code).
+text(cell, "Odds", "1 / 2", ODDS, UDim2.fromScale(0.95, 0.2), UDim2.fromScale(0.4, 0.08), 3).Rotation = -12
 text(cell, "Name", "Stud", WHITE, UDim2.fromScale(1.1, 0.22), UDim2.fromScale(0.5, 0.9), 3)
 
 local dash = template(Kit.new("Frame", {
@@ -118,15 +119,23 @@ local dash = template(Kit.new("Frame", {
 }, templates), "ReelDash")
 Kit.new("UIGradient", { Transparency = Kit.NumberSequence.new(1, 0) }, dash)
 
+-- The "2X" clover that rides the reel between studs (your luck).
 local badge = template(Kit.new("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(70, 70), BackgroundColor3 = CLOVER, Rotation = 45, ZIndex = 4,
+	AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(52, 52), BackgroundTransparency = 1, ZIndex = 4,
 }, templates), "LuckBadge")
-Kit.new("UICorner", { CornerRadius = UDim.new(0.3, 0) }, badge)
-Kit.new("UIStroke", { Color = Color3.fromRGB(20, 60, 20), Thickness = 3 }, badge)
-text(badge, "Text", "2X", WHITE, UDim2.fromScale(0.9, 0.55), UDim2.fromScale(0.5, 0.5), 5).Rotation = -45
+for _, layer in { { "Outline", Color3.fromRGB(16, 70, 22), 0.62, 4 }, { "Leaf", CLOVER, 0.54, 5 } } do
+	for _, at in { { 0.3, 0.3 }, { 0.7, 0.3 }, { 0.3, 0.7 }, { 0.7, 0.7 } } do
+		local leaf = Kit.new("Frame", {
+			Name = layer[1], AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(at[1], at[2]),
+			Size = UDim2.fromScale(layer[3], layer[3]), BackgroundColor3 = layer[2], BorderSizePixel = 0, ZIndex = layer[4],
+		}, badge)
+		Kit.new("UICorner", { CornerRadius = UDim.new(1, 0) }, leaf)
+	end
+end
+text(badge, "Text", "2X", WHITE, UDim2.fromScale(0.85, 0.5), UDim2.fromScale(0.5, 0.5), 6)
 
 local bonus = template(Kit.new("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(85, 28), BackgroundColor3 = Color3.fromRGB(30, 22, 18), ZIndex = 4,
+	AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(72, 30), BackgroundColor3 = Color3.fromRGB(30, 22, 18), ZIndex = 4,
 }, templates), "BonusTag")
 Kit.new("UICorner", { CornerRadius = UDim.new(1, 0) }, bonus)
 Kit.new("UIStroke", { Color = Color3.fromRGB(255, 150, 60), Thickness = 2 }, bonus)
@@ -167,4 +176,4 @@ local board = template(Kit.new("BillboardGui", {
 text(board, "Odds", "1 / 2", ODDS, UDim2.fromScale(1, 0.48), UDim2.fromScale(0.5, 0.27), 1)
 text(board, "Name", "Stud", WHITE, UDim2.fromScale(1, 0.5), UDim2.fromScale(0.5, 0.75), 1)
 
-Kit.save(gui)
+Kit.save(gui, 4) -- build 4: Slime RNG reel (2X clovers in the reel, tilted odds)
