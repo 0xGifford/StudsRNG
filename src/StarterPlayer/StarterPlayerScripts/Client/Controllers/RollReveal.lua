@@ -17,16 +17,19 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   * the screen dims and the HUD steps aside; AUTO sits at the bottom
 --     while rolling (and for as long as Auto is on), HIDE next to it only
 --     while Auto is on
---   * above the player's head a vertical reel of studs scrolls down, each
---     with its "1 / X" odds above and name below; white dashes mark the
---     centre slot and a clover badge shows the player's luck
---   * the reel eases out onto the result, which pops with light rays
---   * the result's odds and name then float over the player in the world
--- HIDE (Auto only) hides the whole reveal: no dim, the HUD stays, and a small
--- roll display at the top of the screen flicks through studs and lands on
--- each result instead, with AUTO / HIDE tucked under it. Faster rolling =
--- faster reels. The server decided the results before the reel
--- starts: it's pure theatre.
+--   * in the middle of the screen a vertical reel scrolls down: studs, each
+--     with its tilted "1 / X" odds and name and a glow, and between them the
+--     green "2X" clover (your luck) and, while a boost or event runs, BONUS.
+--     The centre one is big, its neighbours a little smaller, then tiny;
+--     white dashes mark the centre
+--   * the reel eases out onto the result, which pops and glows
+--   * a manual roll's result then flies up to rest small at the top centre,
+--     and the next roll zooms it back to the middle and spins on from it.
+--     On Auto the reel stays in the middle between rolls
+-- HIDE (Auto only): no dim, the HUD stays, and the same reel spins small at
+-- the top centre, with AUTO / HIDE tucked under it. Faster rolling = faster
+-- reels. The server decided the results before the reel starts: it's pure
+-- theatre.
 --
 -- Everything shown is StarterGui.RollReveal (RevealRole pieces and the
 -- templates in its Templates frame, see tools/ui/screens/RollReveal.luau).
@@ -66,8 +69,6 @@ RollReveal.BusyChanged = Signal.new() :: Signal.Signal<boolean>
 -- Fired when the player tries Auto without the upgrade.
 RollReveal.AutoLocked = Signal.new() :: Signal.Signal<>
 
-local VISIBLE = 5 -- cells drawn per reel (centre ± 2)
-
 local player = Players.LocalPlayer
 local busy = false
 local auto = false
@@ -76,7 +77,9 @@ local hidden = false -- HIDE: the small top display instead of the reel (Auto on
 local gui: ScreenGui
 local dim: GuiObject
 local dimTransparency = 0.45
-local stage: GuiObject -- follows the player's head on screen
+local stage: GuiObject -- holds the reels: screen centre, or small at the top
+local stageScale: UIScale
+local pose = "Centre" -- where the stage is: "Centre" or "Top"
 local controls: GuiObject
 local controlsLayout: { anchor: Vector2, position: UDim2, size: UDim2, hiddenSize: UDim2 }
 local autoButton: GuiButton
@@ -87,13 +90,6 @@ local offColor = Color3.fromRGB(255, 120, 120)
 local designHeight = 100 -- the reel cell height the templates are drawn for
 local cinematic = false
 
--- The small roll display at the top (HIDE mode).
-local mini: GuiObject
-local miniStroke: UIStroke
-local miniViewport: ViewportFrame
-local miniOdds: TextLabel
-local miniName: TextLabel
-local miniScale: UIScale
 local hudWasEnabled = true
 
 --------------------------------------------------------------------------
@@ -141,6 +137,9 @@ local function bindGui()
 	if typeof(dimAttr) == "number" then dimTransparency = dimAttr end
 	dim.BackgroundTransparency = 1
 	stage = part("Stage")
+	stageScale = stage:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", stage)
+	stage.AnchorPoint = Vector2.new(0.5, 0.5)
+	stage.Position = UDim2.fromScale(0.5, 0.5)
 
 	controls = part("Controls")
 	controls.Visible = false
@@ -172,28 +171,25 @@ local function bindGui()
 	setPill(autoButton, "AUTO - OFF", false)
 	setPill(hideButton, "HIDE - OFF", false)
 
-	mini = part("Mini")
-	mini.Visible = false
-	miniStroke = mini:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke", mini)
-	miniScale = mini:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", mini)
-	miniViewport = viewportIn(mini)
-	StudCell.setViewport(miniViewport, Studs.List[1], Variants.ById.Normal)
-	miniOdds = child(mini, "Odds")
-	miniName = child(mini, "Name")
+	-- The old HIDE display (before build 4): no longer used.
+	local oldMini = Roles.find(gui, "RevealRole", "Mini")
+	if oldMini and oldMini:IsA("GuiObject") then
+		oldMini.Visible = false
+	end
 
 	local templates = gui:FindFirstChild("Templates")
 	local height = templates and templates:GetAttribute("DesignHeight")
 	if typeof(height) == "number" and height > 0 then designHeight = height end
 end
 
--- AUTO alone, or AUTO + HIDE while Auto is on. In HIDE mode they sit under
--- the small display at the top; otherwise where they were designed.
+-- AUTO (where it was designed, alone or not), and HIDE while Auto is on. In
+-- HIDE mode they sit under the small reel at the top.
 local function layoutControls()
 	hideButton.Visible = auto
-	autoButton.Position = if auto then autoPosition else UDim2.new(0.5, 0, autoPosition.Y.Scale, autoPosition.Y.Offset)
+	autoButton.Position = autoPosition
 	if auto and hidden then
 		controls.AnchorPoint = Vector2.new(0.5, 0)
-		controls.Position = UDim2.new(0.5, 0, 0, mini.AbsolutePosition.Y + mini.AbsoluteSize.Y + 6)
+		controls.Position = UDim2.new(0.5, 0, 0.15, math.clamp(gui.AbsoluteSize.Y * 0.3, 90, 330) * 0.42 * 0.75)
 		controls.Size = controlsLayout.hiddenSize
 	else
 		controls.AnchorPoint = controlsLayout.anchor
@@ -222,58 +218,121 @@ end
 -- HIDE mode keeps the HUD and the view clear; only the small display shows.
 local function refreshCinematic()
 	local hideMode = auto and hidden
-	mini.Visible = hideMode
 	setCinematic((busy or auto) and not hideMode)
 	controls.Visible = busy or auto
 	layoutControls()
 end
 
-function RollReveal.setHidden(value: boolean)
-	hidden = value
-	setPill(hideButton, if value then "HIDE - ON" else "HIDE - OFF", value)
-	refreshCinematic()
+--------------------------------------------------------------------------
+-- Stage poses: big at the screen centre, small at the top centre
+--------------------------------------------------------------------------
+
+local TOP_Y = 0.15 -- the resting / HIDE reel's centre, as a share of the screen height
+local TOP_SCALE = 0.42
+local REST_TIME = 3 -- seconds a manual roll's result rests at the top
+
+local function moveTo(name: string, duration: number)
+	pose = name
+	local position = if name == "Top" then UDim2.fromScale(0.5, TOP_Y) else UDim2.fromScale(0.5, 0.5)
+	local scale = if name == "Top" then TOP_SCALE else 1
+	if duration <= 0 then
+		stage.Position = position
+		stageScale.Scale = scale
+		return
+	end
+	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(stage, info, { Position = position }):Play()
+	TweenService:Create(stageScale, info, { Scale = scale }):Play()
+end
+
+-- Runs fn(u) every frame for duration seconds (u from 0 to 1).
+local function animate(duration: number, fn: (number) -> ())
+	local start = os.clock()
+	while true do
+		local u = math.clamp((os.clock() - start) / duration, 0, 1)
+		fn(u)
+		if u >= 1 then break end
+		RunService.RenderStepped:Wait()
+	end
 end
 
 --------------------------------------------------------------------------
--- Following the player's head
+-- Fading a piece (every transparency inside it, from its own base value)
 --------------------------------------------------------------------------
 
-local function headScreenPosition(): Vector2
-	local camera = workspace.CurrentCamera
-	local character = player.Character
-	local head = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
-	local size = gui.AbsoluteSize
-	if camera and head and head:IsA("BasePart") then
-		local point, onScreen = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 2, 0))
-		if onScreen then
-			return Vector2.new(point.X, point.Y)
+type Fader = { items: { { object: Instance, property: string, base: number } }, last: number }
+
+local function makeFader(root: Instance): Fader
+	local items = {}
+	local function add(object: Instance)
+		if object:IsA("TextLabel") or object:IsA("TextButton") then
+			table.insert(items, { object = object, property = "TextTransparency", base = object.TextTransparency })
+		end
+		if object:IsA("ImageLabel") or object:IsA("ViewportFrame") then
+			table.insert(items, { object = object, property = "ImageTransparency", base = (object :: any).ImageTransparency })
+		end
+		if object:IsA("GuiObject") and not object:IsA("ViewportFrame") then
+			table.insert(items, { object = object, property = "BackgroundTransparency", base = object.BackgroundTransparency })
+		end
+		if object:IsA("UIStroke") then
+			table.insert(items, { object = object, property = "Transparency", base = object.Transparency })
 		end
 	end
-	return Vector2.new(size.X / 2, size.Y * 0.45)
+	add(root)
+	for _, d in root:GetDescendants() do
+		add(d)
+	end
+	return { items = items, last = -1 }
+end
+
+local function setFade(fader: Fader, f: number)
+	if math.abs(fader.last - f) < 0.01 then return end
+	fader.last = f
+	for _, item in fader.items do
+		(item.object :: any)[item.property] = item.base + (1 - item.base) * f
+	end
 end
 
 --------------------------------------------------------------------------
 -- Reel
 --------------------------------------------------------------------------
 
-type Cell = {
-	frame: GuiObject,
+-- What a reel slot shows: a stud, or a filler that rides between them like
+-- in Slime RNG ("2X": your luck; "BONUS": a boost or event is running).
+type Entry = { kind: string, def: StudDef? }
+
+type Slot = {
+	frame: GuiObject, -- container, scaled with a UIScale
+	scale: UIScale,
+	stud: GuiObject, -- the ReelCell
 	viewport: ViewportFrame,
 	odds: TextLabel,
 	name: TextLabel,
+	luck: GuiObject,
+	bonus: GuiObject,
+	rays: GuiObject,
+	fades: { [string]: Fader },
 	index: number, -- which entry of the sequence it shows
 }
 
 type Reel = {
 	holder: GuiObject,
-	cells: { Cell },
-	sequence: { StudDef },
+	slots: { Slot },
+	sequence: { Entry },
 	result: RollResult,
 	cellHeight: number,
 	target: number, -- sequence index of the result
 	tease: boolean, -- a rarer stud sits just past the result (near miss)
 	creep: number, -- extra scroll towards the tease, added while drawing
 }
+
+local VISIBLE = 5 -- slots drawn per reel (centre ± 2)
+local FILLER_CHANCE = 0.4
+
+-- The reel showing (spinning, or its result resting), and its dashes.
+local current: { reels: { Reel }, extras: { Instance } }? = nil
+local lastResult: StudDef? = nil
+local restToken = 0
 
 local function spinPool(): { StudDef }
 	local unlocked = State.get("UnlockedWorlds") or {}
@@ -309,36 +368,122 @@ local function oddsText(def: StudDef, variant: VariantDef): string
 	return (string.gsub(Format.oneIn(def.OneIn * variant.OneIn), "^1 in ", "1 / "))
 end
 
-local function makeCell(parent: Instance, height: number): Cell
-	local frame = copy("ReelCell", height) :: GuiObject
-	if not frame:FindFirstChildOfClass("UIScale") then
-		Instance.new("UIScale").Parent = frame
-	end
-	frame.Parent = parent
-	return { frame = frame, viewport = viewportIn(frame), odds = child(frame, "Odds"), name = child(frame, "Name"), index = 0 }
+local function rarityColor(def: StudDef): Color3
+	return if def.Rarity == "Secret" then Color3.new(1, 1, 1) else Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
 end
 
-local function showInCell(cell: Cell, def: StudDef, variant: VariantDef)
-	StudCell.setViewport(cell.viewport, def, variant)
-	cell.odds.Text = oddsText(def, variant)
-	cell.name.Text = Format.studName(def, variant)
-	cell.name.TextColor3 = Color3.new(1, 1, 1)
+-- Any temporary luck / speed source running (the BONUS filler).
+local function bonusActive(): boolean
+	local stats = State.stats()
+	if stats.ServerLuck > 1 then return true end
+	local now = State.serverNow()
+	for _, ends in State.get("BoostEnds") or {} do
+		if typeof(ends) == "number" and ends > now then
+			return true
+		end
+	end
+	local eventId = ReplicatedStorage:GetAttribute("EventId")
+	return typeof(eventId) == "string" and eventId ~= ""
+end
+
+local function luckText(): string
+	return (string.gsub(string.format("%.1f", State.stats().Luck), "%.0$", "")) .. "X"
+end
+
+local function makeSlot(parent: Instance, cellHeight: number): Slot
+	local frame = Instance.new("Frame")
+	frame.Name = "Slot"
+	frame.BackgroundTransparency = 1
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Size = UDim2.fromOffset(cellHeight * 1.6, cellHeight)
+	local scale = Instance.new("UIScale")
+	scale.Parent = frame
+
+	local rays = copy("Rays") :: GuiObject
+	rays.Size = UDim2.fromOffset(cellHeight * 1.05, cellHeight * 1.05)
+	rays.Position = UDim2.fromScale(0.5, 0.5)
+	rays.ZIndex = 0
+	rays.Parent = frame
+
+	local stud = copy("ReelCell", cellHeight) :: GuiObject
+	stud.Position = UDim2.fromScale(0.5, 0.5)
+	stud.Parent = frame
+	local luck = copy("LuckBadge", cellHeight) :: GuiObject
+	luck.Position = UDim2.fromScale(0.5, 0.5)
+	luck.Parent = frame
+	local bonus = copy("BonusTag", cellHeight) :: GuiObject
+	bonus.Position = UDim2.fromScale(0.5, 0.5)
+	bonus.Parent = frame
+	frame.Parent = parent
+
+	return {
+		frame = frame,
+		scale = scale,
+		stud = stud,
+		viewport = viewportIn(stud),
+		odds = child(stud, "Odds"),
+		name = child(stud, "Name"),
+		luck = luck,
+		bonus = bonus,
+		rays = rays,
+		fades = { stud = makeFader(stud), luck = makeFader(luck), bonus = makeFader(bonus), rays = makeFader(rays) },
+		index = 0,
+	}
+end
+
+local function tintRays(rays: GuiObject, color: Color3)
+	for _, d in rays:GetDescendants() do
+		if d:IsA("Frame") then
+			d.BackgroundColor3 = if d.Name == "Glow" then color else color:Lerp(Color3.new(1, 1, 1), 0.6)
+		end
+	end
+end
+
+local function showStud(slot: Slot, def: StudDef, variant: VariantDef)
+	StudCell.setViewport(slot.viewport, def, variant)
+	local color = rarityColor(def)
+	slot.odds.Text = oddsText(def, variant)
+	slot.odds.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.35)
+	slot.name.Text = Format.studName(def, variant)
+	slot.name.TextColor3 = Color3.new(1, 1, 1)
+	tintRays(slot.rays, color)
+end
+
+local function showEntry(slot: Slot, entry: Entry)
+	slot.stud.Visible = entry.kind == "Stud"
+	slot.rays.Visible = entry.kind == "Stud"
+	slot.luck.Visible = entry.kind == "Luck"
+	slot.bonus.Visible = entry.kind == "Bonus"
+	if entry.kind == "Stud" and entry.def then
+		showStud(slot, entry.def, Variants.ById.Normal)
+	elseif entry.kind == "Luck" then
+		local label = slot.luck:FindFirstChild("Text", true)
+		if label and label:IsA("TextLabel") then
+			label.Text = luckText()
+		end
+	end
 end
 
 local function makeReel(result: RollResult, offsetX: number, length: number, cellHeight: number): Reel
-	local cellWidth = cellHeight * 1.6
 	local holder = copy("ReelHolder") :: GuiObject
 	holder.Position = UDim2.fromOffset(offsetX, 0)
-	holder.Size = UDim2.fromOffset(cellWidth, cellHeight * VISIBLE)
+	holder.Size = UDim2.fromOffset(cellHeight * 1.6, cellHeight * VISIBLE)
 	holder.Parent = stage
 
 	local pool = spinPool()
-	local sequence: { StudDef } = {}
-	for i = 1, length - 1 do
-		sequence[i] = randomStud(pool)
+	local bonus = bonusActive()
+	local function filler(): Entry
+		return { kind = if bonus and math.random() < 0.3 then "Bonus" else "Luck" }
+	end
+	local sequence: { Entry } = {}
+	-- It starts on the last result (it zooms back in from the top).
+	sequence[1] = { kind = "Stud", def = lastResult or randomStud(pool) }
+	for i = 2, length - 1 do
+		local previous = sequence[i - 1]
+		sequence[i] = if previous.kind == "Stud" and math.random() < FILLER_CHANCE then filler() else { kind = "Stud", def = randomStud(pool) }
 	end
 	local landed = Studs.ById[result.Id]
-	sequence[length] = landed
+	sequence[length] = { kind = "Stud", def = landed }
 
 	-- Near miss: sometimes a much rarer stud sits right past the result.
 	local tease = false
@@ -349,139 +494,82 @@ local function makeReel(result: RollResult, offsetX: number, length: number, cel
 		end
 	end
 	if #rarer > 0 and math.random() < UIConfig.Reveal.NearMissChance then
-		sequence[length + 1] = rarer[math.random(1, #rarer)]
+		sequence[length + 1] = { kind = "Stud", def = rarer[math.random(1, #rarer)] }
 		tease = true
 	else
-		sequence[length + 1] = randomStud(pool)
+		sequence[length + 1] = if math.random() < FILLER_CHANCE then filler() else { kind = "Stud", def = randomStud(pool) }
 	end
+	sequence[length + 2] = { kind = "Stud", def = randomStud(pool) }
 
-	local cells: { Cell } = {}
+	local slots: { Slot } = {}
 	for _ = 1, VISIBLE do
-		table.insert(cells, makeCell(holder, cellHeight))
+		table.insert(slots, makeSlot(holder, cellHeight))
 	end
-	return { holder = holder, cells = cells, sequence = sequence, result = result, cellHeight = cellHeight, target = length, tease = tease, creep = 0 }
+	return { holder = holder, slots = slots, sequence = sequence, result = result, cellHeight = cellHeight, target = length, tease = tease, creep = 0 }
 end
 
--- p = how far the reel has scrolled (0 … target - 1). Entry k sits at
--- y = (p - (k - 1)) cells from the centre: later entries come from above.
+-- Where an entry sits `o` slots from the centre: the centre one big, its
+-- neighbours a little smaller and close, the next ones tiny and faded.
+local function placement(o: number): (number, number, number)
+	local d = math.abs(o)
+	local y = if d <= 1 then d * 0.78 else 0.78 + (d - 1) * 0.55
+	local scale = if d <= 1 then 1 - 0.25 * d else math.max(0.3, 0.75 - 0.35 * (d - 1))
+	local fade = if d <= 1 then 0 else math.clamp((d - 1) * 0.75, 0, 1)
+	return math.sign(o) * y, scale, fade
+end
+
+-- p = how far the reel has scrolled (0 … target - 1). Entry k sits
+-- (p - (k - 1)) slots from the centre: later entries come from above.
 local function drawReel(reel: Reel, p: number)
-	local normal = Variants.ById.Normal
 	local base = math.floor(p) + 1
-	for slot, cell in reel.cells do
-		local k = base + slot - 3 -- base-2 … base+2
-		local def = reel.sequence[k]
-		if not def then
-			cell.frame.Visible = false
-		else
-			cell.frame.Visible = true
-			if cell.index ~= k then
-				cell.index = k
-				showInCell(cell, def, normal)
-			end
-			local offset = p - (k - 1)
-			local distance = math.abs(offset)
-			cell.frame.Position = UDim2.new(0.5, 0, 0.5, offset * reel.cellHeight)
-			local scale = cell.frame:FindFirstChildOfClass("UIScale")
-			if scale then
-				scale.Scale = math.max(0.45, 1 - distance * 0.28)
-			end
-			local fade = math.clamp(distance * 0.35, 0, 1)
-			cell.viewport.ImageTransparency = fade
-			cell.odds.TextTransparency = fade
-			cell.name.TextTransparency = fade
-			for _, label in { cell.odds, cell.name } do
-				local stroke = label:FindFirstChildOfClass("UIStroke")
-				if stroke then stroke.Transparency = fade end
-			end
+	local spin = os.clock() * 50
+	for i, slot in reel.slots do
+		local k = base + i - 3 -- base-2 … base+2
+		local entry = reel.sequence[k]
+		if not entry then
+			slot.frame.Visible = false
+			continue
 		end
+		slot.frame.Visible = true
+		if slot.index ~= k then
+			slot.index = k
+			showEntry(slot, entry)
+		end
+		local o = p - (k - 1)
+		local y, scale, fade = placement(o)
+		slot.frame.Position = UDim2.new(0.5, 0, 0.5, y * reel.cellHeight)
+		slot.scale.Scale = scale
+		local part = if entry.kind == "Stud" then "stud" elseif entry.kind == "Luck" then "luck" else "bonus"
+		setFade(slot.fades[part], fade)
+		-- The glow: bright in the centre, softer on the neighbours.
+		setFade(slot.fades.rays, math.clamp(0.15 + 0.45 * math.min(math.abs(o), 1) + fade, 0, 1))
+		slot.rays.Rotation = spin
 	end
 end
 
 --------------------------------------------------------------------------
--- Centre decorations: dashes, clover badge, bonus pill, clover rain
+-- Centre dashes
 --------------------------------------------------------------------------
 
-local function decorations(width: number, cellHeight: number): { Instance }
+local function dashes(spread: number, cellHeight: number): { Instance }
 	local made: { Instance } = {}
+	local length = cellHeight * 0.28
 	for _, side in { -1, 1 } do
-		local dash = copy("ReelDash", cellHeight) :: GuiObject
-		dash.Position = UDim2.fromOffset(side * (width / 2 + cellHeight * 0.55), 0)
+		local dash = copy("ReelDash") :: GuiObject
+		dash.Size = UDim2.fromOffset(length, math.max(3, cellHeight * 0.02))
+		dash.Position = UDim2.fromOffset(side * (spread / 2 + cellHeight * 0.7 + length / 2), 0)
 		if side > 0 then
 			dash.Rotation += 180
 		end
 		dash.Parent = stage
 		table.insert(made, dash)
 	end
-
-	local stats = State.stats()
-	local badge = copy("LuckBadge", cellHeight) :: GuiObject
-	badge.Position = UDim2.fromOffset(-(width / 2 + cellHeight * 0.05), 0)
-	local luck = string.gsub(string.format("%.1f", stats.Luck), "%.0$", "")
-	local badgeText = badge:FindFirstChild("Text", true)
-	if badgeText and badgeText:IsA("TextLabel") then
-		badgeText.Text = `{luck}X`
-	end
-	badge.Parent = stage
-	table.insert(made, badge)
-	Juice.pop(badge, 1.4)
-
-	-- BONUS: any temporary luck/speed source running.
-	local boosts = State.get("BoostEnds") or {}
-	local now = State.serverNow()
-	local bonus = stats.ServerLuck > 1
-	for _, ends in boosts do
-		if typeof(ends) == "number" and ends > now then
-			bonus = true
-		end
-	end
-	local eventId = ReplicatedStorage:GetAttribute("EventId")
-	if typeof(eventId) == "string" and eventId ~= "" then
-		bonus = true
-	end
-	if bonus then
-		local tag = copy("BonusTag", cellHeight) :: GuiObject
-		tag.Position = UDim2.fromOffset(-(width / 2 + cellHeight * 0.05), cellHeight * 0.62)
-		tag.Parent = stage
-		table.insert(made, tag)
-	end
 	return made
-end
-
-local function cloverRain(count: number)
-	local size = gui.AbsoluteSize
-	for _ = 1, count do
-		local clover = copy("Clover") :: TextLabel
-		local s = clover.Size.X.Offset * (0.75 + math.random() * 0.5)
-		clover.Size = UDim2.fromOffset(s, s)
-		clover.Position = UDim2.fromOffset(math.random() * size.X, -40)
-		clover.Rotation = math.random(-30, 30)
-		clover.Parent = gui
-		local fall = TweenService:Create(clover, TweenInfo.new(math.random(110, 190) / 100, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			Position = UDim2.fromOffset(clover.Position.X.Offset + math.random(-80, 80), size.Y * (0.5 + math.random() * 0.4)),
-			Rotation = math.random(-200, 200),
-			TextTransparency = 1,
-		})
-		fall:Play()
-		fall.Completed:Once(function()
-			clover:Destroy()
-		end)
-	end
 end
 
 --------------------------------------------------------------------------
 -- Landing
 --------------------------------------------------------------------------
-
-local function rays(parent: Instance, color: Color3, cellHeight: number): GuiObject
-	local holder = copy("Rays", cellHeight) :: GuiObject
-	for _, d in holder:GetDescendants() do
-		if d:IsA("Frame") then
-			d.BackgroundColor3 = if d.Name == "Glow" then color else color:Lerp(Color3.new(1, 1, 1), 0.6)
-		end
-	end
-	holder.Parent = parent
-	return holder
-end
 
 -- "SO CLOSE!" over the rarer stud the reel almost landed on.
 local function soClose(reel: Reel)
@@ -497,174 +585,114 @@ local function soClose(reel: Reel)
 	end)
 end
 
-local function land(reel: Reel)
+local function land(reel: Reel, quiet: boolean)
 	local result = reel.result
 	local def = Studs.ById[result.Id]
 	local variant = Variants.ById[result.Variant]
-	local rarityColor = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
-	local center: Cell? = nil
-	for _, cell in reel.cells do
-		if cell.index == reel.target then
-			center = cell
+	local color = rarityColor(def)
+	local center: Slot? = nil
+	for _, slot in reel.slots do
+		if slot.index == reel.target then
+			center = slot
 		end
 	end
 	if not center then return end
 
-	showInCell(center, def, variant)
-	center.name.TextColor3 = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else rarityColor:Lerp(Color3.new(1, 1, 1), 0.2)
+	showStud(center, def, variant)
 	if result.New then
 		center.odds.Text = `NEW! {center.odds.Text}`
 	end
 	if not result.Kept then
 		center.name.Text ..= if result.Reason == "Full" then " (FULL)" else " (DELETED)"
 	end
+	center.name.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.2)
 
-	local burst = rays(center.frame, rarityColor, reel.cellHeight)
-	local spin = TweenService:Create(burst, TweenInfo.new(4, Enum.EasingStyle.Linear), { Rotation = 180 })
-	spin:Play()
-	local scale = center.frame:FindFirstChildOfClass("UIScale")
-	if scale then
-		scale.Scale = 1.9
-		TweenService:Create(scale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.35 }):Play()
-	end
-	-- The neighbours get out of the way.
-	for _, cell in reel.cells do
-		if cell ~= center then
-			for _, item: any in { cell.viewport, cell.odds, cell.name } do
-				local property = if item:IsA("ViewportFrame") then "ImageTransparency" else "TextTransparency"
-				TweenService:Create(item, TweenInfo.new(0.2), { [property] = 1 }):Play()
-			end
+	-- The result pops and glows; everything else gets out of the way.
+	center.scale.Scale = 1.5
+	TweenService:Create(center.scale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.25 }):Play()
+	setFade(center.fades.rays, 0)
+	TweenService:Create(center.rays, TweenInfo.new(6, Enum.EasingStyle.Linear), { Rotation = center.rays.Rotation + 240 }):Play()
+	for _, slot in reel.slots do
+		if slot ~= center then
+			slot.frame.Visible = false
 		end
 	end
 	Interface.play("Click", 1.2)
 
-	-- Rarer = louder.
+	-- Rarer = louder (HIDE mode keeps it to the rarest).
 	local rank = RollLogic.rarityRank(def.Rarity)
 	local screenPoint = center.frame.AbsolutePosition + center.frame.AbsoluteSize / 2
-	if rank >= 3 then
+	if not quiet and rank >= 3 then
 		Juice.shake(0.15 * rank, 0.25 + 0.05 * rank)
 	end
-	if rank >= 4 then
+	if not quiet and rank >= 4 then
 		Juice.confetti(10 * rank, screenPoint)
 		Interface.play("Click", 1.5)
 	end
 	if rank >= 5 then
-		Juice.flash(rarityColor, 0.35 + 0.08 * (rank - 5), 0.6)
-		Juice.fov(6 + 3 * (rank - 5), 0.7)
-		Juice.banner(string.upper(def.Rarity) .. "!", Format.studName(def, variant), rarityColor, 1.2)
-	end
-end
-
---------------------------------------------------------------------------
--- World label: odds + name floating over the player after a roll
---------------------------------------------------------------------------
-
-local worldLabels: { BillboardGui } = {}
-
-local function floatResult(result: RollResult, order: number)
-	local character = player.Character
-	local head = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
-	if not (head and head:IsA("BasePart")) then return end
-	local def = Studs.ById[result.Id]
-	local variant = Variants.ById[result.Variant]
-	local color = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
-
-	local board = copy("ResultBoard") :: BillboardGui
-	board.Name = "RollResult"
-	board.Adornee = head
-	board.StudsOffset += Vector3.new(0, 4.2 + (order - 1) * 2.4, 0)
-	local odds = child(board, "Odds") :: TextLabel
-	odds.Text = oddsText(def, variant)
-	local name = child(board, "Name") :: TextLabel
-	name.Text = Format.studName(def, variant)
-	name.TextColor3 = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else color
-	board.Parent = gui.Parent -- PlayerGui: a BillboardGui inside a ScreenGui won't draw in 3D
-
-	-- Older labels drift up out of the way.
-	for _, other in worldLabels do
-		if other.Parent then
-			other.StudsOffset += Vector3.new(0, 2.4, 0)
+		if not quiet then
+			Juice.flash(color, 0.35 + 0.08 * (rank - 5), 0.6)
+			Juice.fov(6 + 3 * (rank - 5), 0.7)
 		end
+		Juice.banner(string.upper(def.Rarity) .. "!", Format.studName(def, variant), color, 1.2)
 	end
-	table.insert(worldLabels, board)
-
-	local scale = Instance.new("UIScale")
-	scale.Scale = 0.3
-	scale.Parent = odds
-	local nameScale = scale:Clone()
-	nameScale.Parent = name
-	for _, s in { scale, nameScale } do
-		TweenService:Create(s, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-	end
-
-	task.delay(2.6, function()
-		for _, label in { odds, name } do
-			TweenService:Create(label, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
-			local stroke = label:FindFirstChildOfClass("UIStroke")
-			if stroke then
-				TweenService:Create(stroke, TweenInfo.new(0.5), { Transparency = 1 }):Play()
-			end
-		end
-		task.wait(0.55)
-		board:Destroy()
-		local index = table.find(worldLabels, board)
-		if index then table.remove(worldLabels, index) end
-	end)
 end
 
 --------------------------------------------------------------------------
 -- The reveal
 --------------------------------------------------------------------------
 
--- HIDE mode: the small top display flicks through studs, then lands on
--- each result in turn.
-local function miniReveal(results: { RollResult }, quick: boolean)
-	local speed = math.max(State.stats().RollSpeed, 1)
-	local spinTime = (if quick then UIConfig.Reveal.AutoSpinTime else UIConfig.Reveal.SpinTime) / speed
-	local holdTime = math.max(0.35, (if quick then UIConfig.Reveal.AutoHoldTime else UIConfig.Reveal.HoldTime) / speed)
-	local pool = spinPool()
-	local normal = Variants.ById.Normal
-
-	for _, result in results do
-		local def = Studs.ById[result.Id]
-		local variant = Variants.ById[result.Variant]
-		if not (def and variant) then continue end
-
-		-- Flick: quick at first, slowing into the result.
-		miniStroke.Color = Color3.new(1, 1, 1)
-		miniStroke.Transparency = 0.5
-		miniName.TextColor3 = Color3.new(1, 1, 1)
-		local start = os.clock()
-		local gap = 0.05
-		while os.clock() - start < spinTime do
-			local shown = randomStud(pool)
-			StudCell.setViewport(miniViewport, shown, normal)
-			miniOdds.Text = oddsText(shown, normal)
-			miniName.Text = Format.studName(shown, normal)
-			Interface.play("Hover", 1.1)
-			task.wait(gap)
-			gap = math.min(gap * 1.18, 0.2)
-		end
-
-		-- Land.
-		local rarityColor = Config.Rarities.Colors[def.Rarity] or Color3.new(1, 1, 1)
-		StudCell.setViewport(miniViewport, def, variant)
-		miniOdds.Text = (if result.New then "NEW! " else "") .. oddsText(def, variant)
-		miniName.Text = Format.studName(def, variant)
-			.. (if result.Kept then "" elseif result.Reason == "Full" then " (FULL)" else " (DELETED)")
-		miniName.TextColor3 = if def.Rarity == "Secret" then Color3.new(1, 1, 1) else rarityColor:Lerp(Color3.new(1, 1, 1), 0.2)
-		miniStroke.Color = rarityColor
-		miniStroke.Transparency = 0
-		miniScale.Scale = 1.15
-		TweenService:Create(miniScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-		Interface.play("Click", 1.2)
-		-- Only the rarest still get the big moment.
-		local rank = RollLogic.rarityRank(def.Rarity)
-		if rank >= 5 then
-			Juice.banner(string.upper(def.Rarity) .. "!", Format.studName(def, variant), rarityColor, 1.2)
-		end
-		task.wait(holdTime)
+local function clearCurrent()
+	restToken += 1
+	local showing = current
+	current = nil
+	if not showing then return end
+	for _, reel in showing.reels do
+		reel.holder:Destroy()
 	end
+	for _, extra in showing.extras do
+		extra:Destroy()
+	end
+end
+
+-- A manual roll's result rests at the top for a while, then shrinks away
+-- (unless another roll starts first).
+local function scheduleFade()
+	restToken += 1
+	local token = restToken
+	task.delay(REST_TIME, function()
+		if token ~= restToken or busy or not current then return end
+		local tween = TweenService:Create(stageScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 0 })
+		tween:Play()
+		tween.Completed:Wait()
+		if token ~= restToken then return end
+		clearCurrent()
+		moveTo(pose, 0)
+	end)
+end
+
+-- After a roll (or when Auto / HIDE change): the result goes where it
+-- belongs. Auto (shown): stays big in the centre for the next roll. Else it
+-- flies to the top to rest; without Auto it fades out after a while.
+local function settle()
+	if busy or not current then return end
+	if auto and not hidden then
+		if pose ~= "Centre" then moveTo("Centre", 0.25) end
+		return
+	end
+	if pose ~= "Top" then
+		moveTo("Top", 0.35)
+	end
+	if not auto then
+		scheduleFade()
+	end
+end
+
+function RollReveal.setHidden(value: boolean)
+	hidden = value
+	setPill(hideButton, if value then "HIDE - ON" else "HIDE - OFF", value)
+	refreshCinematic()
+	settle()
 end
 
 local function reveal(results: { RollResult }, quick: boolean)
@@ -679,34 +707,46 @@ local function reveal(results: { RollResult }, quick: boolean)
 			break
 		end
 	end
-	if auto and hidden then
-		miniReveal(results, quick)
-		return
-	end
+	local hideMode = auto and hidden
 
 	local speed = math.max(State.stats().RollSpeed, 1)
 	local spinTime = (if quick then UIConfig.Reveal.AutoSpinTime else UIConfig.Reveal.SpinTime) / speed + 0.35
 	local holdTime = (if quick then UIConfig.Reveal.AutoHoldTime else UIConfig.Reveal.HoldTime) / speed
 	local length = if quick then 10 else 18
 
-	local viewportSize = gui.AbsoluteSize
-	local cellHeight = math.clamp(viewportSize.Y * 0.11, 56, 130)
-	local width = cellHeight * 1.6
-	local gap = width * 1.15
+	local resting = current ~= nil
+	clearCurrent()
+	local cellHeight = math.clamp(gui.AbsoluteSize.Y * 0.3, 90, 330)
+	local gap = cellHeight * 1.05
 	local reels: { Reel } = {}
 	for i, result in results do
 		local offsetX = (i - (#results + 1) / 2) * gap
 		table.insert(reels, makeReel(result, offsetX, length, cellHeight))
 	end
-	local extras = decorations(width * #results + gap * (#results - 1) - width * (#results - 1) * 0.15, cellHeight)
-
-	-- Lucky players get clover rain while the reel spins.
-	local luck = State.stats().Luck
-	if luck >= 2 and not quick then
-		cloverRain(math.clamp(math.floor(luck * 4), 8, 40))
+	local extras = dashes(gap * (#results - 1), cellHeight)
+	current = { reels = reels, extras = extras }
+	for _, reel in reels do
+		drawReel(reel, 0)
 	end
 
-	-- Anything rarer than DramaOneIn crawls the last few cells.
+	-- Into position: the reel zooms from its resting spot at the top to the
+	-- centre (HIDE mode: it spins up there, small).
+	stage.Visible = true
+	if not resting then
+		-- Nothing on screen yet: pop in where it belongs.
+		local target = if hideMode then "Top" else "Centre"
+		moveTo(target, 0)
+		local full = stageScale.Scale
+		stageScale.Scale = full * 0.5
+		TweenService:Create(stageScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = full }):Play()
+	elseif hideMode then
+		moveTo("Top", if pose == "Top" then 0 else 0.2)
+	elseif pose ~= "Centre" then
+		moveTo("Centre", 0.22)
+		task.wait(0.22)
+	end
+
+	-- Anything rarer than DramaOneIn crawls the last few slots.
 	local dramatic = false
 	for _, result in results do
 		if result.OneIn >= UIConfig.Reveal.DramaOneIn and not quick then
@@ -715,12 +755,9 @@ local function reveal(results: { RollResult }, quick: boolean)
 	end
 	local total = spinTime + (if dramatic then 0.9 else 0)
 
-	stage.Visible = true
 	local start = os.clock()
 	local lastTick = -1
 	local connection = RunService.RenderStepped:Connect(function()
-		local head = headScreenPosition()
-		stage.Position = UDim2.fromOffset(head.X, head.Y - cellHeight * 1.2)
 		local t = math.clamp((os.clock() - start) / total, 0, 1)
 		local eased = 1 - (1 - t) ^ (if dramatic then 5 else 4)
 		for _, reel in reels do
@@ -746,18 +783,14 @@ local function reveal(results: { RollResult }, quick: boolean)
 		end
 	end
 	if teasing then
-		local creepStart = os.clock()
-		local duration = 0.7
 		Interface.play("Hover", 0.7)
-		while os.clock() - creepStart < duration do
-			local u = (os.clock() - creepStart) / duration
+		animate(0.7, function(u)
 			for _, reel in reels do
 				if reel.tease then
 					reel.creep = 0.48 * math.sin(math.pi * u) ^ 0.7
 				end
 			end
-			task.wait()
-		end
+		end)
 		for _, reel in reels do
 			if reel.tease then
 				reel.creep = 0
@@ -765,22 +798,16 @@ local function reveal(results: { RollResult }, quick: boolean)
 			end
 		end
 	end
+	connection:Disconnect()
 
 	for _, reel in reels do
 		drawReel(reel, reel.target - 1)
-		land(reel)
+		land(reel, hideMode)
 		task.wait(if quick then 0.04 else 0.12)
 	end
+	lastResult = Studs.ById[results[#results].Id]
 
 	task.wait(holdTime)
-	connection:Disconnect()
-	for i, reel in reels do
-		floatResult(reel.result, i)
-		reel.holder:Destroy()
-	end
-	for _, extra in extras do
-		extra:Destroy()
-	end
 end
 
 --------------------------------------------------------------------------
@@ -816,9 +843,8 @@ local function play(results: { RollResult }, quick: boolean)
 	local ok, err = pcall(reveal, results, quick)
 	if not ok then
 		warn("[RollReveal]", err)
-		for _, child in stage:GetChildren() do
-			child:Destroy()
-		end
+		clearCurrent()
+		moveTo("Centre", 0)
 	end
 end
 
@@ -831,6 +857,7 @@ function RollReveal.showResults(results: { RollResult })
 	setBusy(true)
 	play(results, false)
 	setBusy(false)
+	settle()
 end
 
 -- One roll (free first, then paid). Returns true if a roll happened.
@@ -853,6 +880,7 @@ function RollReveal.roll(quick: boolean?): boolean
 	end
 	play(response.Results, quick == true)
 	setBusy(false)
+	settle()
 	return true
 end
 
@@ -866,7 +894,10 @@ function RollReveal.setAuto(value: boolean)
 	setPill(autoButton, if value then "AUTO - ON" else "AUTO - OFF", value)
 	RollReveal.AutoChanged:Fire(value)
 	refreshCinematic()
-	if not value then return end
+	if not value then
+		settle()
+		return
+	end
 
 	task.spawn(function()
 		while auto do
