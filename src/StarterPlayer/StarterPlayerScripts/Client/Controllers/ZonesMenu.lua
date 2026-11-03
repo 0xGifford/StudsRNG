@@ -22,6 +22,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   ZoneGate     hidden (locally) once owned when HideWhenOwned is set.
 -- Buying a zone dissolves its barrier in front of you: it flashes, bursts
 -- into sparks with a shockwave and fades away.
+-- Rows also show each zone's Mastery stars (Shared/Mastery) and whether it
+-- is Favoured today / Vintage this week (Shared/ZoneRotation), with a
+-- corner badge, so it's worth going back to earlier zones.
 -- The server decides ownership (Systems/ZoneShop); barriers are cosmetic,
 -- keys in unowned zones never pay anyway.
 
@@ -34,6 +37,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local Tags = require(Shared.Tags)
+local Mastery = require(Shared.Mastery)
+local ZoneRotation = require(Shared.ZoneRotation)
 
 local Controllers = script.Parent
 local UI = Controllers.Parent:WaitForChild("UI")
@@ -90,9 +95,31 @@ end
 -- Menu
 --------------------------------------------------------------------------
 
+local function infoText(def: Zones.ZoneDef): string
+	local studs = Zones.studCount(def.Id)
+	local parts = { `x{Format.number(def.KeyMultiplier)} Clacks per key` }
+	if studs > 0 then
+		table.insert(parts, `{studs} zone studs`)
+	end
+	local mastery = State.get("Mastery")
+	local stars = if typeof(mastery) == "table" then mastery[def.Id] else nil
+	if owned(def.Id) then
+		table.insert(parts, `Mastery {Mastery.text(if typeof(stars) == "number" then stars else 0)}`)
+	end
+	local bonus = ZoneRotation.bonus(def.Id, State.serverNow())
+	if bonus then
+		table.insert(parts, ZoneRotation.describe(bonus))
+	end
+	return table.concat(parts, " · ")
+end
+
 local function updateCard(def: Zones.ZoneDef)
 	local row = cards[def.Id]
 	if not row then return end
+	local info = Roles.find(row, "ZoneRole", "Info")
+	if info then
+		info.Text = infoText(def)
+	end
 	local button = row:FindFirstChild("Action")
 	if not (button and button:IsA("Frame")) then return end
 	local nextZone = Zones.nextFor(State.get("UnlockedWorlds") or {})
@@ -169,9 +196,11 @@ local function makeRow(def: Zones.ZoneDef): Frame
 	if name then name.Text = Zones.title(def) end
 	local info = Roles.find(row, "ZoneRole", "Info")
 	if info then
-		local studs = Zones.studCount(def.Id)
-		info.Text = `x{Format.number(def.KeyMultiplier)} Clacks per key` .. (if studs > 0 then ` · {studs} zone studs` else "")
 		info.TextColor3 = def.Color
+	end
+	local bonus = ZoneRotation.bonus(def.Id, State.serverNow())
+	if bonus then
+		Kit.badge(row, ZoneRotation.describe(bonus, true))
 	end
 	local button = Roles.get(row, "ZoneRole", "Action") :: Frame
 	button.Name = "Action"
@@ -458,6 +487,8 @@ function ZonesMenu.start()
 			if Interface.isOpen(MENU) then refreshCards() end
 		elseif field == "Stats" then
 			refreshWorld()
+			if Interface.isOpen(MENU) then refreshCards() end
+		elseif field == "Mastery" then
 			if Interface.isOpen(MENU) then refreshCards() end
 		elseif field == "Clacks" then
 			for _, blocker in blockers do

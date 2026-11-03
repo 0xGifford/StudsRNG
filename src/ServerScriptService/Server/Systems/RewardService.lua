@@ -90,6 +90,11 @@ function RewardService.grant(player: Player, reward: Reward): { [string]: any }
 		RewardService.addLuck(player, reward.Amount)
 	elseif reward.Kind == "MegaRoll" then
 		given.Results = Rolls.rollFor(player, 1, reward.Amount)
+	elseif reward.Kind == "Storage" then
+		-- Extra stud storage, for good (Focus Shop).
+		data.BonusStorage = (data.BonusStorage or 0) + math.floor(reward.Amount)
+		StateSync.push(player, "BonusStorage", data.BonusStorage)
+		Modifiers.invalidate(player)
 	elseif reward.Kind == "Stud" then
 		local def, variant = RollLogic.decodeKey(reward.Stud)
 		assert(def and variant, `bad stud reward {reward.Stud}`)
@@ -128,15 +133,23 @@ local function claimDaily(player: Player): Response
 	local data = PlayerData.get(player)
 	if not data then return { Ok = false, Error = "NotLoaded" } end
 	local today = RewardDefs.dayNumber(os.time())
-	local canClaim, day = RewardDefs.dailyState(data.Daily, today)
+	local canClaim = RewardDefs.dailyState(data.Daily, today)
 	if not canClaim then return { Ok = false, Error = "AlreadyClaimed" } end
 
-	local weeks = RewardDefs.weeksAfterClaim(data.Daily, today, day)
-	data.Daily = { Streak = day, LastDay = today, Weeks = weeks }
+	local state, info = RewardDefs.afterClaim(data.Daily, today)
+	data.Daily = state
 	StateSync.push(player, "Daily", data.Daily)
-	local given = RewardService.grant(player, RewardDefs.dailyReward(day, weeks))
+	local given = RewardService.grant(player, RewardDefs.dailyReward(info.Day, info.Weeks, info.Recovery))
 	RewardService.DailyClaimed:Fire(player)
-	return { Ok = true, Day = day, Weeks = weeks, Reward = given }
+	return {
+		Ok = true,
+		Day = info.Day,
+		Weeks = info.Weeks,
+		Days = info.Days,
+		Graced = info.Graced,
+		Recovery = info.Recovery,
+		Reward = given,
+	}
 end
 
 --------------------------------------------------------------------------

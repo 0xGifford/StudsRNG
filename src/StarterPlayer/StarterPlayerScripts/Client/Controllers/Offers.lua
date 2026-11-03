@@ -17,6 +17,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Lucky Drops    right after you defeat a Mini Boss
 --   Stud Trainer   when one of your studs levels up
 --   Stud Pass      when you reach pass tier 3 without the premium track
+--   Value packs    the moment you reach their milestone (first rebirth,
+--                  zone 10, first Secret: ProductDef.Milestone), once; they
+--                  skip the MIN_GAP wait but still never cover a menu
 -- Items whose Id isn't set yet (Shared/Products) are never offered.
 --
 -- The card is StarterGui.Offers (tools/ui/screens/Offers.luau), found by
@@ -103,9 +106,10 @@ local function bind()
 end
 
 -- Shows the offer if it's allowed right now. Returns whether it showed.
-local function offer(key: string, isPass: boolean, headline: string): boolean
+-- urgent: a milestone moment, not held back by MIN_GAP.
+local function offer(key: string, isPass: boolean, headline: string, urgent: boolean?): boolean
 	if shown[key] or current or owns(isPass, key) or not Robux.available(isPass, key) then return false end
-	if os.clock() - lastShown < MIN_GAP or Interface.isOpen() then return false end
+	if (not urgent and os.clock() - lastShown < MIN_GAP) or Interface.isOpen() then return false end
 	local def = if isPass then Products.Passes[key] else Products.Products[key]
 	if not def then return false end
 	shown[key] = true
@@ -153,6 +157,22 @@ function Offers.start()
 		State.Ready:Wait()
 	end
 
+	local milestones = table.clone(State.get("Milestones") or {})
+	-- A milestone just reached: its value pack, as soon as no menu is open.
+	local function offerMilestone(id: string)
+		for key, def in Products.Products do
+			if def.Milestone == id then
+				task.spawn(function()
+					task.wait(3)
+					for _ = 1, 20 do
+						if shown[key] or offer(key, false, `{def.Name}: one time only!`, true) then return end
+						task.wait(3)
+					end
+				end)
+			end
+		end
+	end
+
 	local bosses = State.get("BossesDefeated") or 0
 	local level = maxLevel(State.get("StudXP"))
 	local tier = PassDefs.tierOf((State.get("Pass") or {}).Points or 0)
@@ -169,6 +189,13 @@ function Offers.start()
 				task.delay(2.5, offer, "StudTrainer", true, "Level up twice as fast!")
 			end
 			level = now
+		elseif field == "Milestones" and typeof(value) == "table" then
+			for id, on in value do
+				if on and not milestones[id] then
+					offerMilestone(id)
+				end
+			end
+			milestones = table.clone(value)
 		elseif field == "Pass" and typeof(value) == "table" then
 			local now = PassDefs.tierOf(value.Points or 0)
 			if now >= 3 and tier < 3 then

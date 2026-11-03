@@ -18,6 +18,12 @@ Copyright © 2026. Mosswake, all rights reserved.
 --
 -- Clients prompt purchases themselves (MarketplaceService); nothing here
 -- trusts the client. Ids live in Shared/Products.
+--
+-- Stud Club is a Roblox subscription: checked on join and whenever Roblox
+-- says it changed; while active it counts as the "Club" pass (Config.Club
+-- perks) and ClaimClub pays its daily bundle once a UTC day.
+-- Milestones (first rebirth, zone 10, first Secret) are recorded in
+-- PlayerData.Milestones; the client offers that milestone's value pack.
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -28,6 +34,7 @@ local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 local ProductDefs = require(Shared.Products)
 local RewardDefs = require(Shared.Rewards)
+local RollLogic = require(Shared.Util.RollLogic)
 
 local Systems = script.Parent
 local PlayerData = require(Systems.PlayerData)
@@ -90,6 +97,7 @@ local function applyPasses(player: Player)
 	Modifiers.setPasses(player, table.clone(passes))
 	StateSync.setVolatile(player, "Passes", table.clone(passes))
 	player:SetAttribute("VIP", passes.VIP == true)
+	player:SetAttribute("Club", passes.Club == true)
 	if passes.VIP and player.Character then
 		task.spawn(addTrail, player.Character)
 	end
@@ -107,6 +115,16 @@ local function loadPasses(player: Player)
 			end
 		end
 	end
+	for key, def in ProductDefs.Subscriptions do
+		if def.Id ~= "" then
+			local ok, status = pcall(MarketplaceService.GetUserSubscriptionStatusAsync, MarketplaceService, player, def.Id)
+			if ok and typeof(status) == "table" and status.IsSubscribed then
+				passes[key] = true
+			elseif not ok then
+				warn(`[Products] subscription check failed for {key}: {status}`)
+			end
+		end
+	end
 	if player.Parent ~= Players then return end
 	-- Keep anything granted while we were checking (a purchase mid-join).
 	for key, value in owned[player] or {} do
@@ -119,6 +137,84 @@ end
 function Products.ownsPass(player: Player, key: string): boolean
 	local passes = owned[player]
 	return passes ~= nil and passes[key] == true
+end
+
+-- A subscription changed (bought, cancelled, lapsed): ask Roblox again.
+local function recheckSubscription(player: Player, subscriptionId: string)
+	local key = ProductDefs.subscriptionKey(subscriptionId)
+	if not key then return end
+	local ok, status = pcall(MarketplaceService.GetUserSubscriptionStatusAsync, MarketplaceService, player, subscriptionId)
+	if not ok or typeof(status) ~= "table" or player.Parent ~= Players then return end
+	local passes = owned[player] or {}
+	local was = passes[key] == true
+	passes[key] = if status.IsSubscribed then true else nil
+	owned[player] = passes
+	applyPasses(player)
+	Modifiers.invalidate(player)
+	if status.IsSubscribed and not was then
+		Net.fire(player, "Notify", { Text = `Welcome to the {ProductDefs.Subscriptions[key].Name}!`, Color = Config.Club.TagColor, Kind = "Club" })
+	end
+end
+
+local function claimClub(player: Player)
+	local data = PlayerData.get(player)
+	if not data then return { Ok = false, Error = "NotLoaded" } end
+	if not Products.ownsPass(player, "Club") then return { Ok = false, Error = "NotSubscribed" } end
+	local today = RewardDefs.dayNumber(os.time())
+	if data.ClubClaimDay == today then return { Ok = false, Error = "AlreadyClaimed" } end
+	data.ClubClaimDay = today
+	StateSync.push(player, "ClubClaimDay", today)
+	return { Ok = true, Reward = RewardService.grant(player, Config.Club.Daily) }
+end
+
+--------------------------------------------------------------------------
+-- Milestones (value packs)
+--------------------------------------------------------------------------
+
+local function countTrue(set: any): number
+	local n = 0
+	if typeof(set) == "table" then
+		for _, value in set do
+			if value == true then n += 1 end
+		end
+	end
+	return n
+end
+
+local function hasSecret(index: any): boolean
+	if typeof(index) ~= "table" then return false end
+	for key, found in index do
+		if found then
+			local def = RollLogic.decodeKey(key)
+			if def and def.Rarity == "Secret" then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local MILESTONES: { [string]: (data: any) -> boolean } = {
+	Rebirth1 = function(data) return (data.Rebirths or 0) >= 1 end,
+	Zone10 = function(data) return countTrue(data.UnlockedWorlds) >= 10 end,
+	Secret = function(data) return hasSecret(data.Index) end,
+}
+
+local function checkMilestones(player: Player)
+	local data = PlayerData.get(player)
+	if not data then return end
+	data.Milestones = data.Milestones or {}
+	local changed = false
+	for _, id in ProductDefs.Milestones do
+		local reached = MILESTONES[id]
+		if not data.Milestones[id] and reached and reached(data) then
+			data.Milestones[id] = true
+			changed = true
+		end
+	end
+	if changed then
+		StateSync.push(player, "Milestones", data.Milestones)
+	end
 end
 
 --------------------------------------------------------------------------
@@ -252,6 +348,14 @@ end
 
 function Products.init()
 	MarketplaceService.ProcessReceipt = processReceipt
+	Net.handle("ClaimClub", { Rate = 0.5, Burst = 2 }, claimClub)
+	-- Guarded: a missing event must never stop receipts from being processed.
+	local hasSignal, signal = pcall(function()
+		return (Players :: any).UserSubscriptionStatusChanged
+	end)
+	if hasSignal and signal then
+		signal:Connect(recheckSubscription)
+	end
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
 		if not purchased then return end
@@ -266,6 +370,7 @@ function Products.init()
 
 	PlayerData.Loaded:Connect(function(player)
 		task.spawn(loadPasses, player)
+		checkMilestones(player)
 	end)
 
 	local function track(player: Player)
@@ -283,6 +388,19 @@ function Products.init()
 	Players.PlayerRemoving:Connect(function(player)
 		owned[player] = nil
 	end)
+end
+
+-- Milestones are cheap to check: every few seconds for everyone.
+function Products.start()
+	while true do
+		task.wait(5)
+		for _, player in Players:GetPlayers() do
+			local ok, err = pcall(checkMilestones, player)
+			if not ok then
+				warn(`[Products] milestones: {err}`)
+			end
+		end
+	end
 end
 
 return Products

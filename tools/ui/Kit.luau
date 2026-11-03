@@ -353,12 +353,15 @@ end
 
 -- Bump when the screens change in a way places need (new attributes, new
 -- pieces): tools/ui/migrate.luau replaces a place's copy of a built screen
--- whose UIBuild is lower (unless it has UIKeep = true).
+-- whose UIBuild is lower (unless it has UIKeep = true). To update just one
+-- screen (leaving the others people may have edited alone), pass a higher
+-- build to its Kit.save instead.
 Kit.BUILD = 3
 
--- Writes a ScreenGui to src/StarterGui/<name>.rbxm, stamped UIBuild.
-function Kit.save(gui: any)
-	gui:SetAttribute("UIBuild", Kit.BUILD)
+-- Writes a ScreenGui to src/StarterGui/<name>.rbxm, stamped UIBuild
+-- (build: this screen's own, when it changed after Kit.BUILD).
+function Kit.save(gui: any, build: number?)
+	gui:SetAttribute("UIBuild", math.max(build or 0, Kit.BUILD))
 	local path = `src/StarterGui/{gui.Name}.rbxm`
 	fs.writeFile(path, roblox.serializeModel({ gui }))
 	print(`built {path}`)

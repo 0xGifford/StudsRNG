@@ -25,7 +25,7 @@ local Types = require(script.Parent.Types)
 
 type VariantDef = Types.VariantDef
 
-local order = { "Normal", "Big", "Huge", "Jumbo", "Shiny", "Inverted" }
+local order = { "Normal", "Big", "Huge", "Jumbo", "Shiny", "Inverted", "Prismatic" }
 
 local defs: { [string]: VariantDef } = {
 	Normal = { Name = "Normal", Label = "Base", OneIn = 1, Multiplier = 1, Stats = 1, Scale = 1 },
@@ -36,6 +36,10 @@ local defs: { [string]: VariantDef } = {
 		Outline = Color3.fromRGB(255, 220, 90) },
 	Inverted = { Name = "Inverted", Label = "Inverted", OneIn = 2500, Multiplier = 15, Stats = 15, Scale = 1, Effect = "Invert", Invert = true,
 		Outline = Color3.new(1, 1, 1) },
+	-- Limited: only rolls while you roll in a Favoured zone (Shared/ZoneRotation),
+	-- so its Index tab fills a little every day the zone you want comes round.
+	Prismatic = { Name = "Prismatic", Label = "Prismatic", OneIn = 30, Multiplier = 4, Stats = 4, Scale = 1, Effect = "Rainbow",
+		Outline = Color3.fromRGB(255, 140, 230), Limited = true },
 
 	-- Retired
 	Golden = {

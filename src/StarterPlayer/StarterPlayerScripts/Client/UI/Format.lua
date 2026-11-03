@@ -118,6 +118,8 @@ function Format.reward(reward: { [string]: any }): string
 		local boost = reward.Boost and Config.Boosts[reward.Boost]
 		local minutes = reward.Minutes or (if boost then boost.Duration / 60 else 0)
 		return `{if boost then boost.Name else "Boost"} ({minutes}m)`
+	elseif kind == "Storage" then
+		return `+{amount} Stud Storage`
 	end
 	return tostring(kind)
 end

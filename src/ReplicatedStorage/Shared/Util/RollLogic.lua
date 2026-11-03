@@ -20,6 +20,7 @@ local Variants = require(Shared.Variants)
 local Types = require(Shared.Types)
 local Upgrades = require(Shared.Upgrades)
 local Zones = require(Shared.Zones)
+local Mastery = require(Shared.Mastery)
 
 type StudDef = Types.StudDef
 type VariantDef = Types.VariantDef
@@ -37,7 +38,7 @@ table.sort(studsRarestFirst, function(a, b)
 end)
 
 local variantsRarestFirst: { VariantDef } = {}
-for _, name in Variants.Order do -- retired variants aren't in Order, so never roll
+for _, name in Variants.Order do -- retired variants aren't in Order, so never roll; Limited ones only when allowed
 	table.insert(variantsRarestFirst, Variants.ById[name])
 end
 table.sort(variantsRarestFirst, function(a, b)
@@ -110,8 +111,10 @@ function RollLogic.rollDrop(rng: Random, luck: number): StudDef?
 end
 
 -- boosts: per-variant chance multipliers (Big Roll / Shiny Roll boosts).
-function RollLogic.rollVariant(rng: Random, luck: number, boosts: { [string]: number }?): VariantDef
+-- allowLimited: Limited variants (Prismatic) may roll too (a Favoured zone).
+function RollLogic.rollVariant(rng: Random, luck: number, boosts: { [string]: number }?, allowLimited: boolean?): VariantDef
 	for _, def in variantsRarestFirst do
+		if def.Limited and not allowLimited then continue end
 		local boost = if boosts then boosts[def.Name] or 1 else 1
 		if def.OneIn > 1 and rng:NextNumber() * def.OneIn < luck * boost then
 			return def
@@ -154,18 +157,50 @@ function RollLogic.statsOf(def: StudDef, variant: VariantDef, level: number?): (
 	return math.floor(strength * mult + 0.5), math.floor(health * mult + 0.5)
 end
 
--- The equipped studs' combined Strength and Health (xp: PlayerData.StudXP).
-function RollLogic.teamStats(equipped: { string }, xp: { [string]: number }?): (number, number)
+-- The squad's roles (Config.Roles): which are equipped, and whether every
+-- role is (Full Squad).
+function RollLogic.squad(equipped: { string }, roles: { [string]: string }?): ({ [string]: number }, boolean)
+	local counts: { [string]: number } = {}
+	for _, key in equipped do
+		local role = roles and roles[key]
+		if role and Config.Roles[role] then
+			counts[role] = (counts[role] or 0) + 1
+		end
+	end
+	local full = true
+	for _, name in Config.Roles.Order do
+		if name ~= "None" and not counts[name] then
+			full = false
+		end
+	end
+	return counts, full
+end
+
+-- The equipped studs' combined Strength and Health (xp: PlayerData.StudXP;
+-- roles: PlayerData.StudRoles, each stud's role multiplying its own stats,
+-- and Full Squad lifting the whole team).
+function RollLogic.teamStats(equipped: { string }, xp: { [string]: number }?, roles: { [string]: string }?): (number, number)
 	local strength, health = 0, 0
 	for _, key in equipped do
 		local def, variant = RollLogic.decodeKey(key)
 		if def and variant then
 			local s, h = RollLogic.statsOf(def, variant, RollLogic.levelOf(xp and xp[def.Id]))
+			local role = roles and roles[key]
+			local roleDef = role and Config.Roles[role]
+			if roleDef and roleDef.Strength then
+				s *= roleDef.Strength
+				h *= roleDef.Health
+			end
 			strength += s
 			health += h
 		end
 	end
-	return strength, health
+	local _, full = RollLogic.squad(equipped, roles)
+	if full then
+		strength *= 1 + Config.Roles.FullSquad.Strength
+		health *= 1 + Config.Roles.FullSquad.Health
+	end
+	return math.floor(strength + 0.5), math.floor(health + 0.5)
 end
 
 function RollLogic.indexTotal(): number
@@ -291,12 +326,36 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 	end
 
 	local studBonus = 0
+	local fromZone: { [string]: number } = {}
 	for _, key in data.Equipped or {} do
 		local def, variant = RollLogic.decodeKey(key)
 		if def and variant then
 			studBonus += RollLogic.multiplierOf(def, variant) - 1
+			fromZone[def.World] = (fromZone[def.World] or 0) + 1
 		end
 	end
+
+	-- Squad roles and synergies (Config.Roles).
+	local roleCounts = RollLogic.squad(data.Equipped or {}, data.StudRoles)
+	local killClacks = (roleCounts.Fortune or 0) * Config.Roles.Fortune.KillClacks
+	local roleCrit = (roleCounts.Swift or 0) * Config.Roles.Swift.Crit
+	local zoneSet: string? = nil
+	for zone, n in fromZone do
+		if n >= Config.Roles.ZoneSet.SetSize and Zones.ById[zone] then
+			zoneSet = zone
+		end
+	end
+	local setClacks = if zoneSet then Config.Roles.ZoneSet.Clacks else 0
+
+	-- Zone Mastery stars and Stud Memories (max-level studs), for good.
+	local stars = Mastery.totalStars(data)
+	local memories = 0
+	for _, amount in (if typeof(data.StudXP) == "table" then data.StudXP else {}) do
+		if RollLogic.levelOf(amount) >= Config.Levels.Max then
+			memories += 1
+		end
+	end
+	local lasting = stars * Config.Mastery.GlobalClacks + math.min(memories * Config.Memories.Clacks, Config.Memories.Max) + setClacks
 
 	-- Timed boosts and the global event
 	local boostLuck, boostClacks, boostSpeed = 0, 1, 1
@@ -337,7 +396,7 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 		* eventLuck
 
 	local clacks = (1 + studBonus)
-		* (1 + bonusClacks)
+		* (1 + bonusClacks + lasting)
 		* rebirthClacks
 		* (1 + up("ClacksPct"))
 		* boostClacks
@@ -360,7 +419,8 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 		Discovered = discovered,
 		IndexTotal = RollLogic.indexTotal(),
 		StudCount = RollLogic.countStuds(data.Studs or {}),
-		MaxStuds = Config.Inventory.MaxStuds + up("MaxStuds"),
+		MaxStuds = Config.Inventory.MaxStuds + up("MaxStuds") + (if typeof(data.BonusStorage) == "number" then data.BonusStorage else 0)
+			+ (if passes.Club then Config.Club.Storage else 0), -- Stud Club: storage while subscribed
 		RollSpeed = rollSpeed,
 		RollCooldown = math.max(Config.Rolls.MinCooldown, Config.Rolls.Cooldown / rollSpeed),
 		RollCost = math.floor(Config.Rolls.ClackCost * costFraction * zoneScale),
@@ -378,6 +438,11 @@ function RollLogic.computeStats(data: any, context: StatContext?): Stats
 		WalkSpeed = Config.Movement.BaseWalkSpeed + up("WalkSpeed"),
 		ZoneDiscount = math.clamp(up("ZoneDiscountPct"), 0, 0.5),
 		AutoRoll = up("AutoRoll") > 0,
+		KillClacks = killClacks,
+		FightCrit = roleCrit,
+		MasteryStars = stars,
+		Memories = memories,
+		ZoneSet = zoneSet,
 		Friends = friends,
 		FriendBonus = friendBonus,
 		PremiumBonus = premiumBonus,

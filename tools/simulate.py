@@ -15,8 +15,14 @@ The player:
   - buys the next zone the moment they can, then the cheapest upgrade they
     can afford without delaying the next zone much
   - rebirths when it's affordable and the next zone is far off
-  - skips: variants, fusing, quests, daily rewards, events, boosts, Robux
-    (they all only make progress faster)
+  - earns Zone Mastery stars (Shared/Mastery: zone studs found + KILLS_PER_MIN
+    enemies a minute in the zone they play), which add Clacks everywhere and
+    pay more on that zone's keys; gets the Zone Set bonus when 3 of the
+    equipped studs share a zone; plays the Favoured / Vintage rotation at its
+    average odds (it never moves to a weaker zone for it)
+  - skips: variants, fusing, quests, Focus, daily rewards, events, boosts,
+    Stud Memories, squad roles / squad combo, Robux (they all only make
+    progress faster)
 
 Targets (an active player, hours of play): zone 2 in ~2 min, zone 5 in
 ~20 min, zone 10 in ~2 h, zone 20 in ~15 h, the last zone in ~80 h.
@@ -30,6 +36,7 @@ random.seed(7)
 PRESSES = 3.5          # keys a second while walking the board
 COMBO = 0.4            # average combo bonus while pressing (Config.Combo caps it)
 ENEMY_SHARE = 0.15     # Clacks from fights on top of keys
+KILLS_PER_MIN = 4      # enemies defeated a minute in the zone being played
 MANUAL_ROLL_SPEED = 0.5  # rolls a second before Auto Roll (by hand)
 ROLL_BUDGET = 0.35     # share of income spent on paid rolls (Auto Roll on)
 
@@ -60,6 +67,17 @@ LUCKY_LUCK = config_value("LuckyMeter", "Luck")
 _rush = re.search(r"Rush = \{ Every = ([\d_]+), Seconds = ([\d.]+) \}", config)
 RUSH_SHARE = float(_rush.group(2)) * PRESSES / lua_number(_rush.group(1))  # extra x1 Clacks this share of the time
 RESET_ZONES = re.search(r"ResetZones\s*=\s*(true|false)", config).group(1) == "true"
+MASTERY_KILLS = config_value("Mastery", "Kills")
+MASTERY_GLOBAL = config_value("Mastery", "GlobalClacks")
+_kb = re.search(r"KeyBonus = \{ \[2\] = ([\d.]+), \[3\] = ([\d.]+) \}", config)
+MASTERY_KEY = {2: float(_kb.group(1)), 3: float(_kb.group(2))}
+_zs = re.search(r"ZoneSet = \{ SetSize = (\d+), Clacks = ([\d.]+) \}", config)
+SET_SIZE, SET_CLACKS = int(_zs.group(1)), float(_zs.group(2))
+EARLY_MAX = config_value("ZoneRotation", "EarlyMax")
+_fav = re.search(r"Favoured = \{ Luck = ([\d.]+), Clacks = ([\d.]+) \}", config)
+_vin = re.search(r"Vintage = \{ Luck = ([\d.]+), Clacks = ([\d.]+), Count = (\d+) \}", config)
+FAV_LUCK, FAV_CLACKS = float(_fav.group(1)), float(_fav.group(2))
+VIN_LUCK, VIN_CLACKS, VIN_COUNT = float(_vin.group(1)), float(_vin.group(2)), int(_vin.group(3))
 milestones = [
     {k: lua_number(v) for k, v in re.findall(r"(\w+)\s*=\s*([\d_.]+)", m)}
     for m in re.findall(r"\{\s*(Count[^}]*)\}", re.search(r"local milestones.*?\n\}", config, re.S).group(0))
@@ -88,6 +106,13 @@ for n in range(COUNT):
         growth = PRICE_GROWTH + (PRICE_GROWTH_END - PRICE_GROWTH) * (order - len(HAND_PRICES)) / max(COUNT - len(HAND_PRICES), 1)
         zones.append((round2(p * growth), math.floor(m * MULT_GROWTH + 0.5)))
 
+# Chance a zone is Favoured today / Vintage this week (Shared/ZoneRotation).
+def rotation_odds(n):
+    early = min(EARLY_MAX, COUNT)
+    fav = 1 / early if n <= early else 1 / max(COUNT - early, 1)
+    vin = (1 - fav) * VIN_COUNT / COUNT
+    return fav, vin
+
 # --- Studs ---------------------------------------------------------------------
 studs_lua = (SRC / "Studs.lua").read_text()
 studs = []
@@ -100,6 +125,11 @@ for m in re.finditer(r'Id = "(\w+)".*?Rarity = "(\w+)", OneIn = ([\d_]+), Multip
     studs.append({"id": m.group(1), "rarity": m.group(2), "one_in": lua_number(m.group(3)),
                   "mult": lua_number(m.group(4)), "zone": int(world)})
 studs.sort(key=lambda s: -s["one_in"])
+# Mastery counts each zone's non-Secret studs.
+zone_studs = {}
+for st in studs:
+    if st["rarity"] != "Secret":
+        zone_studs.setdefault(st["zone"], set()).add(st["id"])
 
 # --- Upgrades ------------------------------------------------------------------
 up_lua = (SRC / "Upgrades.lua").read_text()
@@ -126,6 +156,7 @@ class Player:
         self.free = 0
         self.rolls = 0
         self.cached = None
+        self.kills = {}          # zone -> enemies defeated there
 
     def stat(self, name):
         return sum(u["per"] * self.levels[u["id"]] for u in upgrades if u["stat"] == name)
@@ -141,12 +172,35 @@ class Player:
         s, _, _ = self.bonuses()
         return int(min(MAX_SLOTS, BASE_SLOTS + s + self.stat("Slots")))
 
-    def stud_bonus(self):
-        mults = []
+    def equipped(self):
+        picks = []
         for st in studs:
-            mults += [st["mult"]] * min(self.owned.get(st["id"], 0), 12)
-        mults.sort(reverse=True)
-        return sum(m - 1 for m in mults[: self.slots()])
+            picks += [st] * min(self.owned.get(st["id"], 0), 12)
+        picks.sort(key=lambda st: -st["mult"])
+        return picks[: self.slots()]
+
+    def stud_bonus(self):
+        return sum(st["mult"] - 1 for st in self.equipped())
+
+    def zone_set(self):
+        counts = {}
+        for st in self.equipped():
+            counts[st["zone"]] = counts.get(st["zone"], 0) + 1
+        return any(c >= SET_SIZE for c in counts.values())
+
+    def stars(self, n):
+        if n > self.zone:
+            return 0
+        ids = zone_studs.get(n, set())
+        have = len(ids & self.found)
+        if not ids or have < len(ids) - 1:
+            return 1
+        if have < len(ids):
+            return 2
+        return 3 if self.kills.get(n, 0) >= MASTERY_KILLS else 2
+
+    def total_stars(self):
+        return sum(self.stars(n) for n in range(1, self.zone + 1))
 
     def clack_mult(self):
         if self.cached is None:
@@ -155,13 +209,16 @@ class Player:
 
     def _clack_mult(self):
         _, _, bonus = self.bonuses()
-        return ((1 + self.stud_bonus()) * (1 + bonus)
+        lasting = self.total_stars() * MASTERY_GLOBAL + (SET_CLACKS if self.zone_set() else 0)
+        return ((1 + self.stud_bonus()) * (1 + bonus + lasting)
                 * (1 + REBIRTH_CLACKS + self.stat("RebirthBonus")) ** self.rebirths
                 * (1 + self.stat("ClacksPct")))
 
     def luck(self):
         _, bonus, _ = self.bonuses()
-        return (1 + bonus) * (1 + self.rebirths * REBIRTH_LUCK) * (1 + self.stat("LuckPct"))
+        fav, vin = rotation_odds(self.zone)
+        rotation = 1 + fav * (FAV_LUCK - 1) + vin * (VIN_LUCK - 1)  # on average
+        return (1 + bonus) * (1 + self.rebirths * REBIRTH_LUCK) * (1 + self.stat("LuckPct")) * rotation
 
     def roll(self):
         luck = self.luck()
@@ -183,8 +240,14 @@ class Player:
         self.found.add(hit["id"])
         return hit
 
+    def key_scale(self):
+        fav, vin = rotation_odds(self.zone)
+        rotation = 1 + fav * (FAV_CLACKS - 1) + vin * (VIN_CLACKS - 1)  # on average
+        return rotation * (1 + MASTERY_KEY.get(self.stars(self.zone), 0))
+
     def per_second(self):
         _, key_mult = zones[self.zone - 1]
+        key_mult *= self.key_scale()
         crit = 1 + self.stat("CritChance")
         speed = 1 + self.stat("WalkSpeed") / 16
         return PRESSES * speed * key_mult * self.clack_mult() * (1 + COMBO) * crit * (1 + ENEMY_SHARE) * (1 + RUSH_SHARE)
@@ -203,6 +266,11 @@ def simulate(hours):
     timeline = []
     while t < hours * 3600:
         t += 1
+        if t % 60 == 0:
+            before = p.stars(p.zone)
+            p.kills[p.zone] = p.kills.get(p.zone, 0) + KILLS_PER_MIN
+            if p.stars(p.zone) != before:
+                p.cached = None
         gain = p.per_second()
         p.clacks += gain
         # Free rolls from presses
@@ -264,7 +332,7 @@ def simulate(hours):
                 p.zone = 1
             p.cached = None
         if t % report_every == 0:
-            timeline.append((t / 3600, p.zone, max(zone_at), p.rebirths, p.clack_mult(), p.luck(), best_one_in, len(p.found), p.rolls))
+            timeline.append((t / 3600, p.zone, max(zone_at), p.rebirths, p.clack_mult(), p.luck(), best_one_in, len(p.found), p.rolls, p.total_stars()))
     return zone_at, rebirth_at, stud_milestones, timeline
 
 def fmt_time(seconds):
@@ -284,10 +352,10 @@ def main():
     print("\nBest stud so far:")
     for t, sid, rarity, one_in in stud_milestones[-12:]:
         print(f"  {fmt_time(t)}  {sid} ({rarity}, 1 in {one_in:,.0f})")
-    print("\n hour  zone  best  rebirths  clack x     luck   best 1-in   found  rolls")
+    print("\n hour  zone  best  rebirths  clack x     luck   best 1-in   found  rolls  stars")
     for row in timeline[:: max(1, len(timeline) // 20)]:
-        h, z, bz, r, cm, lk, bo, f, rl = row
-        print(f" {h:5.0f}  {z:4d}  {bz:4d}  {r:8d}  {cm:9.3g}  {lk:6.2f}  {bo:10,.0f}  {f:5d}  {rl:6d}")
+        h, z, bz, r, cm, lk, bo, f, rl, stars = row
+        print(f" {h:5.0f}  {z:4d}  {bz:4d}  {r:8d}  {cm:9.3g}  {lk:6.2f}  {bo:10,.0f}  {f:5d}  {rl:6d}  {stars:5d}")
 
 if __name__ == "__main__":
     main()

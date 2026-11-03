@@ -15,6 +15,7 @@
 	  Card          the selected stud's card, with CardViewport, CardName,
 	                CardOdds, CardStats, CardLevel, CardOwned and the buttons
 	                Equip (UnequipColor attribute: its colour as UNEQUIP),
+	                Role (squad role: Guard / Striker / Swift / Fortune),
 	                Fuse, Delete, Deselect
 	Cell templates (UITemplate = "BackpackCell" / "EquippedCell"): Viewport,
 	Odds, Count, Level, Badge (rich text), Check (equipped tick), Button,
@@ -158,7 +159,8 @@ for _, info in {
 	role(text(card, string.sub(info[1], 5), info[2], info[3], info[4], info[5]), info[1]).ZIndex = 9
 end
 for _, info in {
-	{ "Equip", "EQUIP", GREEN, UDim2.fromScale(0.06, 0.71), UDim2.fromScale(0.88, 0.085) },
+	{ "Equip", "EQUIP", GREEN, UDim2.fromScale(0.06, 0.71), UDim2.fromScale(0.56, 0.085) },
+	{ "Role", "ROLE: NONE", Color3.fromRGB(60, 130, 200), UDim2.fromScale(0.64, 0.71), UDim2.fromScale(0.3, 0.085) },
 	{ "Fuse", "FUSE 0/5", Color3.fromRGB(160, 90, 230), UDim2.fromScale(0.06, 0.805), UDim2.fromScale(0.56, 0.085) },
 	{ "Delete", "DELETE", RED, UDim2.fromScale(0.64, 0.805), UDim2.fromScale(0.3, 0.085) },
 	{ "Deselect", "CLOSE", Color3.fromRGB(70, 72, 86), UDim2.fromScale(0.06, 0.9), UDim2.fromScale(0.88, 0.075) },
@@ -175,4 +177,4 @@ for _, info in {
 	end
 end
 
-Kit.save(gui)
+Kit.save(gui, 4) -- build 4: the ROLE button (squad roles)

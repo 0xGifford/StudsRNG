@@ -10,8 +10,9 @@ Copyright © 2026. Mosswake, all rights reserved.
 
 --!strict
 -- Draws the global top lists (Systems/Leaderboards) on every part tagged
--- Leaderboard (Shared/Tags): Board = Clacks | Enemies | Rarest, Face = the
--- side to draw on. Top 10 with medals, your row in green, and your rank
+-- Leaderboard (Shared/Tags): Board = Clacks | Enemies | Rarest |
+-- WeeklyClacks | WeeklyEnemies (reset every Monday), Face = the side to
+-- draw on. Top 10 with medals, your row in green, and your rank
 -- underneath when you're further down.
 
 local CollectionService = game:GetService("CollectionService")
@@ -34,6 +35,8 @@ local TITLES = {
 	Clacks = { "🏆 TOP CLACKS", Color3.fromRGB(255, 205, 60) },
 	Enemies = { "⚔️ MOST ENEMIES DEFEATED", Color3.fromRGB(255, 110, 90) },
 	Rarest = { "🎲 RAREST ROLLS", Color3.fromRGB(190, 120, 255) },
+	WeeklyClacks = { "📅 TOP CLACKS THIS WEEK", Color3.fromRGB(255, 170, 60) },
+	WeeklyEnemies = { "📅 MOST DEFEATED THIS WEEK", Color3.fromRGB(255, 140, 120) },
 }
 
 local player = Players.LocalPlayer

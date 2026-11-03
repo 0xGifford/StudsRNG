@@ -23,6 +23,10 @@ Copyright © 2026. Mosswake, all rights reserved.
 --   Products: Starter Pack 49 (one time) · Server Luck 99 · Lucky Roll 25
 --             Summon Mini Boss 35 · Spins 25 / 99 / 199 · Boosts 15-35
 --             Clacks 49 / 299 / 699 · Skip Rebirth 75 · Skip Rewards 49
+--             Milestone packs (one time each): Rebirth 99 · Zone 10 199
+--             · Secret 149
+--   Subscription: Stud Club about $4.99 a month (Creator Hub →
+--             Monetization → Subscriptions; paste its "EXP-..." id)
 
 export type PassDef = {
 	Id: number,
@@ -51,6 +55,18 @@ export type ProductDef = {
 	FreeRolls: number?,
 	Action: string?, -- "SkipRebirth" | "SkipPlaytime" | "SummonBoss" (Products.registerAction)
 	OneTime: boolean?, -- bought once (PlayerData.Bought); hidden from the shop after
+	-- Value packs: only listed (and offered once, the moment it happens) after
+	-- the player reaches this milestone (PlayerData.Milestones, Systems/Products):
+	-- "Rebirth1" | "Zone10" | "Secret"
+	Milestone: string?,
+}
+
+export type SubscriptionDef = {
+	Id: string, -- "EXP-..." from the Creator Hub; "" until set (shows "Soon")
+	Name: string,
+	Description: string,
+	Icon: string,
+	Color: string,
 }
 
 local passes: { [string]: PassDef } = {
@@ -116,6 +132,17 @@ local products: { [string]: ProductDef } = {
 	Clacks5M = { Id = 0, Name = "Vault of Clacks", Section = "Clacks", Order = 3, Color = "Purple",
 		Icon = "rbxassetid://117187305699068", Clacks = 800_000, Badge = "+100%", Description = "A vault of Clacks, 100% bonus. Grows with your progress." },
 
+	-- Milestone value packs (one time each; listed once the milestone is reached)
+	RebirthPack = { Id = 0, Name = "Rebirth Pack", Section = "Featured", Order = 4, Color = "Orange",
+		Icon = "🔁", OneTime = true, Milestone = "Rebirth1", Luck = 1, Spins = 8, FreeRolls = 75, Boost = "Clacks", Badge = "VALUE",
+		Description = "For your first rebirth: +1 permanent luck, 8 jackpot spins, 75 free rolls and a Clacks boost." },
+	Zone10Pack = { Id = 0, Name = "Explorer Pack", Section = "Featured", Order = 5, Color = "Blue",
+		Icon = "🗺️", OneTime = true, Milestone = "Zone10", Luck = 2, Spins = 12, FreeRolls = 120, Boost = "UltraLuck", Badge = "VALUE",
+		Description = "Zone 10 reached: +2 permanent luck, 12 jackpot spins, 120 free rolls and an Ultra Luck boost." },
+	SecretPack = { Id = 0, Name = "Secret Hunter Pack", Section = "Featured", Order = 6, Color = "Purple",
+		Icon = "🔮", OneTime = true, Milestone = "Secret", Luck = 2, Spins = 15, Boost = "ShinyRoll", Badge = "VALUE",
+		Description = "You found a Secret: +2 permanent luck, 15 jackpot spins and a Shiny Roll boost." },
+
 	-- Bought from other menus
 	SkipRebirth = { Id = 0, Name = "Skip Rebirth", Order = 0, Color = "Sunset", Icon = "🔁",
 		Action = "SkipRebirth", Description = "Rebirth now without the Clacks." },
@@ -123,11 +150,21 @@ local products: { [string]: ProductDef } = {
 		Action = "SkipPlaytime", Description = "Claim every playtime reward now." },
 }
 
+local subscriptions: { [string]: SubscriptionDef } = {
+	Club = { Id = "", Name = "Stud Club", Icon = "💎", Color = "Sunset",
+		Description = "Monthly. A daily bundle (2 spins, 25 free rolls, a Luck boost), +100 stud storage and a [CLUB] chat tag. Comfort and looks, never power." },
+}
+
 local Products = {
 	Passes = passes,
 	Products = products,
-	-- Shop sections, top to bottom ("Passes" lists the game passes).
+	Subscriptions = subscriptions,
+	-- Milestone ids (ProductDef.Milestone) and what reaches them (Systems/Products).
+	Milestones = { "Rebirth1", "Zone10", "Secret" },
+	-- Shop sections, top to bottom ("Passes" lists the game passes, "Club"
+	-- the subscription).
 	Sections = {
+		{ Id = "Club", Title = "Stud Club" },
 		{ Id = "Passes", Title = "Game Passes" },
 		{ Id = "Featured", Title = "Featured" },
 		{ Id = "Boosts", Title = "Boosts" },
@@ -157,6 +194,15 @@ end
 
 function Products.productKey(assetId: number): string?
 	return productByAssetId[assetId]
+end
+
+function Products.subscriptionKey(id: string): string?
+	for key, def in subscriptions do
+		if def.Id ~= "" and def.Id == id then
+			return key
+		end
+	end
+	return nil
 end
 
 return Products

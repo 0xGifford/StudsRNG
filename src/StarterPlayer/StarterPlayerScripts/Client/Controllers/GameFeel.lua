@@ -74,7 +74,13 @@ local function onCombo(combo: any)
 	if count < 5 then return end
 	comboSeenAt = os.clock()
 	local heat = math.clamp(count / 100, 0, 1)
-	label.Text = `COMBO x{count}  +{Format.percent(combo.Bonus or 0)}`
+	local text = `COMBO x{count}  +{Format.percent(combo.Bonus or 0)}`
+	-- Squad combo: players pressing nearby add to it (Config.SquadCombo).
+	local squad = combo.Squad or 0
+	if squad > 0 then
+		text ..= `  ·  👥 SQUAD x{squad + 1} +{Format.percent(combo.SquadBonus or 0)}`
+	end
+	label.Text = text
 	label.TextColor3 = Color3.new(1, 1, 1):Lerp(Color3.fromRGB(255, 120, 40), heat)
 	label.TextTransparency = 0
 	for _, stroke in label:GetChildren() do
@@ -331,6 +337,26 @@ local function watchMilestones()
 			onTile(payload)
 		elseif payload.Kind == "KeyRush" then
 			onKeyRush(payload)
+		elseif payload.Kind == "Mastery" then
+			-- A zone reached 2 / 3 Mastery stars.
+			local color = if typeof(payload.Color) == "Color3" then payload.Color else Color3.fromRGB(255, 205, 60)
+			Juice.banner(if payload.Stars == 3 then "ZONE MASTERED!" else "MASTERY UP!", payload.Text or "", color, 2.2)
+			Juice.confetti(if payload.Stars == 3 then 110 else 60)
+			Juice.flash(color, 0.3, 0.5)
+			CombatFx.sound("Coin", nil, 1.2, 0.7)
+		elseif payload.Kind == "WeeklyRank" then
+			-- Last week's leaderboard prize.
+			local title = if typeof(payload.Title) == "string" then payload.Title else `#{payload.Rank} LAST WEEK!`
+			local reward = if typeof(payload.Reward) == "table" then Format.reward(payload.Reward) else ""
+			Juice.banner(string.upper(title), reward, Color3.fromRGB(255, 205, 60), 2.6)
+			Juice.confetti(120)
+			Juice.shake(0.5, 0.4)
+		elseif payload.Kind == "Memory" then
+			-- A stud hit the max level.
+			Juice.banner("STUD MEMORY!", payload.Text or "", Color3.fromRGB(255, 220, 120), 2.2)
+			Juice.confetti(70)
+			Juice.shake(0.4, 0.3)
+			CombatFx.sound("Coin", nil, 1.4, 0.7)
 		end
 	end)
 

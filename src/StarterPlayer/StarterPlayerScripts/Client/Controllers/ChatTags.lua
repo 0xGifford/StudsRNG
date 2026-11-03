@@ -29,6 +29,7 @@ local ChatTags = {}
 
 function ChatTags.start()
 	local tag = `<font color="{Format.hex(Config.VIP.TagColor)}"><b>{Config.VIP.TagText}</b></font>`
+	local clubTag = `<font color="{Format.hex(Config.Club.TagColor)}"><b>{Config.Club.TagText}</b></font>`
 
 	TextChatService.OnIncomingMessage = function(message: TextChatMessage)
 		local properties = Instance.new("TextChatMessageProperties")
@@ -41,6 +42,9 @@ function ChatTags.start()
 				local color = speaker:GetAttribute("TitleColor")
 				local hex = Format.hex(if typeof(color) == "Color3" then color else Color3.new(1, 1, 1))
 				prefix = `<font color="{hex}"><b>[{title}]</b></font> {prefix}`
+			end
+			if speaker and speaker:GetAttribute("Club") == true then
+				prefix = `{clubTag} {prefix}`
 			end
 			if speaker and speaker:GetAttribute("VIP") == true then
 				prefix = `{tag} {prefix}`

@@ -40,6 +40,7 @@ export type VariantDef = {
 	Invert: boolean?, -- colour is inverted
 	Outline: Color3?, -- outline colour (SelectionBox; a Highlight on your own followers)
 	Retired: boolean?, -- no longer rolled, fused or indexed
+	Limited: boolean?, -- only rolls in a Favoured zone (Shared/ZoneRotation)
 }
 
 -- Saved profile shape (ProfileStore template lives in Systems/PlayerData).
@@ -67,7 +68,7 @@ export type PlayerData = {
 	PurchaseIds: { string }, -- recent receipt ids (server only, never sent to the client)
 	SeenIntro: boolean, -- watched the first-join cinematic
 	Tutorial: number, -- tutorial step reached (Systems/Tutorial)
-	Quests: { Day: number, List: { QuestState } },
+	Quests: { Day: number, List: { QuestState }, Bonus: boolean? }, -- Bonus: the all-done Focus bonus was paid
 	LastOnline: number, -- unix time, for offline earnings
 	TilesClaimed: number,
 	LuckyMeter: number,
@@ -83,6 +84,19 @@ export type PlayerData = {
 	Pass: { Season: string, Points: number, Free: { [string]: boolean }, Premium: { [string]: boolean } }, -- Stud Pass (claimed tiers by tostring(tier))
 	Bought: { [string]: boolean }, -- one-time products bought
 	Epochs: { Economy: number, All: number }, -- admin resets this save has had (Systems/Admin)
+	-- Retention systems (Shared/Mastery, Systems/QuestService, Config.Roles)
+	ZoneKills: { [string]: number }, -- enemies defeated per zone (Zone Mastery)
+	Mastery: { [string]: number }, -- stars last announced per zone
+	FocusPoints: number,
+	FocusBought: { [string]: number }, -- Focus Shop items bought (limited ones)
+	Weekly: { Week: number, List: { QuestState }, Grand: boolean }, -- Weekly Grand Focus
+	BonusStorage: number, -- extra stud storage (Focus Shop)
+	StudRoles: { [string]: string }, -- stud key -> squad role
+	ClubClaimDay: number, -- last day the Stud Club daily bundle was claimed
+	WeeklyStats: { Week: number, Clacks: number, Enemies: number }, -- this week's leaderboard scores
+	WeeklyPaid: number, -- last week whose leaderboard reward was checked
+	WeeklyPending: number?, -- a week whose leaderboard check failed (retried next join)
+	Milestones: { [string]: boolean }, -- value-pack offers already shown
 }
 
 export type QuestState = { Id: string, Target: number, Progress: number, Claimed: boolean }
@@ -125,6 +139,11 @@ export type Stats = {
 	WalkSpeed: number,
 	ZoneDiscount: number,
 	AutoRoll: boolean,
+	KillClacks: number, -- extra share of Clacks from kills (Fortune role)
+	FightCrit: number, -- extra combat crit chance (Swift role)
+	MasteryStars: number, -- Zone Mastery stars across every zone
+	Memories: number, -- studs levelled to the max (Stud Memories)
+	ZoneSet: string?, -- zone id when SetSize+ equipped studs share it
 	-- Breakdown for the HUD
 	Friends: number,
 	FriendBonus: number,
@@ -136,8 +155,8 @@ export type Stats = {
 
 -- A daily / playtime / wheel prize (see Shared/Rewards).
 export type Reward = {
-	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll" | "Bundle" | "Stud"
-	Amount: number, -- Clacks (before scaling), rolls, spins, luck, or the MegaRoll luck multiplier
+	Kind: string, -- "Clacks" | "FreeRolls" | "Spins" | "Boost" | "Luck" | "MegaRoll" | "Bundle" | "Stud" | "Storage"
+	Amount: number, -- Clacks (before scaling), rolls, spins, luck, the MegaRoll luck multiplier, or storage slots
 	Boost: string?, -- Kind == "Boost": boost id
 	Minutes: number?, -- Kind == "Boost": duration
 	Items: { Reward }?, -- Kind == "Bundle": every one of these

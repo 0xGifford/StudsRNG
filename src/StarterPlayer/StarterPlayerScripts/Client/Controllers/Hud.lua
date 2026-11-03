@@ -497,7 +497,9 @@ function Hud.start()
 	end)
 
 	State.Notified:Connect(function(payload)
-		-- Kinds with their own juice (tiles, Key Rush...) may carry no text.
+		-- Kinds with their own juice (tiles, Key Rush...) may carry no text;
+		-- Mastery / Memory text is shown in GameFeel's banner instead.
+		if payload.Kind == "Mastery" or payload.Kind == "Memory" then return end
 		if typeof(payload.Text) == "string" and payload.Text ~= "" then
 			Interface.toast(payload.Text, payload.Color)
 		end
@@ -534,7 +536,7 @@ function Hud.start()
 			updateAuto()
 			updateAlerts()
 			updateBoostLabels()
-		elseif field == "Upgrades" or field == "UnlockedWorlds" or field == "Rebirths" or field == "Spins" or field == "Quests" then
+		elseif field == "Upgrades" or field == "UnlockedWorlds" or field == "Rebirths" or field == "Spins" or field == "Quests" or field == "Weekly" then
 			updateAlerts()
 		elseif field == "Playtime" then
 			updatePlaytimeAlert()
